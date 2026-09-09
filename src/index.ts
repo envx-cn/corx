@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Env } from "./types.js";
+import { apiKeyMiddleware, type ProxyVariables } from "./auth.js";
 import { cors } from "./cors.js";
 import { proxyHandler } from "./proxy.js";
 import { admin } from "./admin.js";
@@ -10,11 +11,14 @@ import { resolveRawTarget } from "./subdomain.js";
 
 // strict:false — /console and /console/ (etc.) route the same; the /* proxy
 // catch-all must not swallow trailing-slash variants of real routes.
-const app = new Hono<{ Bindings: Env }>({ strict: false });
+const app = new Hono<{ Bindings: Env; Variables: ProxyVariables }>({ strict: false });
+
+// Resolve the API key before CORS so per-key allowed origins apply.
+app.use(apiKeyMiddleware);
 
 app.use(cors());
 
-type AppContext = Context<{ Bindings: Env }>;
+type AppContext = Context<{ Bindings: Env; Variables: ProxyVariables }>;
 
 /** `/` serves the landing page — unless subdomain mode (or ?url=) targets a site. */
 function rootHandler(c: AppContext) {

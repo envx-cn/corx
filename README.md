@@ -24,8 +24,14 @@ Options:
 
 | Param | Effect |
 | --- | --- |
-| `?ttl=300` | R2 cache TTL in seconds for this GET (max 86400) |
+| `?ttl=300` | R2 cache TTL in seconds for this GET (max 86400, overrides key/global) |
 | `?no-cache=1` | Bypass R2 cache |
+
+Per-key cache policy (console → API keys, or `PATCH /admin/keys/:id`): each key
+can set its own default TTL (`cacheTtl`, blank = global `CACHE_TTL_SECONDS`,
+`0` = never store) and a `noCache` switch that skips the R2 cache entirely for
+that key — handy for live data or high-churn scrapers sharing the proxy with
+cache-friendly traffic.
 | `X-Api-Key` / `Authorization: Bearer …` / `?key=…` | API key (when `REQUIRE_API_KEY=true`) |
 
 Responses carry `X-Corx-Cache: HIT/MISS`, `X-Corx-Target`, `X-Corx-Latency-Ms`.
@@ -83,8 +89,9 @@ npm run deploy
 ## Admin console (SSR + Cloudflare login)
 
 Open `https://<your-host>/console/`. Pure server-rendered pages (no JS build):
-Dashboard (24h stats, cache hit rate, top hosts) · API keys (create shown once, revoke) ·
-Logs · Host blocklist.
+Dashboard (24h requests, traffic in/out, cache bandwidth saved, hourly chart,
+top hosts/keys/methods/countries, recent errors) · API keys (create shown once,
+revoke, per-key origins/cache policy) · Logs (per-request size) · Host blocklist.
 
 Login is Cloudflare Access (Zero Trust):
 
@@ -114,8 +121,16 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" 'https://corx.<you>.workers.dev/adm
 
 # create a key (raw key shown once!)
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"name":"my-app","rateLimitPerMin":120}' \
+  -d '{"name":"my-app","rateLimitPerMin":120,"allowedOrigins":"https://app.example"}' \
   https://corx.<you>.workers.dev/admin/keys
+
+# per-key CORS origins: override the global ALLOWED_ORIGINS for callers of that key
+# ("*", comma-separated origins, or "" to inherit the global). Update anytime:
+curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"allowedOrigins":"https://app.example, https://admin.example"}' \
+  https://corx.<you>.workers.dev/admin/keys/KEY_ID
+# tip: browsers don't send API keys on OPTIONS preflights — pass the key via
+# ?key= if preflights must be evaluated per-key, or keep the global permissive
 
 # revoke / block hosts
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" https://corx.<you>.workers.dev/admin/keys/KEY_ID/revoke

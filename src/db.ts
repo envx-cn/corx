@@ -10,6 +10,9 @@ export interface LogRow {
   apiKeyId: string | null;
   cached: boolean;
   error: string;
+  reqBytes: number;
+  /** Response bytes. Null = unknown (chunked stream passthrough). */
+  resBytes: number | null;
 }
 
 export async function logRequest(db: D1Database, row: LogRow): Promise<void> {
@@ -17,8 +20,8 @@ export async function logRequest(db: D1Database, row: LogRow): Promise<void> {
     await db
       .prepare(
         `INSERT INTO request_logs
-           (method, target_url, target_host, status, latency_ms, client_ip, country, api_key_id, cached, error)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (method, target_url, target_host, status, latency_ms, client_ip, country, api_key_id, cached, error, req_bytes, res_bytes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         row.method,
@@ -31,6 +34,8 @@ export async function logRequest(db: D1Database, row: LogRow): Promise<void> {
         row.apiKeyId,
         row.cached ? 1 : 0,
         row.error.slice(0, 500),
+        row.reqBytes,
+        row.resBytes,
       )
       .run();
   } catch {
