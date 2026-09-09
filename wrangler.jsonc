@@ -1,0 +1,59 @@
+/**
+ * corx — CORS proxy on Cloudflare
+ * Stack: Hono + D1 + R2
+ *
+ * 1. Create D1 + R2 (once):
+ *    npm run db:create        # copy the database_id into wrangler.jsonc
+ *    npm run bucket:create
+ * 2. Dev:
+ *    cp .dev.vars.example .dev.vars   # fill in ADMIN_TOKEN
+ *    npm run db:migrate:local
+ *    npm run dev
+ * 3. Deploy:
+ *    npm run db:migrate
+ *    npx wrangler secret put ADMIN_TOKEN
+ *    npm run deploy
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "corx",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    // Suffix for subdomain mode (example.corx.com -> example.com).
+    // Empty = auto-detect from the request Host (works at any zone depth).
+    "PROXY_ZONE": "",
+    // Cloudflare Access login for /console + /admin (empty = token auth only).
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": "",
+    "ADMIN_EMAILS": "",
+    "ALLOWED_ORIGINS": "*",
+    "REQUIRE_API_KEY": "false",
+    "CACHE_TTL_SECONDS": "3600",
+    "TIMEOUT_MS": "30000",
+    "RATE_LIMIT_PER_MIN": "60",
+    "MAX_BODY_BYTES": "10485760"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "corx-db",
+      "database_id": "placeholder-run-npm-run-db-create-and-paste-id-here",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "CACHE_BUCKET",
+      "bucket_name": "corx-cache"
+    }
+  ],
+  "triggers": {
+    "crons": ["0 3 * * *"]
+  }
+}

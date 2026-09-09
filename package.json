@@ -1,0 +1,28 @@
+{
+  "name": "corx",
+  "version": "0.1.0",
+  "description": "corx — a CORS proxy running on Cloudflare (Hono + D1 + R2)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "db:create": "wrangler d1 create corx-db",
+    "db:migrate": "wrangler d1 migrations apply corx-db --remote",
+    "db:migrate:local": "wrangler d1 migrations apply corx-db --local",
+    "bucket:create": "wrangler r2 bucket create corx-cache",
+    "cf-typegen": "wrangler types src/worker-configuration.d.ts",
+    "check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "hono": "^4.9.9"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260908.1",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.37.0"
+  }
+}
