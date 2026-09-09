@@ -30,6 +30,12 @@ export interface ApiKeyRow {
   key_hash: string;
   name: string;
   rate_limit_per_min: number | null;
+  /** Comma-separated origins or "*". NULL/empty = inherit global ALLOWED_ORIGINS. */
+  allowed_origins: string | null;
+  /** Default cache TTL in seconds. NULL = inherit global CACHE_TTL_SECONDS (0 = never store). */
+  cache_ttl: number | null;
+  /** 1 = skip the R2 cache entirely for this key. */
+  no_cache: number;
   created_at: string;
   revoked_at: string | null;
 }

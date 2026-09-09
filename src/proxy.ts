@@ -1,10 +1,10 @@
 import type { Context } from "hono";
-import type { ApiKeyRow, Env } from "./types.js";
+import type { Env } from "./types.js";
 import { ProxyError } from "./types.js";
-import { hashKey, extractRawKey } from "./auth.js";
+import type { ProxyVariables } from "./auth.js";
 import { validateTargetUrl, checkDbBlocklist } from "./guard.js";
 import { resolveRawTarget } from "./subdomain.js";
-import { getCached, putCached, cacheKeyForUrl, ttlSeconds, shouldBypassCache, cachedResponse, isBufferable } from "./cache.js";
+import { getCached, putCached, cacheKeyForUrl, ttlSeconds, shouldBypassCache, cachedResponse, readBounded, CACHE_MAX_BYTES } from "./cache.js";
 import { checkRateLimit } from "./ratelimit.js";
 import { logRequest } from "./db.js";
 import { num, clientIp } from "./utils.js";
@@ -46,29 +46,8 @@ const STREAM_STRIP_RESPONSE = new Set([
   "set-cookie", // don't leak upstream cookies cross-origin
 ]);
 
-interface ResolvedKey {
-  id: string | null;
-  row: ApiKeyRow | null;
-}
-
-async function resolveApiKey(c: Context<{ Bindings: Env }>, reqUrl: URL): Promise<ResolvedKey> {
-  const raw = extractRawKey(c.req.raw, reqUrl);
-  if (!raw) return { id: null, row: null };
-  try {
-    const row = await c.env.DB.prepare(
-      "SELECT id, key_hash, name, rate_limit_per_min, created_at, revoked_at FROM api_keys WHERE key_hash = ?",
-    )
-      .bind(await hashKey(raw))
-      .first<ApiKeyRow>();
-    if (!row || row.revoked_at) return { id: null, row: null };
-    return { id: row.id, row };
-  } catch {
-    return { id: null, row: null };
-  }
-}
-
 /** Main proxy handler shared by /fetch, /proxy/*, /https://... */
-export async function proxyHandler(c: Context<{ Bindings: Env }>) {
+export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyVariables }>) {
   const started = Date.now();
   const reqUrl = new URL(c.req.url);
   const ip = clientIp(c.req.raw);
@@ -77,6 +56,8 @@ export async function proxyHandler(c: Context<{ Bindings: Env }>) {
   let host = "";
   let apiKeyId: string | null = null;
   let cached = false;
+  let reqBytes = 0;
+  let resBytes: number | null = null;
 
   const finish = (status: number | null, error = "") => {
     c.executionCtx.waitUntil(
@@ -91,6 +72,8 @@ export async function proxyHandler(c: Context<{ Bindings: Env }>) {
         apiKeyId,
         cached,
         error,
+        reqBytes,
+        resBytes,
       }),
     );
   };
@@ -102,27 +85,28 @@ export async function proxyHandler(c: Context<{ Bindings: Env }>) {
     host = url.hostname;
     await checkDbBlocklist(c.env.DB, host);
 
-    // Auth: optional unless REQUIRE_API_KEY=true.
-    const { id, row } = await resolveApiKey(c, reqUrl);
-    apiKeyId = id;
-    if ((c.env.REQUIRE_API_KEY ?? "false").toLowerCase() === "true" && !id) {
+    // Auth: optional unless REQUIRE_API_KEY=true (key resolved by apiKeyMiddleware).
+    const row = c.get("apiKey");
+    apiKeyId = row?.id ?? null;
+    if ((c.env.REQUIRE_API_KEY ?? "false").toLowerCase() === "true" && !apiKeyId) {
       throw new ProxyError(401, "Valid API key required (X-Api-Key, Authorization: Bearer, or ?key=)");
     }
 
     // Rate limit per key (or per IP for anonymous).
-    const bucket = `rl:${id ?? `ip:${ip || "unknown"}`}`;
+    const bucket = `rl:${apiKeyId ?? `ip:${ip || "unknown"}`}`;
     const { limit, remaining } = await checkRateLimit(c.env.DB, c.env, bucket, row?.rate_limit_per_min);
     c.header("X-RateLimit-Limit", String(limit));
     c.header("X-RateLimit-Remaining", String(remaining));
 
-    // R2 cache for GET.
-    const bypass = shouldBypassCache(c.req.raw, reqUrl);
+    // R2 cache for GET (per-key no-cache forces bypass).
+    const bypass = shouldBypassCache(c.req.raw, reqUrl, row);
     const cacheKey = await cacheKeyForUrl(target);
     if (!bypass) {
       try {
         const hit = await getCached(c.env.CACHE_BUCKET, cacheKey);
         if (hit) {
           cached = true;
+          resBytes = hit.body.byteLength;
           finish(hit.status);
           const res = cachedResponse(hit);
           res.headers.set("X-Corx-Target", host);
@@ -153,6 +137,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env }>) {
         if (buf && buf.byteLength > maxBody) {
           throw new ProxyError(413, `Request body too large (>${maxBody} bytes)`);
         }
+        reqBytes = buf?.byteLength ?? 0;
         body = buf ?? undefined;
       }
 
@@ -170,10 +155,11 @@ export async function proxyHandler(c: Context<{ Bindings: Env }>) {
         throw new ProxyError(502, `Upstream fetch failed: ${(err as Error)?.message ?? "unknown"}`);
       }
 
-      // Large / media / Range responses stream straight through (no buffering,
-      // so multi-GB video and seeking work within Worker memory limits).
-      const contentLength = Number(upstream.headers.get("content-length") ?? NaN);
-      if (!isBufferable(bypass, c.req.method, upstream.status, contentLength)) {
+      // Stream helper: minimal header stripping so Range/206 + media metadata survive.
+      // res_bytes = declared length when known, else null (chunked = unmeasurable upfront).
+      const streamIt = (body: ReadableStream<Uint8Array> | null) => {
+        const len = Number(upstream.headers.get("content-length") ?? NaN);
+        resBytes = Number.isFinite(len) && len >= 0 ? len : null;
         const streamHeaders = new Headers();
         upstream.headers.forEach((value, key) => {
           if (!STREAM_STRIP_RESPONSE.has(key.toLowerCase())) streamHeaders.set(key, value);
@@ -182,10 +168,28 @@ export async function proxyHandler(c: Context<{ Bindings: Env }>) {
         streamHeaders.set("X-Corx-Target", host);
         streamHeaders.set("X-Corx-Latency-Ms", String(Date.now() - started));
         finish(upstream.status);
-        return new Response(upstream.body, { status: upstream.status, headers: streamHeaders });
+        return new Response(body, { status: upstream.status, headers: streamHeaders });
+      };
+
+      // Non-cacheable responses (Range/206, non-GET, bypassed) stream untouched,
+      // so multi-GB video and seeking work within Worker memory limits.
+      if (!(c.req.method === "GET" && !bypass && upstream.status === 200)) {
+        return streamIt(upstream.body);
       }
 
-      const resBody = await upstream.arrayBuffer();
+      // Known-huge bodies stream without ever buffering.
+      const contentLength = Number(upstream.headers.get("content-length") ?? NaN);
+      if (Number.isFinite(contentLength) && contentLength > CACHE_MAX_BYTES) {
+        return streamIt(upstream.body);
+      }
+
+      // Bounded read: small/chunked bodies buffer for the R2 cache;
+      // overflow re-emits everything as a stream (no OOM).
+      const bounded = await readBounded(upstream.body, CACHE_MAX_BYTES);
+      if ("stream" in bounded) return streamIt(bounded.stream);
+
+      const resBody = bounded.bytes;
+      resBytes = resBody.byteLength;
       const resHeaders = new Headers();
       upstream.headers.forEach((value, key) => {
         if (!STRIP_RESPONSE.has(key.toLowerCase())) resHeaders.set(key, value);
@@ -211,7 +215,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env }>) {
 
       // Store GET 200s in R2 (fire-and-forget).
       if (c.req.method === "GET" && !bypass && upstream.status === 200) {
-        const ttl = ttlSeconds(c.env, reqUrl);
+        const ttl = ttlSeconds(c.env, reqUrl, row);
         c.executionCtx.waitUntil(putCached(c.env.CACHE_BUCKET, cacheKey, upstream, resBody, ttl).catch(() => undefined));
       }
 

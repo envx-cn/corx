@@ -9,7 +9,9 @@ import {
   queryKeys,
   queryLogs,
   queryStats,
+  updateApiKey,
 } from "../admin.js";
+import { ProxyError } from "../types.js";
 import { blockedPage, dashboardPage, keysPage, loginPage, logsPage } from "./views.js";
 
 export const consoleApp = new Hono<{ Bindings: Env; Variables: AdminVariables }>({ strict: false });
@@ -101,8 +103,52 @@ consoleApp.post("/keys", async (c) => {
   const rateRaw = String(form["rateLimitPerMin"] ?? "").trim();
   const rate = rateRaw === "" ? null : Number(rateRaw);
   const name = String(form["name"] ?? "");
-  const { id, key } = await createApiKey(c.env.DB, name, Number.isFinite(rate) ? rate : null);
-  return c.html(keysPage(user.email, await queryKeys(c.env.DB), { id, key, name }));
+  const allowedOrigins = String(form["allowedOrigins"] ?? "");
+  const cacheTtl = String(form["cacheTtl"] ?? "");
+  const noCache = String(form["noCache"] ?? "") === "on";
+  try {
+    const { id, key } = await createApiKey(
+      c.env.DB,
+      name,
+      Number.isFinite(rate) ? rate : null,
+      allowedOrigins,
+      cacheTtl,
+      noCache,
+    );
+    return c.html(keysPage(user.email, await queryKeys(c.env.DB), { id, key, name }));
+  } catch (err) {
+    const error = err instanceof ProxyError ? err.message : "Failed to create key";
+    return c.html(keysPage(user.email, await queryKeys(c.env.DB), null, error));
+  }
+});
+
+consoleApp.post("/keys/:id/origins", async (c) => {
+  const user = await pageUser(c);
+  if (user instanceof Response) return user;
+  const form = await c.req.parseBody();
+  try {
+    await updateApiKey(c.env.DB, c.req.param("id"), { allowedOrigins: String(form["allowedOrigins"] ?? "") });
+    return c.redirect("/console/keys", 302);
+  } catch (err) {
+    const error = err instanceof ProxyError ? err.message : "Failed to save origins";
+    return c.html(keysPage(user.email, await queryKeys(c.env.DB), null, error));
+  }
+});
+
+consoleApp.post("/keys/:id/cache", async (c) => {
+  const user = await pageUser(c);
+  if (user instanceof Response) return user;
+  const form = await c.req.parseBody();
+  try {
+    await updateApiKey(c.env.DB, c.req.param("id"), {
+      cacheTtl: String(form["cacheTtl"] ?? ""),
+      noCache: String(form["noCache"] ?? "") === "on",
+    });
+    return c.redirect("/console/keys", 302);
+  } catch (err) {
+    const error = err instanceof ProxyError ? err.message : "Failed to save cache policy";
+    return c.html(keysPage(user.email, await queryKeys(c.env.DB), null, error));
+  }
 });
 
 consoleApp.post("/keys/:id/revoke", async (c) => {

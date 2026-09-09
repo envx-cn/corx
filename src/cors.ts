@@ -1,19 +1,64 @@
 import type { Context } from "hono";
-import type { Env } from "./types.js";
+import type { ApiKeyRow, Env } from "./types.js";
+import { ProxyError } from "./types.js";
+import type { ProxyVariables } from "./auth.js";
 
-/** Parse ALLOWED_ORIGINS ("*" or comma-separated list). */
-export function allowedOrigins(env: Env): string[] | "*" {
-  const raw = (env.ALLOWED_ORIGINS ?? "*").trim();
-  if (raw === "" || raw === "*") return "*";
-  return raw
+type Ctx = Context<{ Bindings: Env; Variables: ProxyVariables }>;
+
+/**
+ * Parse an origins value: "*" | comma-separated list.
+ * Null/undefined/"" → null (inherit from the next level up).
+ */
+export function parseOrigins(raw: string | null | undefined): string[] | "*" | null {
+  if (raw == null) return null;
+  const t = raw.trim();
+  if (t === "") return null;
+  if (t === "*") return "*";
+  const list = t
     .split(",")
-    .map((s) => s.trim())
+    .map((s) => s.trim().replace(/\/+$/, ""))
     .filter(Boolean);
+  return list.length > 0 ? list : null;
+}
+
+/**
+ * Validate + normalize origins for storage. "" → null (inherit global).
+ * Throws ProxyError(400) on invalid entries.
+ */
+export function normalizeOriginsInput(raw: string): string | null {
+  const t = raw.trim();
+  if (t === "") return null;
+  if (t === "*") return "*";
+  const parts = t
+    .split(",")
+    .map((s) => s.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+  if (parts.length === 0) return null;
+  for (const p of parts) {
+    let u: URL;
+    try {
+      u = new URL(p);
+    } catch {
+      throw new ProxyError(400, `Invalid origin: ${p}`);
+    }
+    if (u.protocol !== "http:" && u.protocol !== "https:") {
+      throw new ProxyError(400, `Origin must be http(s): ${p}`);
+    }
+    if (u.pathname !== "/" || u.search || u.hash) {
+      throw new ProxyError(400, `Origin must not contain a path: ${p}`);
+    }
+  }
+  return parts.join(", ");
+}
+
+/** Effective origins: per-key value wins, otherwise the global env default. */
+export function effectiveOrigins(env: Env, keyRow?: Pick<ApiKeyRow, "allowed_origins"> | null): "*" | string[] {
+  return parseOrigins(keyRow?.allowed_origins ?? null) ?? parseOrigins(env.ALLOWED_ORIGINS) ?? "*";
 }
 
 /** Resolve the ACAO value for this request. Null = origin not allowed. */
-export function resolveAllowOrigin(req: Request, env: Env): string | null {
-  const allow = allowedOrigins(env);
+export function resolveAllowOrigin(req: Request, env: Env, keyRow?: Pick<ApiKeyRow, "allowed_origins"> | null): string | null {
+  const allow = effectiveOrigins(env, keyRow);
   if (allow === "*") return "*";
   const origin = req.headers.get("origin");
   if (!origin) return allow[0] ?? null;
@@ -28,10 +73,17 @@ function varyWithOrigin(headers: Headers): void {
   }
 }
 
-/** CORS middleware: answers preflights, stamps CORS headers on responses. */
+/**
+ * CORS middleware: answers preflights, stamps CORS headers on responses.
+ * Uses the caller's per-key origins when set (see apiKeyMiddleware, which
+ * must run before this). Note: browsers don't send API keys on OPTIONS
+ * preflights — pass the key via `?key=` if preflights must be per-key,
+ * or keep the global ALLOWED_ORIGINS permissive.
+ */
 export function cors() {
-  return async (c: Context<{ Bindings: Env }>, next: () => Promise<void>) => {
-    const allowOrigin = resolveAllowOrigin(c.req.raw, c.env);
+  return async (c: Ctx, next: () => Promise<void>) => {
+    const keyRow = c.get("apiKey");
+    const allowOrigin = resolveAllowOrigin(c.req.raw, c.env, keyRow);
 
     if (c.req.method === "OPTIONS") {
       const headers = new Headers();
