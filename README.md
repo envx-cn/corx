@@ -185,17 +185,18 @@ app/              HonoX frontend (entry + console UI + API routes)
                 by api/_middleware.ts). /admin/* was renamed to /api/*.
   routes/console/   console pages as file routes (_renderer dash shell,
                 _middleware login guard, _layout document shell, colocated
-                chrome _nav/_sidebar/_mobile-nav/_topbar, and
+                chrome _nav/_sidebar/_topbar, and
                 index/keys/logs/blocked/login pages via c.render()).
                 Island hydration is honox-managed: the renderer uses
                 <HasIslands/> so the client script loads only on pages
                 that import an island.
   routes/index.ts     landing page file route (subdomain-aware)
-  components/   shared presentational primitives (badges, cards, panel,
-                chart, lucide) — console-only chrome lives in
-                routes/console/ instead (interactive bits in islands/)
-  styles/       console.css + landing.css, imported ?inline into <style>
-                (editing-friendly files, zero asset-pipeline risk)
+  components/   shared presentational primitives (badges, chart, lucide,
+                table) — console-only chrome lives in routes/console/
+                instead (interactive bits in islands/)
+  styles/       app.css = Tailwind v4 + daisyUI 5 (imported ?inline into
+                <style> by landing + console shell, PostCSS-processed by the
+                build; injected with dangerouslySetInnerHTML)
   client.ts     island hydration entry (builds to /static/client.js)
   islands/      interactive components (CopyButton, …)
   console/      dash-style shell, pages, landing (JSX server components)

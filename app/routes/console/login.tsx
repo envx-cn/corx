@@ -59,49 +59,51 @@ export default app;
 function LoginPage(props: { accessDetected: boolean; accessEmail: string | null; error?: string }) {
   return (
     <LoginShell title="Sign in">
-      <h1>
-        <span class="logo-mark" style="width:28px;height:28px;border-radius:8px">
+      <h1 class="card-title flex items-center gap-2">
+        <span class="size-7 rounded-lg bg-gradient-to-br from-accent to-warning text-white inline-flex items-center justify-center text-xs font-extrabold">
           cx
         </span>
         corx console
       </h1>
-      {props.error && <div class="error">{props.error}</div>}
+      {props.error && (
+        <div role="alert" class="alert alert-error">
+          <span>{props.error}</span>
+        </div>
+      )}
       {props.accessDetected ? (
         <>
-          <p class="muted">
+          <p class="text-sm text-base-content/60">
             Detected Access identity: <b>{props.accessEmail ?? "unknown"}</b>
           </p>
           <form method="post" action="/console/login">
             <input type="hidden" name="mode" value="access" />
-            <button class="btn-primary" style="width:100%">
-              Continue with Cloudflare
-            </button>
+            <button class="btn btn-primary w-full">Continue with Cloudflare</button>
           </form>
         </>
       ) : (
         <>
-          <p class="muted">
+          <p class="text-sm text-base-content/60">
             No Cloudflare Access session detected on this request. In production, put an Access application in front of
             the admin host — then this button signs you in.
           </p>
-          <button class="btn-primary" style="width:100%" disabled title="Available behind Cloudflare Access">
+          <button class="btn btn-primary w-full" disabled title="Available behind Cloudflare Access">
             Continue with Cloudflare
           </button>
         </>
       )}
       <div class="divider">or</div>
-      <p class="muted">
+      <p class="text-sm text-base-content/60">
         Local development without Access: paste <code>ADMIN_TOKEN</code>.
       </p>
       <form method="post" action="/console/login">
         <input type="hidden" name="mode" value="token" />
-        <div class="row">
-          <label class="f" style="flex:1">
-            Admin token
-            <input type="password" name="token" autocomplete="off" />
+        <div class="form-control mb-4">
+          <label class="label pb-1" for="admin-token">
+            <span class="label-text">Admin token</span>
           </label>
-          <button>Sign in</button>
+          <input id="admin-token" type="password" name="token" autocomplete="off" class="input input-bordered" />
         </div>
+        <button class="btn w-full">Sign in</button>
       </form>
     </LoginShell>
   );

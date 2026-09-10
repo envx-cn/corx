@@ -1,12 +1,12 @@
 import { Hono } from "hono";
+import type { Child } from "hono/jsx";
 import type { Env } from "../../lib/types.js";
 import { queryBlockedHosts, queryKeys, queryStats } from "../../lib/admin.js";
 import type { Stats } from "../../lib/admin.js";
 import { humanBytes } from "../../lib/format.js";
 import { MethodBadge, StatusBadge } from "../../components/badges.js";
-import { StatCard } from "../../components/cards.js";
+import { DataTable, EmptyRow } from "../../components/table.js";
 import { HourlyChart } from "../../components/chart.js";
-import { Panel, Section } from "../../components/panel.js";
 
 const app = new Hono<{ Bindings: Env }>({ strict: false });
 
@@ -29,6 +29,27 @@ app.get("/", async (c) => {
 export default app;
 
 // ---------- Page markup (colocated) ----------
+
+function Stat({ value, label }: { value: Child; label: string }) {
+  return (
+    <div class="stats shadow w-full">
+      <div class="stat">
+        <div class="stat-title">{label}</div>
+        <div class="stat-value text-2xl">{value}</div>
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children?: Child }) {
+  return (
+    <>
+      <h2 class="text-lg font-semibold mb-3 mt-8">{title}</h2>
+      {children}
+    </>
+  );
+}
+
 function DashboardContent(props: { stats: Stats; keyCount: number; blockedCount: number }) {
   const { stats } = props;
   const t = stats.totals;
@@ -37,175 +58,187 @@ function DashboardContent(props: { stats: Stats; keyCount: number; blockedCount:
   const errRate = req ? `${Math.round(((t?.errors ?? 0) / req) * 1000) / 10}%` : "—";
   return (
     <>
-      <h1>
-        Overview <span class="sub">· last 24h</span>
+      <h1 class="text-2xl font-semibold mb-4">
+        Overview <span class="text-base font-normal text-base-content/50">· last 24h</span>
       </h1>
-      <div class="cards">
-        <StatCard value={String(req)} label="requests" />
-        <StatCard value={humanBytes(t?.res_bytes ?? 0)} label="traffic out" />
-        <StatCard value={humanBytes(t?.cached_bytes ?? 0)} label={`served from cache (${hitRate} hits)`} />
-        <StatCard value={humanBytes(t?.req_bytes ?? 0)} label="traffic in" />
-        <StatCard
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Stat value={String(req)} label="requests" />
+        <Stat value={humanBytes(t?.res_bytes ?? 0)} label="traffic out" />
+        <Stat value={humanBytes(t?.cached_bytes ?? 0)} label={`served from cache (${hitRate} hits)`} />
+        <Stat value={humanBytes(t?.req_bytes ?? 0)} label="traffic in" />
+        <Stat
           value={t?.avg_latency_ms ? `${Math.round(t.avg_latency_ms)} ms` : "—"}
           label={`avg latency (max ${t?.max_latency_ms ?? "—"} ms)`}
         />
-        <StatCard value={errRate} label={`error rate (${t?.errors ?? 0})`} />
-        <StatCard value={String(props.keyCount)} label="API keys" />
-        <StatCard value={String(props.blockedCount)} label="blocked hosts" />
+        <Stat value={errRate} label={`error rate (${t?.errors ?? 0})`} />
+        <Stat value={String(props.keyCount)} label="API keys" />
+        <Stat value={String(props.blockedCount)} label="blocked hosts" />
       </div>
+
       <Section title="Requests per hour">
         <HourlyChart hourly={stats.hourly} />
       </Section>
+
       <Section title="Top hosts">
-        <Panel>
-          <thead>
-            <tr>
+        <DataTable
+          head={
+            <>
               <th>Host</th>
-              <th class="num">Requests</th>
-              <th class="num">Traffic</th>
-            </tr>
-          </thead>
-          <tbody>
-            {stats.topHosts.length === 0 && (
-              <tr>
-                <td colspan={3} class="muted">
-                  no data
-                </td>
-              </tr>
-            )}
-            {stats.topHosts.map((r) => (
-              <tr>
-                <td>
-                  <code>{r.target_host}</code>
-                </td>
-                <td class="num">{r.n}</td>
-                <td class="num">{humanBytes(r.bytes)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </Panel>
+              <th class="text-right">Requests</th>
+              <th class="text-right">Traffic</th>
+            </>
+          }
+          body={
+            stats.topHosts.length === 0 ? (
+              <EmptyRow cols={3} text="no data" />
+            ) : (
+              stats.topHosts.map((r) => (
+                <tr>
+                  <td>
+                    <code>{r.target_host}</code>
+                  </td>
+                  <td class="text-right tabular-nums">{r.n}</td>
+                  <td class="text-right tabular-nums">{humanBytes(r.bytes)}</td>
+                </tr>
+              ))
+            )
+          }
+        />
       </Section>
+
       <Section title="Top API keys by traffic">
-        <Panel>
-          <thead>
-            <tr>
+        <DataTable
+          head={
+            <>
               <th>Key</th>
-              <th class="num">Requests</th>
-              <th class="num">Traffic</th>
-            </tr>
-          </thead>
-          <tbody>
-            {stats.topKeys.length === 0 && (
-              <tr>
-                <td colspan={3} class="muted">
-                  no data
-                </td>
-              </tr>
-            )}
-            {stats.topKeys.map((r) => (
-              <tr>
-                <td>{r.name || <span class="badge muted">anonymous</span>}</td>
-                <td class="num">{r.n}</td>
-                <td class="num">{humanBytes(r.bytes)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </Panel>
+              <th class="text-right">Requests</th>
+              <th class="text-right">Traffic</th>
+            </>
+          }
+          body={
+            stats.topKeys.length === 0 ? (
+              <EmptyRow cols={3} text="no data" />
+            ) : (
+              stats.topKeys.map((r) => (
+                <tr>
+                  <td>
+                    {r.name || <span class="badge badge-ghost">anonymous</span>}
+                  </td>
+                  <td class="text-right tabular-nums">{r.n}</td>
+                  <td class="text-right tabular-nums">{humanBytes(r.bytes)}</td>
+                </tr>
+              ))
+            )
+          }
+        />
       </Section>
+
       <Section title="By status">
-        <Panel>
-          <thead>
-            <tr>
+        <DataTable
+          head={
+            <>
               <th>Status</th>
-              <th class="num">Count</th>
-            </tr>
-          </thead>
-          <tbody>
-            {stats.byStatus.map((r) => (
-              <tr>
-                <td>
-                  <StatusBadge status={r.status} />
-                </td>
-                <td class="num">{r.n}</td>
-              </tr>
-            ))}
-          </tbody>
-        </Panel>
+              <th class="text-right">Count</th>
+            </>
+          }
+          body={
+            stats.byStatus.length === 0 ? (
+              <EmptyRow cols={2} text="no data" />
+            ) : (
+              stats.byStatus.map((r) => (
+                <tr>
+                  <td>
+                    <StatusBadge status={r.status} />
+                  </td>
+                  <td class="text-right tabular-nums">{r.n}</td>
+                </tr>
+              ))
+            )
+          }
+        />
       </Section>
+
       <Section title="By method">
-        <Panel>
-          <thead>
-            <tr>
+        <DataTable
+          head={
+            <>
               <th>Method</th>
-              <th class="num">Count</th>
-            </tr>
-          </thead>
-          <tbody>
-            {stats.byMethod.map((r) => (
-              <tr>
-                <td>
-                  <MethodBadge method={r.method} />
-                </td>
-                <td class="num">{r.n}</td>
-              </tr>
-            ))}
-          </tbody>
-        </Panel>
+              <th class="text-right">Count</th>
+            </>
+          }
+          body={
+            stats.byMethod.length === 0 ? (
+              <EmptyRow cols={2} text="no data" />
+            ) : (
+              stats.byMethod.map((r) => (
+                <tr>
+                  <td>
+                    <MethodBadge method={r.method} />
+                  </td>
+                  <td class="text-right tabular-nums">{r.n}</td>
+                </tr>
+              ))
+            )
+          }
+        />
       </Section>
+
       <Section title="By country">
-        <Panel>
-          <thead>
-            <tr>
+        <DataTable
+          head={
+            <>
               <th>Country</th>
-              <th class="num">Count</th>
-            </tr>
-          </thead>
-          <tbody>
-            {stats.byCountry.map((r) => (
-              <tr>
-                <td>{r.country || <span class="badge muted">—</span>}</td>
-                <td class="num">{r.n}</td>
-              </tr>
-            ))}
-          </tbody>
-        </Panel>
+              <th class="text-right">Count</th>
+            </>
+          }
+          body={
+            stats.byCountry.length === 0 ? (
+              <EmptyRow cols={2} text="no data" />
+            ) : (
+              stats.byCountry.map((r) => (
+                <tr>
+                  <td>{r.country || <span class="badge badge-ghost">—</span>}</td>
+                  <td class="text-right tabular-nums">{r.n}</td>
+                </tr>
+              ))
+            )
+          }
+        />
       </Section>
+
       <Section title="Recent errors">
-        <Panel>
-          <thead>
-            <tr>
+        <DataTable
+          head={
+            <>
               <th>Time</th>
               <th>Method</th>
               <th>Host</th>
               <th>Status</th>
               <th>Error</th>
-            </tr>
-          </thead>
-          <tbody>
-            {stats.recentErrors.length === 0 && (
-              <tr>
-                <td colspan={5} class="muted">
-                  none 🎉
-                </td>
-              </tr>
-            )}
-            {stats.recentErrors.map((l) => (
-              <tr>
-                <td class="muted">{l.created_at}</td>
-                <td>
-                  <MethodBadge method={l.method} />
-                </td>
-                <td>
-                  <code>{l.target_host}</code>
-                </td>
-                <td>
-                  <StatusBadge status={l.status} />
-                </td>
-                <td style="color:var(--err)">{l.error}</td>
-              </tr>
-            ))}
-          </tbody>
-        </Panel>
+            </>
+          }
+          body={
+            stats.recentErrors.length === 0 ? (
+              <EmptyRow cols={5} text="none 🎉" />
+            ) : (
+              stats.recentErrors.map((l) => (
+                <tr>
+                  <td class="text-base-content/50">{l.created_at}</td>
+                  <td>
+                    <MethodBadge method={l.method} />
+                  </td>
+                  <td>
+                    <code>{l.target_host}</code>
+                  </td>
+                  <td>
+                    <StatusBadge status={l.status} />
+                  </td>
+                  <td class="text-error">{l.error}</td>
+                </tr>
+              ))
+            )
+          }
+        />
       </Section>
     </>
   );
