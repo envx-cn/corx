@@ -124,16 +124,18 @@ code:not(pre code) {
 
 /* --- 404 page (Cloudflare-style) -------------------------------------------- */
 
-/* Huge outlined "404": the Cloudflare not-found hero draws the digits as a
-   fine contour over a soft brand glow — we mirror that with a hairline-ish
-   stroke on a faint orange fill so it reads on the light canvas. */
+/* Huge "404": a solid ink→subtle gradient (no -webkit-text-stroke — on an
+   800-weight Inter digit the stroke traces the glyph's inner contours too,
+   so the translucent fill shows a tangle of lines inside each digit). */
 .nf-404 {
   font-size: clamp(6rem, 22vw, 12.5rem);
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.02em;
-  color: rgba(246, 130, 31, 0.05);
-  -webkit-text-stroke: 2px rgba(24, 24, 27, 0.4);
+  background: linear-gradient(180deg, var(--corx-ink) 0%, var(--corx-subtle) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
   user-select: none;
 }
 
