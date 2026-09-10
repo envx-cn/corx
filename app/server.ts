@@ -1,0 +1,116 @@
+import { Hono } from "hono";
+import { createApp } from "honox/server";
+import type { Env } from "./lib/types.js";
+import type { ProxyVariables } from "./lib/auth.js";
+import { apiKeyMiddleware } from "./lib/auth.js";
+import { cors, withProxyCors } from "./proxy/cors.js";
+import { proxyHandler } from "./proxy/handler.js";
+import { resolveRawTarget } from "./proxy/subdomain.js";
+
+// Base Hono app with the proxy routes mounted manually (file routing can't
+// express the /* catch-all ordering).
+// strict:false keeps /console and /console/ equivalent so the /* proxy
+// catch-all never swallows trailing-slash variants of real routes.
+const base = new Hono<{ Bindings: Env; Variables: ProxyVariables }>({ strict: false });
+
+// Resolve the API key before CORS so per-key allowed origins apply.
+base.use(apiKeyMiddleware);
+base.use(cors());
+
+base.get("/health", (c) => c.json({ ok: true, service: "corx", time: new Date().toISOString() }));
+
+base.all("/fetch", proxyHandler);
+base.all("/proxy/*", proxyHandler);
+
+// NOTE: /console/* (file route app/routes/console.tsx) and /api/* register
+// at createApp() below — after these manual mounts, before the /* fallback.
+
+base.onError((err, c) => {
+  console.error("corx error:", err);
+  // Keep the 500 readable from browsers: the normal cors() middleware chain was
+  // cut short when the error was thrown, so stamp the headers here instead.
+  return withProxyCors(c, c.json({ error: "Internal error" }, 500));
+});
+
+// Hand the configured app to HonoX. File routes in app/routes/api/* register
+// here — AFTER the manual mounts above, so the /* proxy catch-all below
+// (registered last of all) can never swallow /api/* or /console/*.
+const app = createApp({
+  app: base,
+  root: "/app/routes",
+  // Glob patterns mirror honox defaults (incl. `-` colocated and `$` exclusions).
+  ROUTES: import.meta.glob(
+    [
+      "/app/routes/**/*.{ts,tsx,md,mdx}",
+      "/app/routes/.well-known/**/*.{ts,tsx,md,mdx}",
+      "!/app/routes/**/_*.{ts,tsx,md,mdx}",
+      "!/app/routes/**/-*.{ts,tsx,md,mdx}",
+      "!/app/routes/**/$*.{ts,tsx,md,mdx}",
+      "!/app/routes/**/*.test.{ts,tsx}",
+      "!/app/routes/**/*.spec.{ts,tsx}",
+      "!/app/routes/**/-*/**/*",
+    ],
+    { eager: true },
+  ),
+  RENDERER: import.meta.glob("/app/routes/**/_renderer.tsx", { eager: true }),
+  NOT_FOUND: import.meta.glob("/app/routes/**/_404.{ts,tsx}", { eager: true }),
+  ERROR: import.meta.glob("/app/routes/**/_error.{ts,tsx}", { eager: true }),
+  MIDDLEWARE: import.meta.glob("/app/routes/**/_middleware.{ts,tsx}", { eager: true }),
+});
+
+// Unknown /api/* endpoints: 404 JSON (the proxy catch-all below would otherwise
+// answer with a confusing "Missing target URL").
+app.all("/api/*", (c) => c.json({ error: `Unknown API endpoint: ${c.req.path}` }, 404));
+
+// Path-style (/https://…) + subdomain mode (must be last — catches everything).
+// Anything that isn't a proxy request (unknown /console/* paths the file
+// router missed, random paths, …) gets a real 404, not a proxy "Missing
+// target URL" 400. Malformed subdomains still count as proxy requests so the
+// proxy handler returns the precise 4xx.
+app.all("/*", (c) => {
+  const reqUrl = new URL(c.req.url);
+  let isProxy = true;
+  try {
+    isProxy = resolveRawTarget(reqUrl, c.env).target !== null;
+  } catch {
+    // malformed subdomain (bad corx-port, …) — let proxyHandler answer
+  }
+  if (!isProxy) return c.json({ error: "Not found" }, 404);
+  return proxyHandler(c);
+});
+
+// Dev-only route table (tree-shaken out of the production bundle).
+if (import.meta.env.DEV) {
+  const { showRoutes } = await import("hono/dev");
+  showRoutes(app);
+}
+
+export default {
+  fetch: app.fetch,
+  /** Cron: prune logs + rate windows + expired R2 entries. */
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(
+      (async () => {
+        await env.DB.prepare("DELETE FROM request_logs WHERE created_at < datetime('now', '-30 days')")
+          .run()
+          .catch(() => undefined);
+        await env.DB.prepare("DELETE FROM rate_windows WHERE window_min < ?")
+          .bind(Math.floor(Date.now() / 60_000) - 120)
+          .run()
+          .catch(() => undefined);
+        // R2 TTL is lazy (checked on read); list-prune a small batch each run.
+        try {
+          const listed = await env.CACHE_BUCKET.list({ prefix: "corx/v1/", limit: 100 });
+          const expired: string[] = [];
+          for (const obj of listed.objects) {
+            const exp = Number(obj.customMetadata?.["expiresAt"] ?? 0);
+            if (exp && Date.now() > exp) expired.push(obj.key);
+          }
+          await Promise.all(expired.map((k) => env.CACHE_BUCKET.delete(k).catch(() => undefined)));
+        } catch {
+          /* non-fatal */
+        }
+      })(),
+    );
+  },
+};

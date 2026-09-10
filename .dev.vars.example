@@ -1,6 +1,9 @@
 # Local dev secrets (never commit). Copy to `.dev.vars`.
 ADMIN_TOKEN = "dev-admin-token-change-me"
 
+# Session cookie HMAC secret (optional — falls back to ADMIN_TOKEN).
+# SESSION_SECRET = "dev-session-secret-change-me"
+
 # Cloudflare Access (Zero Trust) login for /console + /admin.
 # Leave empty for local dev (use the token form on /console/login).
 # ACCESS_TEAM_DOMAIN = "https://myteam.cloudflareaccess.com"

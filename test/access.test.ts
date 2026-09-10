@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { verifyAccessJwt, emailAllowed } from "../src/access.js";
-import { signSession, verifySession } from "../src/session.js";
-import type { Env } from "../src/types.js";
+import { verifyAccessJwt, emailAllowed } from "../app/lib/access.js";
+import { signSession, verifySession } from "../app/lib/session.js";
+import type { Env } from "../app/lib/types.js";
 
 function b64uJson(obj: unknown): string {
   const bin = Buffer.from(JSON.stringify(obj)).toString("base64");

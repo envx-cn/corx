@@ -1,6 +1,6 @@
 # corx
 
-A CORS proxy running on Cloudflare. Stack: **Hono + D1 + R2**.
+A CORS proxy running on Cloudflare. Stack: **HonoX + D1 + R2**.
 
 - **Hono** — routing, CORS, upstream fetch
 - **D1** — API keys, rate-limit windows, request logs, host blocklist
@@ -24,14 +24,24 @@ Options:
 
 | Param | Effect |
 | --- | --- |
-| `?ttl=300` | R2 cache TTL in seconds for this GET (max 86400, overrides key/global) |
+| `?ttl=300` | R2 cache TTL in seconds for this GET (capped at the global `CACHE_TTL_SECONDS` so anonymous callers can't pin entries for 24h) |
 | `?no-cache=1` | Bypass R2 cache |
 
-Per-key cache policy (console → API keys, or `PATCH /admin/keys/:id`): each key
+**Reserved query params** (`ttl`, `no-cache`, `key`, `corx-scheme`, `corx-port`) are
+consumed by the proxy and stripped from the target in every mode — don't use
+them as real params of the sites you proxy.
+
+Per-key cache policy (console → API keys, or `PATCH /api/keys/:id`): each key
 can set its own default TTL (`cacheTtl`, blank = global `CACHE_TTL_SECONDS`,
 `0` = never store) and a `noCache` switch that skips the R2 cache entirely for
 that key — handy for live data or high-churn scrapers sharing the proxy with
 cache-friendly traffic.
+
+**Cache safety:** requests carrying `Authorization` / `Cookie` headers never
+read or write the cache (the key is the URL only, so user-specific responses
+would leak across callers). Upstream responses marked `Cache-Control:
+no-store/private/no-cache` (or varying on `Accept`/`Accept-Language`/… ) are
+never stored either.
 | `X-Api-Key` / `Authorization: Bearer …` / `?key=…` | API key (when `REQUIRE_API_KEY=true`) |
 
 Responses carry `X-Corx-Cache: HIT/MISS`, `X-Corx-Target`, `X-Corx-Latency-Ms`.
@@ -60,28 +70,33 @@ npm install
 npm run db:create        # paste the database_id into wrangler.jsonc
 npm run bucket:create
 
-# 2. Local dev
+# 2. Local dev (vite + Cloudflare adapter: D1/R2 bindings work locally)
 cp .dev.vars.example .dev.vars   # set ADMIN_TOKEN
 npm run db:migrate:local
-npm run dev
+npm run dev              # vite on :5173 (set PORT to change)
 
-# 3. Deploy
+# 3. Deploy (always through the vite build — wrangler serves ./dist)
 npm run db:migrate
 npx wrangler secret put ADMIN_TOKEN
-npm run deploy
+npm run deploy           # = vite build (client + worker) && wrangler deploy
 ```
+
+Dev notes: `npm run dev:worker` runs the production bundle via
+`wrangler dev` (closest to prod). Under `vite` dev, its HMR client script is
+appended to proxied HTML pages — dev-only artifact, production is untouched.
 
 ## Config (`wrangler.jsonc` → `vars`)
 
 | Var | Default | Meaning |
 | --- | --- | --- |
-| `ALLOWED_ORIGINS` | `*` | `*` or comma-separated origins allowed to use the proxy |
+| `ALLOWED_ORIGINS` | `*` | `*` or comma-separated origins allowed to use the **proxy routes only** (console/API never get CORS headers) |
 | `REQUIRE_API_KEY` | `false` | `"true"` to require an API key |
-| `CACHE_TTL_SECONDS` | `3600` | Default R2 TTL for GET 200s |
+| `CACHE_TTL_SECONDS` | `3600` | Default R2 TTL for GET 200s; also caps per-request `?ttl=` |
 | `TIMEOUT_MS` | `30000` | Upstream timeout |
-| `RATE_LIMIT_PER_MIN` | `60` | Per key (or per IP) per minute |
+| `RATE_LIMIT_PER_MIN` | `60` | Per key (or per IP) per minute — cache hits are free |
 | `MAX_BODY_BYTES` | `10485760` | Max forwarded request body |
-| `ADMIN_TOKEN` (secret) | — | Bearer token for `/admin/*`, HMAC key for console sessions |
+| `ADMIN_TOKEN` (secret) | — | Bearer token for `/api/*`; legacy HMAC key for console sessions |
+| `SESSION_SECRET` (secret) | — | HMAC key for console session cookies (falls back to `ADMIN_TOKEN`) |
 | `ACCESS_TEAM_DOMAIN` | `""` | Cloudflare Access team domain (enables Access login) |
 | `ACCESS_AUD` | `""` | Access application AUD tag |
 | `ADMIN_EMAILS` | `""` | Optional comma-separated allowlist for admin access |
@@ -96,7 +111,7 @@ revoke, per-key origins/cache policy) · Logs (per-request size) · Host blockli
 Login is Cloudflare Access (Zero Trust):
 
 1. In Zero Trust, create an Access application in front of your admin host
-   (e.g. `admin.corx.com` → this Worker) or the `/console/*` + `/admin/*` paths.
+   (e.g. `admin.corx.com` → this Worker) or the `/console/*` + `/api/*` paths.
 2. Configure the Worker (vars in `wrangler.jsonc`, token via secret):
    - `ACCESS_TEAM_DOMAIN=https://<team>.cloudflareaccess.com`
    - `ACCESS_AUD=<application AUD tag>`
@@ -104,50 +119,55 @@ Login is Cloudflare Access (Zero Trust):
    - `npx wrangler secret put ADMIN_TOKEN`
 3. Visit `/console/` → Continue with Cloudflare. The Worker verifies the
    Access JWT itself (RS256 against the team JWKS, issuer, audience, expiry).
+   Access login no longer depends on `ADMIN_TOKEN`; if neither `SESSION_SECRET`
+   nor `ADMIN_TOKEN` is set, the cookie is skipped and every request is
+   authenticated by the Access JWT header directly.
 
 Local dev (no Access in front): use the token form on `/console/login`
 with `ADMIN_TOKEN` from `.dev.vars` — it sets a signed 12h session cookie.
-The same identity check guards the `/admin/*` JSON API (Access JWT, session
+The same identity check guards the `/api/*` JSON API (Access JWT, session
 cookie, or `ADMIN_TOKEN` bearer).
 
 ## Admin API
 
-All `/admin/*` need `Authorization: Bearer <ADMIN_TOKEN>`.
+All `/api/*` need `Authorization: Bearer <ADMIN_TOKEN>`.
 
 ```bash
 # stats (last 24h) + recent logs
-curl -H "Authorization: Bearer $ADMIN_TOKEN" https://corx.<you>.workers.dev/admin/stats
-curl -H "Authorization: Bearer $ADMIN_TOKEN" 'https://corx.<you>.workers.dev/admin/logs?limit=20'
+curl -H "Authorization: Bearer $ADMIN_TOKEN" https://corx.<you>.workers.dev/api/stats
+curl -H "Authorization: Bearer $ADMIN_TOKEN" 'https://corx.<you>.workers.dev/api/logs?limit=20'
 
 # create a key (raw key shown once!)
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"name":"my-app","rateLimitPerMin":120,"allowedOrigins":"https://app.example"}' \
-  https://corx.<you>.workers.dev/admin/keys
+  https://corx.<you>.workers.dev/api/keys
 
 # per-key CORS origins: override the global ALLOWED_ORIGINS for callers of that key
 # ("*", comma-separated origins, or "" to inherit the global). Update anytime:
 curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"allowedOrigins":"https://app.example, https://admin.example"}' \
-  https://corx.<you>.workers.dev/admin/keys/KEY_ID
+  https://corx.<you>.workers.dev/api/keys/KEY_ID
 # tip: browsers don't send API keys on OPTIONS preflights — pass the key via
 # ?key= if preflights must be evaluated per-key, or keep the global permissive
 
 # revoke / block hosts
-curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" https://corx.<you>.workers.dev/admin/keys/KEY_ID/revoke
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" https://corx.<you>.workers.dev/api/keys/KEY_ID/revoke
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"hostname":"evil.example","reason":"abuse"}' \
-  https://corx.<you>.workers.dev/admin/block-host
+  https://corx.<you>.workers.dev/api/block-host
 ```
 
 ## How it works
 
 ```
 browser ──► corx (Worker)
-              ├─ CORS preflight / origin check
-              ├─ SSRF guard (private IPs, metadata, .internal…) + D1 blocklist
+              ├─ CORS preflight / origin check (proxy routes only)
+              ├─ SSRF guard (private/reserved IPs incl. IPv6 + CGNAT,
+              │    DNS-resolved IP check via Cloudflare DoH, D1 blocklist)
               ├─ API key? ──► D1 api_keys
-              ├─ rate limit ──► D1 rate_windows (fixed window)
-              ├─ GET cache? ──► R2 corx-cache (SHA-256 of URL, TTL metadata)
+              ├─ GET cache? ──► R2 corx-cache (SHA-256 of URL, TTL metadata;
+              │    auth'd requests & no-store/vary responses never cached)
+              ├─ rate limit (misses only) ──► D1 rate_windows (fixed window)
               ├─ fetch upstream (timeout, size caps, header filtering)
               └─ log ──► D1 request_logs (waitUntil, pruned after 30d by cron)
 ```
@@ -157,8 +177,34 @@ browser ──► corx (Worker)
 ```
 wrangler.jsonc          bindings (D1, R2), vars, cron
 migrations/0001_init.sql  D1 schema
-src/
-  index.ts    app wiring + cron pruning
+app/              HonoX frontend (entry + console UI + API routes)
+  server.ts     worker entry: createApp + manual mounts (proxy only).
+                File routes register at createApp time, so the manual /*
+                proxy catch-all is registered AFTER createApp.
+  routes/api/   JSON API as file routes (Hono instances per file, guarded
+                by api/_middleware.ts). /admin/* was renamed to /api/*.
+  routes/console/   console pages as file routes (_renderer dash shell,
+                _middleware login guard, _layout document shell, colocated
+                chrome _nav/_sidebar/_mobile-nav/_topbar, and
+                index/keys/logs/blocked/login pages via c.render()).
+                Island hydration is honox-managed: the renderer uses
+                <HasIslands/> so the client script loads only on pages
+                that import an island.
+  routes/index.ts     landing page file route (subdomain-aware)
+  components/   shared presentational primitives (badges, cards, panel,
+                chart, lucide) — console-only chrome lives in
+                routes/console/ instead (interactive bits in islands/)
+  styles/       console.css + landing.css, imported ?inline into <style>
+                (editing-friendly files, zero asset-pipeline risk)
+  client.ts     island hydration entry (builds to /static/client.js)
+  islands/      interactive components (CopyButton, …)
+  console/      dash-style shell, pages, landing (JSX server components)
+  lib/format.ts esc/humanBytes helpers
+  proxy/        proxy feature: handler, guard (SSRF), subdomain mode,
+                CORS, R2 cache, D1 rate limit
+  lib/          shared kernel (no HTTP wiring): types, utils, API-key
+                auth, Access identity, sessions, request logging,
+                D1 query helpers, formatting
   proxy.ts    main proxy handler
   cors.ts     origin allowlist + preflight middleware
   guard.ts    URL extraction + SSRF protection
@@ -166,7 +212,7 @@ src/
   ratelimit.ts  D1 fixed-window rate limit
   auth.ts     API key helpers
   db.ts       request logging
-  admin.ts    /admin/* (keys, stats, logs, blocklist)
+  admin.ts    D1 query helpers (no routes — HTTP lives in app/routes/api/)
   access.ts   Cloudflare Access JWT verify + admin identity
   session.ts  signed session cookie for the console
   console/    SSR admin console (/console/): views + routes
@@ -178,7 +224,9 @@ test/guard.test.ts
 
 | Script | What |
 | --- | --- |
-| `npm run dev` | local Worker (needs `.dev.vars` + local D1) |
-| `npm run deploy` | deploy to Cloudflare |
+| `npm run dev` | vite dev with local D1/R2 (needs `.dev.vars`) |
+| `npm run dev:worker` | production bundle via `wrangler dev` |
+| `npm run build` | client (islands) + worker bundles into `./dist` |
+| `npm run deploy` | build + deploy to Cloudflare |
 | `npm run check` / `npm test` | typecheck / vitest |
 | `npm run tail` | live logs |

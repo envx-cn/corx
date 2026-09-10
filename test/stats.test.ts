@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { fillHourly } from "../src/admin.js";
-import { humanBytes } from "../src/console/views.js";
+import { fillHourly } from "../app/lib/admin.js";
+import { humanBytes } from "../app/lib/format.js";
 
 describe("humanBytes", () => {
   it("formats across units", () => {

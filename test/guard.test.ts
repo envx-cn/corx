@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { extractTargetUrl, validateTargetUrl } from "../src/guard.js";
-import { ProxyError } from "../src/types.js";
+import { extractTargetUrl, validateTargetUrl } from "../app/proxy/guard.js";
+import { ProxyError } from "../app/lib/types.js";
 
 describe("extractTargetUrl", () => {
   it("reads ?url=", () => {

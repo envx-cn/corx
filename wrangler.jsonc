@@ -17,10 +17,13 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "corx",
-  "main": "src/index.ts",
+  "main": "./dist/index.js",
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  "assets": {
+    "directory": "./dist"
+  },
   "observability": {
     "enabled": true
   },
@@ -32,6 +35,9 @@
     "ACCESS_TEAM_DOMAIN": "",
     "ACCESS_AUD": "",
     "ADMIN_EMAILS": "",
+    // Session HMAC for the console cookie. Set via `wrangler secret put SESSION_SECRET`.
+    // Falls back to ADMIN_TOKEN when unset (legacy). Access-only deployments
+    // don't need either — the Access JWT is verified on every request.
     "ALLOWED_ORIGINS": "*",
     "REQUIRE_API_KEY": "false",
     "CACHE_TTL_SECONDS": "3600",

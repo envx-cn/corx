@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { parseOrigins, normalizeOriginsInput, effectiveOrigins, resolveAllowOrigin } from "../src/cors.js";
-import { ProxyError } from "../src/types.js";
-import type { Env } from "../src/types.js";
+import { parseOrigins, normalizeOriginsInput, effectiveOrigins, resolveAllowOrigin } from "../app/proxy/cors.js";
+import { ProxyError } from "../app/lib/types.js";
+import type { Env } from "../app/lib/types.js";
 
 const env = { ALLOWED_ORIGINS: "https://a.example, https://b.example" } as Env;
 const openEnv = {} as Env;
