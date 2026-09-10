@@ -109,8 +109,12 @@ describe("route wiring (integration)", () => {
     expect(res.headers.get("content-type")).toContain("text/html");
     const html = await res.text();
     expect(html).toContain("<!DOCTYPE html>");
-    expect(html).toContain("404");
-    expect(html).toContain("This page doesn&#39;t exist");
+    // Cloudflare-style 404: outlined digits, subtitle, dual CTAs, shared chrome.
+    expect(html).toContain("nf-404");
+    expect(html).toContain("Take me home");
+    expect(html).toContain("Open console");
+    expect(html).toContain("We can&#39;t find the page you were looking for");
+    expect(html).toContain("/random/path");
   });
 });
 

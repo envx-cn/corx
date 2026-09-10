@@ -1,6 +1,5 @@
 import type { Child } from "hono/jsx";
 import { HasIslands } from "honox/server";
-import appCss from "../styles/app.css?inline";
 import linkSvg from "lucide-static/icons/link-2.svg?raw";
 import zapSvg from "lucide-static/icons/zap.svg?raw";
 import shieldSvg from "lucide-static/icons/shield-check.svg?raw";
@@ -9,29 +8,21 @@ import chartSvg from "lucide-static/icons/bar-chart-3.svg?raw";
 import globeSvg from "lucide-static/icons/globe.svg?raw";
 import arrowUpRightSvg from "lucide-static/icons/arrow-up-right.svg?raw";
 import { Lucide } from "../components/lucide.js";
+import { SiteFooter, SiteHead, SiteNav } from "../components/site.js";
 import CorsDemo from "../islands/cors-demo.js";
 
 /**
  * Marketing landing page, styled after cloudflare.com: white canvas, orange
  * CTAs, marker-highlighted hero word, a live mockup-browser "try it" demo
  * (rotating example URLs proxied in real time), feature grid and a dark navy
- * footer.
+ * footer. Shares its nav/head/footer chrome with the 404 page via
+ * app/components/site.tsx.
  */
 export function LandingPage(props: { host: string; origin: string }) {
   return (
     <html lang="en" data-theme="corx">
       <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>corx — CORS proxy on Cloudflare</title>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100..900&display=swap"
-          rel="stylesheet"
-        />
-        {/* Inject compiled CSS raw — hono/jsx would HTML-escape selectors with > / & (see AGENTS.md). */}
-        <style dangerouslySetInnerHTML={{ __html: appCss }}></style>
+        <SiteHead title="corx — CORS proxy on Cloudflare" />
         {/* Island hydration entry (the CorsDemo below needs it). */}
         {import.meta.env.PROD ? (
           <HasIslands>
@@ -42,29 +33,18 @@ export function LandingPage(props: { host: string; origin: string }) {
         )}
       </head>
       <body class="bg-base-100 min-h-svh flex flex-col font-sans antialiased">
-        <nav class="sticky top-0 z-30 bg-base-100/85 backdrop-blur border-b border-base-300">
-          <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-            <a href="/" class="flex items-center gap-2.5">
-              <span class="corx-mark size-8 rounded-lg text-white inline-flex items-center justify-center text-xs font-extrabold shadow-sm">
-                cx
-              </span>
-              <b class="text-lg tracking-tight">corx</b>
-            </a>
-            <div class="hidden md:flex items-center gap-1 text-sm text-base-content/70">
+        <SiteNav
+          links={
+            <>
               <a href="#try-it" class="px-3 py-2 rounded-lg hover:bg-base-200">
                 Try it
               </a>
               <a href="#features" class="px-3 py-2 rounded-lg hover:bg-base-200">
                 Features
               </a>
-            </div>
-            <div class="flex items-center gap-3">
-              <a href="/console/" class="btn btn-primary btn-sm rounded-full! px-4">
-                Open console
-              </a>
-            </div>
-          </div>
-        </nav>
+            </>
+          }
+        />
 
         <main class="flex-1">
           {/* Hero — fills the viewport below the nav; nothing peeks underneath. */}
@@ -167,29 +147,7 @@ export function LandingPage(props: { host: string; origin: string }) {
           </section>
         </main>
 
-        <footer class="bg-secondary text-secondary-content">
-          <div class="max-w-6xl mx-auto px-4 sm:px-6 py-12 flex flex-col sm:flex-row items-center justify-between gap-6">
-            <div class="flex items-center gap-2.5">
-              <span class="corx-mark size-8 rounded-lg text-white inline-flex items-center justify-center text-xs font-extrabold">
-                cx
-              </span>
-              <div>
-                <b>corx</b>
-                <div class="text-xs text-secondary-content/60">CORS proxy, served from the edge</div>
-              </div>
-            </div>
-            <div class="flex items-center gap-6 text-sm text-secondary-content/70">
-              <a href="/console/" class="hover:text-secondary-content">
-                Console
-              </a>
-            </div>
-          </div>
-          <div class="border-t border-white/10">
-            <div class="max-w-6xl mx-auto px-4 sm:px-6 py-4 text-xs text-secondary-content/50 flex items-center justify-between">
-              <span>© {new Date().getFullYear()} corx</span>
-            </div>
-          </div>
-        </footer>
+        <SiteFooter />
       </body>
     </html>
   );

@@ -122,6 +122,21 @@ code:not(pre code) {
 
 /* --- Landing page ---------------------------------------------------------- */
 
+/* --- 404 page (Cloudflare-style) -------------------------------------------- */
+
+/* Huge outlined "404": the Cloudflare not-found hero draws the digits as a
+   fine contour over a soft brand glow — we mirror that with a hairline-ish
+   stroke on a faint orange fill so it reads on the light canvas. */
+.nf-404 {
+  font-size: clamp(6rem, 22vw, 12.5rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: rgba(246, 130, 31, 0.05);
+  -webkit-text-stroke: 2px rgba(24, 24, 27, 0.4);
+  user-select: none;
+}
+
 /* Cloudflare-style marker highlight behind a hero word */
 .marker {
   background-image: linear-gradient(
