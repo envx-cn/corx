@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../../lib/types.js";
 import { queryBlockedHosts } from "../../lib/admin.js";
-import { Panel } from "../../components/panel.js";
+import { DataTable, EmptyRow } from "../../components/table.js";
 
 const app = new Hono<{ Bindings: Env }>({ strict: false });
 
@@ -33,56 +33,57 @@ export default app;
 function BlockedContent(props: { hosts: Array<{ hostname: string; reason: string; created_at: string }> }) {
   return (
     <>
-      <h1>Host blocklist</h1>
-      <p class="muted">Extra SSRF blocks on top of the built-in private-range protection.</p>
-      <div class="toolbar">
+      <h1 class="text-2xl font-semibold mb-1">Host blocklist</h1>
+      <p class="text-sm text-base-content/60 mb-4">Extra SSRF blocks on top of the built-in private-range protection.</p>
+      <div class="bg-base-100 border border-base-300 rounded-box p-4 mb-4">
         <form method="post" action="/console/blocked">
-          <div class="row">
-            <label class="f">
-              Hostname
-              <input name="hostname" placeholder="evil.example" />
+          <div class="flex flex-wrap items-end gap-3">
+            <label class="form-control">
+              <div class="label pb-1">
+                <span class="label-text">Hostname</span>
+              </div>
+              <input name="hostname" placeholder="evil.example" class="input input-bordered input-sm" />
             </label>
-            <label class="f">
-              Reason
-              <input name="reason" placeholder="abuse" />
+            <label class="form-control">
+              <div class="label pb-1">
+                <span class="label-text">Reason</span>
+              </div>
+              <input name="reason" placeholder="abuse" class="input input-bordered input-sm" />
             </label>
-            <button class="btn-primary">Block host</button>
+            <button class="btn btn-primary">Block host</button>
           </div>
         </form>
       </div>
-      <Panel>
-        <thead>
-          <tr>
+      <DataTable
+        head={
+          <>
             <th>Hostname</th>
             <th>Reason</th>
             <th>Added</th>
             <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {props.hosts.length === 0 && (
-            <tr>
-              <td colspan={4} class="muted">
-                empty
-              </td>
-            </tr>
-          )}
-          {props.hosts.map((h) => (
-            <tr>
-              <td>
-                <code>{h.hostname}</code>
-              </td>
-              <td>{h.reason}</td>
-              <td class="muted">{h.created_at}</td>
-              <td>
-                <form class="inline" method="post" action={`/console/blocked/${h.hostname}/delete`}>
-                  <button class="btn-danger">Remove</button>
-                </form>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </Panel>
+          </>
+        }
+        body={
+          props.hosts.length === 0 ? (
+            <EmptyRow cols={4} text="empty" />
+          ) : (
+            props.hosts.map((h) => (
+              <tr>
+                <td>
+                  <code>{h.hostname}</code>
+                </td>
+                <td>{h.reason}</td>
+                <td class="text-base-content/50">{h.created_at}</td>
+                <td>
+                  <form method="post" action={`/console/blocked/${h.hostname}/delete`}>
+                    <button class="btn btn-xs btn-error btn-outline">Remove</button>
+                  </form>
+                </td>
+              </tr>
+            ))
+          )
+        }
+      />
     </>
   );
 }

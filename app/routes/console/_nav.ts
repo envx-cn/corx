@@ -10,7 +10,7 @@ export interface NavItem {
   svg: string;
 }
 
-/** Console navigation structure (data — rendered by _sidebar.tsx / _mobile-nav.tsx). */
+/** Console navigation structure (data — rendered by _sidebar.tsx). */
 export const NAV_ITEMS: NavItem[] = [
   { href: "/console/", label: "Overview", svg: dashboardSvg },
   { href: "/console/keys", label: "API keys", svg: keySvg },

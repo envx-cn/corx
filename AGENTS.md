@@ -28,7 +28,10 @@ Read that file first, then the corx-specific notes below.
   bits go in `app/islands/` (default export, props only — no request
   context). `app/server.ts` stays `.ts` (build entry).
 - **Styles** live in `app/styles/*.css` and are imported `?inline` into
-  `<style>` tags — never `<link>` (no manifest/context pitfalls).
+  `<style>` tags — never `<link>` (no manifest/context pitfalls). Inject the
+  CSS with `dangerouslySetInnerHTML={{ __html: css }}` — hono/jsx otherwise
+  HTML-escapes the text and silently drops any rule whose selector contains
+  `>` or `&` (Tailwind/daisyUI emit plenty).
 - **D1 changes** need a new migration in `migrations/` (never edit an applied
   one). Local verify: `npm run db:migrate:local`.
 - **Secrets** (`ADMIN_TOKEN`) go through `wrangler secret` / `.dev.vars` —

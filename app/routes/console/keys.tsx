@@ -1,9 +1,10 @@
 import { Hono } from "hono";
-import { Panel } from "../../components/panel.js";
+import type { Child } from "hono/jsx";
 import type { Env } from "../../lib/types.js";
 import { ProxyError } from "../../lib/types.js";
 import { createApiKey, queryKeys, updateApiKey } from "../../lib/admin.js";
 import type { KeyRow } from "../../lib/admin.js";
+import { DataTable, EmptyRow } from "../../components/table.js";
 import CopyButton from "../../islands/copy-button.js";
 
 const app = new Hono<{ Bindings: Env }>({ strict: false });
@@ -75,24 +76,37 @@ app.post("/:id/revoke", async (c) => {
 export default app;
 
 // ---------- Page markup (colocated) ----------
+
+function Field(props: { label: string; children: Child }) {
+  return (
+    <label class="form-control">
+      <div class="label pb-1">
+        <span class="label-text">{props.label}</span>
+      </div>
+      {props.children}
+    </label>
+  );
+}
+
 function CacheCell({ k }: { k: KeyRow }) {
   if (k.revoked_at) {
-    return <code class="muted">{k.no_cache ? "no-cache" : k.cache_ttl != null ? `TTL ${k.cache_ttl}s` : "global"}</code>;
+    return <code class="text-base-content/50">{k.no_cache ? "no-cache" : k.cache_ttl != null ? `TTL ${k.cache_ttl}s` : "global"}</code>;
   }
   return (
-    <form class="inline" method="post" action={`/console/keys/${k.id}/cache`}>
+    <form class="inline-flex items-end gap-2" method="post" action={`/console/keys/${k.id}/cache`}>
       <input
         name="cacheTtl"
         value={k.cache_ttl ?? ""}
         placeholder="global"
         inputmode="numeric"
         size={6}
+        class="input input-bordered input-sm w-20"
         title="TTL seconds (blank = global, 0 = never store)"
-      />{" "}
-      <label class="muted" title="Skip the R2 cache entirely for this key">
-        no-cache <input type="checkbox" name="noCache" value="on" checked={k.no_cache ? true : undefined} />
-      </label>{" "}
-      <button>Save</button>
+      />
+      <label class="flex items-center gap-1.5 text-xs text-base-content/60" title="Skip the R2 cache entirely for this key">
+        no-cache <input type="checkbox" name="noCache" value="on" class="checkbox checkbox-xs" checked={k.no_cache ? true : undefined} />
+      </label>
+      <button class="btn btn-xs">Save</button>
     </form>
   );
 }
@@ -104,49 +118,55 @@ function KeysContent(props: {
 }) {
   return (
     <>
-      <h1>API keys</h1>
-      {props.error && <div class="error">{props.error}</div>}
-      {props.newKey && (
-        <div class="keybox">
-          <b>New key created — copy it now, it won't be shown again.</b>
-          <br />
-          <code>{props.newKey.key}</code> <CopyButton text={props.newKey.key} />
-          <br />
-          <span class="muted">
-            id: {props.newKey.id} · name: {props.newKey.name}
-          </span>
+      <h1 class="text-2xl font-semibold mb-4">API keys</h1>
+
+      {props.error && (
+        <div role="alert" class="alert alert-error mb-4">
+          <span>{props.error}</span>
         </div>
       )}
-      <div class="toolbar">
+
+      {props.newKey && (
+        <div role="status" class="alert alert-success mb-4">
+          <div class="min-w-0">
+            <b>New key created — copy it now, it won't be shown again.</b>
+            <div class="flex items-center gap-2 mt-1">
+              <code class="break-all">{props.newKey.key}</code>
+              <CopyButton text={props.newKey.key} />
+            </div>
+            <div class="text-xs opacity-70 mt-1">
+              id: {props.newKey.id} · name: {props.newKey.name}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div class="bg-base-100 border border-base-300 rounded-box p-4 mb-4">
         <form method="post" action="/console/keys">
-          <div class="row">
-            <label class="f">
-              Name
-              <input name="name" placeholder="my-app" />
-            </label>
-            <label class="f">
-              Rate / min
-              <input name="rateLimitPerMin" placeholder="120 (blank = default)" inputmode="numeric" />
-            </label>
-            <label class="f">
-              Allowed origins
-              <input name="allowedOrigins" placeholder="* or https://app.example (blank = global)" size={36} />
-            </label>
-            <label class="f">
-              Cache TTL (s)
-              <input name="cacheTtl" placeholder="blank = global" inputmode="numeric" size={10} />
-            </label>
-            <label class="f">
-              No-cache
-              <input type="checkbox" name="noCache" value="on" />
-            </label>
-            <button class="btn-primary">Create key</button>
+          <div class="flex flex-wrap items-end gap-3">
+            <Field label="Name">
+              <input name="name" placeholder="my-app" class="input input-bordered input-sm" />
+            </Field>
+            <Field label="Rate / min">
+              <input name="rateLimitPerMin" placeholder="120 (blank = default)" inputmode="numeric" class="input input-bordered input-sm w-36" />
+            </Field>
+            <Field label="Allowed origins">
+              <input name="allowedOrigins" placeholder="* or https://app.example (blank = global)" size={36} class="input input-bordered input-sm" />
+            </Field>
+            <Field label="Cache TTL (s)">
+              <input name="cacheTtl" placeholder="blank = global" inputmode="numeric" size={10} class="input input-bordered input-sm w-28" />
+            </Field>
+            <Field label="No-cache">
+              <input type="checkbox" name="noCache" value="on" class="checkbox checkbox-sm" />
+            </Field>
+            <button class="btn btn-primary">Create key</button>
           </div>
         </form>
       </div>
-      <Panel>
-        <thead>
-          <tr>
+
+      <DataTable
+        head={
+          <>
             <th>Name</th>
             <th>Rate/min</th>
             <th>Allowed origins</th>
@@ -154,47 +174,53 @@ function KeysContent(props: {
             <th>Created</th>
             <th>Status</th>
             <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {props.keys.length === 0 && (
-            <tr>
-              <td colspan={7} class="muted">
-                no keys yet
-              </td>
-            </tr>
-          )}
-          {props.keys.map((k) => (
-            <tr>
-              <td>{k.name || <span class="badge muted">—</span>}</td>
-              <td class="num">{k.rate_limit_per_min ?? "default"}</td>
-              <td>
-                {k.revoked_at ? (
-                  <code class="muted">{k.allowed_origins || "global"}</code>
-                ) : (
-                  <form class="inline" method="post" action={`/console/keys/${k.id}/origins`}>
-                    <input name="allowedOrigins" value={k.allowed_origins ?? ""} placeholder="blank = global" size={24} />{" "}
-                    <button>Save</button>
-                  </form>
-                )}
-              </td>
-              <td>
-                <CacheCell k={k} />
-              </td>
-              <td class="muted">{k.created_at}</td>
-              <td>{k.revoked_at ? <span class="badge err">revoked</span> : <span class="badge ok">active</span>}</td>
-              <td>
-                {!k.revoked_at && (
-                  <form class="inline" method="post" action={`/console/keys/${k.id}/revoke`}>
-                    <button class="btn-danger">Revoke</button>
-                  </form>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </Panel>
-      <p class="muted">
+          </>
+        }
+        body={
+          props.keys.length === 0 ? (
+            <EmptyRow cols={7} text="no keys yet" />
+          ) : (
+            props.keys.map((k) => (
+              <tr>
+                <td>{k.name || <span class="badge badge-ghost">—</span>}</td>
+                <td class="tabular-nums">{k.rate_limit_per_min ?? "default"}</td>
+                <td>
+                  {k.revoked_at ? (
+                    <code class="text-base-content/50">{k.allowed_origins || "global"}</code>
+                  ) : (
+                    <form class="inline-flex items-end gap-2" method="post" action={`/console/keys/${k.id}/origins`}>
+                      <input
+                        name="allowedOrigins"
+                        value={k.allowed_origins ?? ""}
+                        placeholder="blank = global"
+                        size={24}
+                        class="input input-bordered input-xs w-44"
+                      />
+                      <button class="btn btn-xs">Save</button>
+                    </form>
+                  )}
+                </td>
+                <td>
+                  <CacheCell k={k} />
+                </td>
+                <td class="text-base-content/50">{k.created_at}</td>
+                <td>
+                  {k.revoked_at ? <span class="badge badge-error">revoked</span> : <span class="badge badge-success">active</span>}
+                </td>
+                <td>
+                  {!k.revoked_at && (
+                    <form method="post" action={`/console/keys/${k.id}/revoke`}>
+                      <button class="btn btn-xs btn-error btn-outline">Revoke</button>
+                    </form>
+                  )}
+                </td>
+              </tr>
+            ))
+          )
+        }
+      />
+
+      <p class="text-xs text-base-content/50">
         Per-key origins override the global <code>ALLOWED_ORIGINS</code> for requests using that key. Browsers don't
         send API keys on <code>OPTIONS</code> preflights — pass the key via <code>?key=</code> if preflights must be
         per-key.
