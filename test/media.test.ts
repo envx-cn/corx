@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { shouldBypassCache, readBounded, ttlSeconds, normalizeCacheTtlInput } from "../src/cache.js";
-import { ProxyError } from "../src/types.js";
+import { shouldBypassCache, readBounded, ttlSeconds, normalizeCacheTtlInput } from "../app/proxy/cache.js";
+import { ProxyError } from "../app/lib/types.js";
 
 function req(headers: Record<string, string> = {}, method = "GET"): Request {
   return new Request("https://corx.test/fetch?url=https://example.com/v.mp4", { method, headers });
@@ -37,7 +37,7 @@ describe("per-key cache policy", () => {
     expect(shouldBypassCache(req(), url, null)).toBe(false);
   });
   it("ttl precedence: ?ttl= > key > env", () => {
-    const env = { CACHE_TTL_SECONDS: "3600" } as import("../src/types.js").Env;
+    const env = { CACHE_TTL_SECONDS: "3600" } as import("../app/lib/types.js").Env;
     const key = { cache_ttl: 300 };
     expect(ttlSeconds(env, url, key)).toBe(300);
     expect(ttlSeconds(env, url, null)).toBe(3600);

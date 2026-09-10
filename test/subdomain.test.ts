@@ -4,8 +4,8 @@ import {
   decodeHostname,
   subdomainTarget,
   resolveRawTarget,
-} from "../src/subdomain.js";
-import type { Env } from "../src/types.js";
+} from "../app/proxy/subdomain.js";
+import type { Env } from "../app/lib/types.js";
 
 const env = {} as Env;
 const zoneEnv = { PROXY_ZONE: "corx.com" } as Env;
