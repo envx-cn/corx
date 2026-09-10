@@ -122,6 +122,23 @@ code:not(pre code) {
 
 /* --- Landing page ---------------------------------------------------------- */
 
+/* --- 404 page (Cloudflare-style) -------------------------------------------- */
+
+/* Huge "404": a solid ink→subtle gradient (no -webkit-text-stroke — on an
+   800-weight Inter digit the stroke traces the glyph's inner contours too,
+   so the translucent fill shows a tangle of lines inside each digit). */
+.nf-404 {
+  font-size: clamp(6rem, 22vw, 12.5rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  background: linear-gradient(180deg, var(--corx-ink) 0%, var(--corx-subtle) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  user-select: none;
+}
+
 /* Cloudflare-style marker highlight behind a hero word */
 .marker {
   background-image: linear-gradient(

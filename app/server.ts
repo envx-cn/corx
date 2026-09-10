@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { createApp } from "honox/server";
 import type { Env } from "./lib/types.js";
 import type { ProxyVariables } from "./lib/auth.js";
@@ -6,6 +7,7 @@ import { apiKeyMiddleware } from "./lib/auth.js";
 import { cors, withProxyCors } from "./proxy/cors.js";
 import { proxyHandler } from "./proxy/handler.js";
 import { resolveRawTarget } from "./proxy/subdomain.js";
+import { NotFoundPage } from "./routes/_not-found.js";
 
 // Base Hono app with the proxy routes mounted manually (file routing can't
 // express the /* catch-all ordering).
@@ -59,14 +61,22 @@ const app = createApp({
 });
 
 // Unknown /api/* endpoints: 404 JSON (the proxy catch-all below would otherwise
-// answer with a confusing "Missing target URL").
-app.all("/api/*", (c) => c.json({ error: `Unknown API endpoint: ${c.req.path}` }, 404));
+// answer with a confusing "Missing target URL"). Registered for both /api and
+// /api/* so the bare /api path can't slip through to the HTML 404 page.
+const unknownApi = (c: Context) => c.json({ error: `Unknown API endpoint: ${c.req.path}` }, 404);
+app.all("/api", unknownApi);
+app.all("/api/*", unknownApi);
+
+// Unknown /console/* paths the file router missed: bounce straight to the
+// console root. More specific than /* so real console pages (static routes)
+// still win, and the console auth guard still runs first (unauthenticated
+// users are sent to /console/login, not here).
+app.all("/console/*", (c) => c.redirect("/console/", 302));
 
 // Path-style (/https://…) + subdomain mode (must be last — catches everything).
-// Anything that isn't a proxy request (unknown /console/* paths the file
-// router missed, random paths, …) gets a real 404, not a proxy "Missing
-// target URL" 400. Malformed subdomains still count as proxy requests so the
-// proxy handler returns the precise 4xx.
+// Anything that isn't a proxy request (random paths, …) gets the branded 404
+// page, not a proxy "Missing target URL" 400. Malformed subdomains still count
+// as proxy requests so the proxy handler returns the precise 4xx.
 app.all("/*", (c) => {
   const reqUrl = new URL(c.req.url);
   let isProxy = true;
@@ -75,7 +85,10 @@ app.all("/*", (c) => {
   } catch {
     // malformed subdomain (bad corx-port, …) — let proxyHandler answer
   }
-  if (!isProxy) return c.json({ error: "Not found" }, 404);
+  if (!isProxy) {
+    // c.html() doesn't add a doctype; prepend it so browsers don't fall into quirks mode.
+    return c.html(`<!DOCTYPE html>${NotFoundPage({ path: reqUrl.pathname, origin: reqUrl.origin })}`, 404);
+  }
   return proxyHandler(c);
 });
 
