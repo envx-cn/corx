@@ -27,6 +27,17 @@ Read that file first, then the corx-specific notes below.
   `hono/jsx` auto-escapes interpolations, never pre-escape. Interactive
   bits go in `app/islands/` (default export, props only — no request
   context). `app/server.ts` stays `.ts` (build entry).
+
+  Island caveats (learned the hard way): honox re-renders an island's own DOM
+  subtree on state change, so imperative DOM outside the island (e.g. the
+  console sidebar `<aside>`) gets replaced/wiped — drive such state from plain
+  inline `<script>` in the Doc instead (see the sidebar collapse in
+  `_layout.tsx`). Chromium quirks that force this: `:has(...)` selectors don't
+  invalidate on attribute changes, and a `<label for>` activation doesn't
+  invalidate `:checked` sibling rules — use a real button calling
+  `checkbox.click()` and style the collapsed state from the checkbox's own
+  `:checked` state. Full-document pages (landing via `c.html()`) must include
+  their own `<HasIslands/>` + client script for any island they render.
 - **Styles** live in `app/styles/*.css` and are imported `?inline` into
   `<style>` tags — never `<link>` (no manifest/context pitfalls). Inject the
   CSS with `dangerouslySetInnerHTML={{ __html: css }}` — hono/jsx otherwise

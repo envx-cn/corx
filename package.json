@@ -29,6 +29,7 @@
     "@hono/vite-dev-server": "^0.26.1",
     "@tailwindcss/postcss": "^4.3.3",
     "daisyui": "^5.7.32",
+    "playwright-core": "^1.63.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.2",
     "vite": "^7.3.6",

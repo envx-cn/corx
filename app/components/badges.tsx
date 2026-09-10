@@ -1,20 +1,25 @@
+/**
+ * Status/method labels rendered as plain colored text — no badge backgrounds,
+ * so dense tables (logs, requests) stay quiet and scannable.
+ */
 export function StatusBadge({ status }: { status: number | null }) {
-  if (status == null) return <span class="badge badge-ghost">—</span>;
-  const cls = status < 300 ? "badge-success" : status < 400 ? "badge-info" : status < 500 ? "badge-warning" : "badge-error";
-  return <span class={`badge ${cls}`}>{status}</span>;
+  if (status == null) return <span class="text-base-content/40">—</span>;
+  const cls =
+    status < 300 ? "text-success" : status < 400 ? "text-info" : status < 500 ? "text-warning" : "text-error";
+  return <span class={`font-medium tabular-nums ${cls}`}>{status}</span>;
 }
 
 export function MethodBadge({ method }: { method: string }) {
   const m = method.toUpperCase();
   const cls =
     m === "GET"
-      ? "badge-info"
+      ? "text-info"
       : m === "POST"
-        ? "badge-success"
+        ? "text-success"
         : m === "DELETE"
-          ? "badge-error"
+          ? "text-error"
           : m === "HEAD" || m === "OPTIONS"
-            ? "badge-ghost"
-            : "badge-warning";
-  return <span class={`badge ${cls}`}>{m}</span>;
+            ? "text-base-content/50"
+            : "text-warning";
+  return <span class={`font-medium ${cls}`}>{m}</span>;
 }

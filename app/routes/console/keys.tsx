@@ -118,7 +118,7 @@ function KeysContent(props: {
 }) {
   return (
     <>
-      <h1 class="text-2xl font-semibold mb-4">API keys</h1>
+      <h1 class="text-3xl font-semibold tracking-tight mb-4">API keys</h1>
 
       {props.error && (
         <div role="alert" class="alert alert-error mb-4">
@@ -182,7 +182,7 @@ function KeysContent(props: {
           ) : (
             props.keys.map((k) => (
               <tr>
-                <td>{k.name || <span class="badge badge-ghost">—</span>}</td>
+                <td>{k.name || <span class="text-base-content/40">—</span>}</td>
                 <td class="tabular-nums">{k.rate_limit_per_min ?? "default"}</td>
                 <td>
                   {k.revoked_at ? (
@@ -205,7 +205,7 @@ function KeysContent(props: {
                 </td>
                 <td class="text-base-content/50">{k.created_at}</td>
                 <td>
-                  {k.revoked_at ? <span class="badge badge-error">revoked</span> : <span class="badge badge-success">active</span>}
+                  {k.revoked_at ? <span class="font-medium text-error">revoked</span> : <span class="font-medium text-success">active</span>}
                 </td>
                 <td>
                   {!k.revoked_at && (

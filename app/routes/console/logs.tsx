@@ -21,7 +21,7 @@ export default app;
 function LogsContent(props: { logs: LogRow[]; limit: number }) {
   return (
     <>
-      <h1 class="text-2xl font-semibold mb-4">Request logs</h1>
+      <h1 class="text-3xl font-semibold tracking-tight mb-4">Request logs</h1>
       <div class="bg-base-100 border border-base-300 rounded-box p-4 mb-4">
         <form method="get" action="/console/logs">
           <div class="flex flex-wrap items-end gap-3">
@@ -70,7 +70,7 @@ function LogsContent(props: { logs: LogRow[]; limit: number }) {
                   {l.latency_ms == null ? "" : " ms"}
                 </td>
                 <td>{l.country}</td>
-                <td>{l.cached ? <span class="badge badge-success">HIT</span> : <span class="badge badge-ghost">MISS</span>}</td>
+                <td>{l.cached ? <span class="font-medium text-success">HIT</span> : <span class="text-base-content/50">MISS</span>}</td>
                 <td class="text-right tabular-nums">{humanBytes(l.res_bytes)}</td>
                 <td class="text-error">{l.error}</td>
               </tr>

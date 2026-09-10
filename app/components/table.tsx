@@ -1,10 +1,10 @@
 import type { Child } from "hono/jsx";
 
-/** daisyUI data table wrapper: zebra rows, horizontal scroll on small screens. */
+/** daisyUI data table wrapper: hairline rows + hover, horizontal scroll on small screens. */
 export function DataTable(props: { head: Child; body: Child }) {
   return (
     <div class="overflow-x-auto bg-base-100 border border-base-300 rounded-box mb-4">
-      <table class="table table-sm table-zebra">
+      <table class="table table-sm table-hover">
         <thead>{props.head}</thead>
         <tbody>{props.body}</tbody>
       </table>

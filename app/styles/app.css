@@ -1,13 +1,111 @@
-/* App-wide styles — Tailwind v4 + daisyUI 5.
+/* corx — app-wide styles (Tailwind v4 + daisyUI 5).
  *
  * Imported ?inline into a <style> tag by every page that renders its own
- * document (landing + console shell). Inject it with
- * dangerouslySetInnerHTML — hono/jsx would otherwise HTML-escape the CSS and
- * silently drop any rule whose selector contains > or & (see AGENTS.md).
- * Theme comes from data-theme="light" on the <html> element per page.
+ * document (landing + console shell). Inject it with dangerouslySetInnerHTML
+ * — hono/jsx would otherwise HTML-escape the CSS and silently drop any rule
+ * whose selector contains > or & (see AGENTS.md). Theme comes from
+ * data-theme="corx" / data-theme="corx-dash" on the <html> element.
+ *
+ * The palettes mirror Cloudflare's real design system ("Kumo", extracted from
+ * a saved dash.cloudflare.com page): a near-white canvas, hairline #E9E9E9
+ * borders, #F5F5F5 nav tints, #18181B text. The landing theme (corx) uses the
+ * Cloudflare-orange #F6821F primary like cloudflare.com; the console theme
+ * (corx-dash) uses the dashboard's blue #056DFF primary — orange stays
+ * brand-only there, exactly like dash.cloudflare.com.
  */
 @import "tailwindcss";
 @plugin "daisyui";
+
+/* --- Type ---------------------------------------------------------------- */
+@theme {
+  --font-sans: "Inter", "Inter Variable", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* --- Shared neutral scale (Kumo) ------------------------------------------- */
+:root {
+  --corx-canvas: #fbfbfb; /* kumo-canvas  */
+  --corx-hairline: #e9e9e9; /* kumo-hairline */
+  --corx-tint: #f5f5f5; /* kumo-tint (nav active / hover) */
+  --corx-ink: #18181b; /* kumo-default text */
+  --corx-strong: #0a0a0a; /* kumo-strong */
+  --corx-subtle: #737373; /* kumo-subtle */
+  --corx-brand-blue: #056dff; /* kumo-brand (dashboard primary) */
+  --corx-brand-orange: #f6821f; /* Cloudflare brand orange */
+}
+
+/* --- Landing theme: cloudflare.com (orange primary) ------------------------ */
+[data-theme="corx"] {
+  color-scheme: light;
+  --color-base-100: #ffffff;
+  --color-base-200: var(--corx-canvas);
+  --color-base-300: var(--corx-hairline);
+  --color-base-content: var(--corx-ink);
+  --color-primary: var(--corx-brand-orange);
+  --color-primary-content: #ffffff;
+  --color-secondary: var(--corx-strong);
+  --color-secondary-content: #ffffff;
+  --color-accent: #ff9f1c;
+  --color-accent-content: #ffffff;
+  --color-neutral: var(--corx-strong);
+  --color-neutral-content: #ffffff;
+  --color-info: #0051c3;
+  --color-info-content: #ffffff;
+  --color-success: #009966;
+  --color-success-content: #ffffff;
+  --color-warning: #fa8900;
+  --color-warning-content: #18181b;
+  --color-error: #fb2c36;
+  --color-error-content: #ffffff;
+  --radius-selector: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.75rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+/* --- Console theme: dash.cloudflare.com (blue primary, orange brand-only) --- */
+[data-theme="corx-dash"] {
+  color-scheme: light;
+  --color-base-100: #ffffff;
+  --color-base-200: var(--corx-canvas);
+  --color-base-300: var(--corx-hairline);
+  --color-base-content: var(--corx-ink);
+  --color-primary: var(--corx-brand-blue);
+  --color-primary-content: #ffffff;
+  --color-secondary: var(--corx-strong);
+  --color-secondary-content: #ffffff;
+  --color-accent: var(--corx-brand-blue);
+  --color-accent-content: #ffffff;
+  --color-neutral: var(--corx-strong);
+  --color-neutral-content: #ffffff;
+  --color-info: #00a6f4;
+  --color-info-content: #18181b;
+  --color-success: #009966;
+  --color-success-content: #ffffff;
+  --color-warning: #fa8900;
+  --color-warning-content: #18181b;
+  --color-error: #fb2c36;
+  --color-error-content: #ffffff;
+  --radius-selector: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.75rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+/* --- Shared bits ----------------------------------------------------------- */
+
+/* corx logo mark: Cloudflare-orange gradient tile (brand, both themes) */
+.corx-mark {
+  background: linear-gradient(135deg, #f6821f 0%, #ff9f1c 60%, #ffb703 100%);
+}
 
 /* Inline code gets a subtle pill — except inside <pre> (mockup-code styles those). */
 code:not(pre code) {
@@ -22,16 +120,286 @@ code:not(pre code) {
   @apply size-4;
 }
 
-/* dashboard chart (server-rendered bars) */
+/* --- Landing page ---------------------------------------------------------- */
+
+/* Cloudflare-style marker highlight behind a hero word */
+.marker {
+  background-image: linear-gradient(
+    104deg,
+    rgba(246, 130, 31, 0) 0.9%,
+    rgba(246, 130, 31, 0.16) 2.4%,
+    rgba(246, 130, 31, 0.16) 97.6%,
+    rgba(246, 130, 31, 0) 98.9%
+  );
+  border-radius: 0.5em;
+  padding: 0 0.15em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* soft orange glow behind the hero */
+.hero-glow {
+  background: radial-gradient(58% 52% at 50% 0%, rgba(246, 130, 31, 0.14) 0%, rgba(246, 130, 31, 0) 72%);
+}
+
+/* terminal-style code card (dark navy, Cloudflare docs vibe) */
+.code-card {
+  @apply bg-neutral text-neutral-content rounded-box border border-white/10 shadow-xl;
+}
+.code-card .code-head {
+  @apply flex items-center gap-1.5 px-5 pt-4;
+}
+.code-card .code-line {
+  @apply flex items-start gap-3 px-5 py-2.5 font-mono text-[13px] leading-relaxed break-all;
+}
+.code-card .code-line + .code-line {
+  @apply border-t border-white/10;
+}
+.code-card .code-prefix {
+  @apply shrink-0 select-none text-primary font-semibold;
+}
+.code-card code {
+  @apply bg-transparent border-0 p-0 font-mono text-[13px] text-inherit;
+}
+
+/* Landing demo island wrapper: honox renders islands inside a custom element;
+   as a flex item under items-center it shrink-to-fits, which would make the
+   mockup-browser's w-full circular (and narrower than intended). */
+#try-it honox-island {
+  display: block;
+  width: 100%;
+}
+
+/* feature card */
+.feature-card {
+  @apply bg-base-100 border border-base-300 rounded-box p-6 transition hover:border-primary/40 hover:shadow-md;
+}
+.feature-card .feature-icon {
+  @apply size-10 rounded-lg bg-primary/10 text-primary inline-flex items-center justify-center mb-4;
+}
+
+/* --- Landing demo (mockup-browser) ------------------------------------------- */
+
+/* URL bar: slide-up entrance, replayed whenever an example changes (the
+   island remounts the input via a key). */
+.url-slide {
+  animation: url-slide-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes url-slide-in {
+  from {
+    transform: translateY(80%);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* result panel: fade + slide up when a fresh response arrives */
+.demo-fade-in {
+  animation: fade-up 0.3s ease both;
+}
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* skeleton screen while a request is in flight */
+.demo-skeleton {
+  @apply p-5 space-y-3;
+}
+.demo-skeleton .bar {
+  @apply h-3 rounded bg-base-300/70 relative overflow-hidden;
+}
+.demo-skeleton .bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+  animation: shimmer 1.4s infinite;
+}
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* --- Console (dash.cloudflare.com / Kumo) ----------------------------------- */
+
+/* nav item states: tint pill, exactly like the real sidebar */
+.nav-item {
+  @apply flex items-center gap-2.5 rounded-lg px-3 min-h-[34px] text-sm font-medium
+    text-base-content/80 hover:bg-black/[0.045] transition-colors;
+}
+.nav-item[aria-current="page"] {
+  @apply bg-black/[0.06] text-base-content;
+}
+.nav-item .lucide {
+  @apply opacity-60;
+}
+.nav-item[aria-current="page"] .lucide {
+  @apply opacity-100;
+}
+
+/* --- Sidebar collapse (desktop only) ---------------------------------
+ * CSS-only pin driven by the #sidebar-collapse checkbox (peer of the slot and
+ * the aside): :checked invalidation is reliable, unlike :has(attribute)
+ * selectors (Chromium doesn't invalidate those on attribute changes). A tiny
+ * inline script in the console Doc restores + persists the checkbox, and
+ * toggles .flyout-open on the aside while a nav item is hovered.
+ *
+ * The aside is absolutely positioned over a .sidebar-slot that holds the
+ * in-flow gutter, so the real menu can widen (collapsed → hover) as a floating
+ * overlay without pushing the content. The corx mark keeps its position, and
+ * the header/footer heights are identical in both states.
+ *
+ * Everything is scoped to ≥1024px: on mobile the drawer overlay always shows
+ * the full (expanded) menu via the topbar hamburger — the pinned-collapse
+ * state must never apply there, whatever localStorage says. */
+@media (min-width: 1024px) {
+  /* in-flow gutter: 16rem expanded, 4rem collapsed */
+  .sidebar-slot {
+    width: 16rem;
+    transition: width 0.2s ease-out;
+  }
+  #sidebar-collapse:checked ~ .sidebar-slot {
+    width: 4rem;
+  }
+
+  /* daisyUI gives drawer-side overflow-y:auto, which forces overflow-x:hidden
+     and clips the floating (widened) aside — let it escape on desktop. */
+  .drawer.lg\:drawer-open > .drawer-side {
+    overflow: visible;
+  }
+
+  /* the aside floats over the gutter; widths drive the rail vs full menu */
+  #sidebar-collapse:checked ~ aside[data-sidebar] {
+    width: 4rem !important;
+  }
+  #sidebar-collapse:checked ~ aside[data-sidebar].flyout-open {
+    width: 16rem !important;
+  }
+  #sidebar-collapse:checked ~ aside[data-sidebar] .brand-text,
+  #sidebar-collapse:checked ~ aside[data-sidebar] .nav-label {
+    display: none;
+  }
+  /* icon-only items centered in the rail */
+  #sidebar-collapse:checked ~ aside[data-sidebar] .nav-item {
+    justify-content: center;
+    padding-inline: 0;
+  }
+  /* flyout open (nav item hovered): show labels, back to left-aligned items */
+  #sidebar-collapse:checked ~ aside[data-sidebar].flyout-open .brand-text,
+  #sidebar-collapse:checked ~ aside[data-sidebar].flyout-open .nav-label {
+    display: block;
+  }
+  #sidebar-collapse:checked ~ aside[data-sidebar].flyout-open .nav-item {
+    justify-content: flex-start;
+    padding-inline: 0.75rem;
+  }
+  #sidebar-collapse:checked ~ aside[data-sidebar] .collapse-chevron {
+    transform: rotate(180deg);
+  }
+}
+
+/* Below the drawer's lg breakpoint the pinned-collapse rail keeps its width
+   (so resizing down never plays an expansion animation); opening the mobile
+   drawer via the hamburger still shows the full menu. */
+@media (max-width: 1023.98px) {
+  #sidebar-collapse:checked ~ aside[data-sidebar] {
+    width: 4rem !important;
+  }
+  #console-drawer:checked ~ .drawer-side aside[data-sidebar] {
+    width: 16rem !important;
+  }
+}
+
+/* The drawer backdrop's gray tint must only appear when the mobile drawer is
+   actually open — daisyUI gives .drawer-overlay a 40% black base that flashes
+   while resizing across the lg breakpoint (the desktop override drops off). */
+.drawer-side > .drawer-overlay {
+  background-color: transparent;
+}
+#console-drawer:checked ~ .drawer-side > .drawer-overlay {
+  background-color: oklch(0% 0 0 / 0.4);
+}
+
+/* stat card */
+.stat-card {
+  @apply bg-base-100 border border-base-300 rounded-box p-5;
+}
+.stat-card .stat-label {
+  @apply text-sm text-base-content/55;
+}
+.stat-card .stat-value {
+  @apply text-3xl font-semibold mt-1.5 tabular-nums tracking-tight;
+}
+
+/* data tables: light sentence-case header on hairline rows, hover highlight */
+.table th {
+  @apply text-xs font-semibold text-base-content/55 bg-base-200/70;
+}
+
+/* dashboard chart (server-rendered bars). Plain CSS on purpose: @apply with
+   daisyUI's rounded-t-box silently drops the whole rule in Tailwind v4. */
 .chart {
-  @apply flex items-end gap-[3px] h-32 bg-base-100 border border-base-300 rounded-t-box p-4 pb-0;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 8rem;
+  background-color: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  border-radius: var(--radius-box) var(--radius-box) 0 0;
+  padding: 1rem 1rem 0;
 }
 .bar {
-  @apply flex-1 min-w-[3px] min-h-[3px] bg-primary rounded-t opacity-85 hover:opacity-100;
+  flex: 1 1 0%;
+  min-width: 3px;
+  min-height: 3px;
+  background-color: var(--color-primary);
+  border-radius: 0.25rem 0.25rem 0 0;
+  opacity: 0.85;
+}
+.bar:hover {
+  opacity: 1;
 }
 .chart-ticks {
-  @apply flex gap-[3px] bg-base-100 border border-t-0 border-base-300 rounded-b-box px-4 pb-2 mb-4;
+  display: flex;
+  gap: 3px;
+  background-color: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  border-top: 0;
+  border-radius: 0 0 var(--radius-box) var(--radius-box);
+  padding: 0.5rem 1rem;
+  margin-bottom: 1rem;
 }
 .chart-ticks span {
-  @apply flex-1 text-center text-[10px] text-base-content/60 tabular-nums;
+  flex: 1 1 0%;
+  text-align: center;
+  font-size: 0.625rem;
+  color: var(--color-base-content);
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+/* status-tinted bars for the breakdown chart (overrides .bar primary) */
+.bar-success {
+  background-color: var(--color-success);
+}
+.bar-info {
+  background-color: var(--color-info);
+}
+.bar-warning {
+  background-color: var(--color-warning);
+}
+.bar-error {
+  background-color: var(--color-error);
 }

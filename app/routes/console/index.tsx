@@ -7,6 +7,8 @@ import { humanBytes } from "../../lib/format.js";
 import { MethodBadge, StatusBadge } from "../../components/badges.js";
 import { DataTable, EmptyRow } from "../../components/table.js";
 import { HourlyChart } from "../../components/chart.js";
+import StatsTabs from "../../islands/stats-tabs.js";
+import type { BreakdownRow } from "../../islands/stats-tabs.js";
 
 const app = new Hono<{ Bindings: Env }>({ strict: false });
 
@@ -32,11 +34,9 @@ export default app;
 
 function Stat({ value, label }: { value: Child; label: string }) {
   return (
-    <div class="stats shadow w-full">
-      <div class="stat">
-        <div class="stat-title">{label}</div>
-        <div class="stat-value text-2xl">{value}</div>
-      </div>
+    <div class="stat-card">
+      <div class="stat-label">{label}</div>
+      <div class="stat-value">{value}</div>
     </div>
   );
 }
@@ -50,6 +50,14 @@ function Section({ title, children }: { title: string; children?: Child }) {
   );
 }
 
+/** Status tone for the breakdown bars (matches StatusBadge colors). */
+function toneForStatus(status: number): BreakdownRow["tone"] {
+  if (status < 300) return "success";
+  if (status < 400) return "info";
+  if (status < 500) return "warning";
+  return "error";
+}
+
 function DashboardContent(props: { stats: Stats; keyCount: number; blockedCount: number }) {
   const { stats } = props;
   const t = stats.totals;
@@ -58,10 +66,10 @@ function DashboardContent(props: { stats: Stats; keyCount: number; blockedCount:
   const errRate = req ? `${Math.round(((t?.errors ?? 0) / req) * 1000) / 10}%` : "—";
   return (
     <>
-      <h1 class="text-2xl font-semibold mb-4">
+      <h1 class="text-3xl font-semibold tracking-tight mb-4">
         Overview <span class="text-base font-normal text-base-content/50">· last 24h</span>
       </h1>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Stat value={String(req)} label="requests" />
         <Stat value={humanBytes(t?.res_bytes ?? 0)} label="traffic out" />
         <Stat value={humanBytes(t?.cached_bytes ?? 0)} label={`served from cache (${hitRate} hits)`} />
@@ -122,7 +130,7 @@ function DashboardContent(props: { stats: Stats; keyCount: number; blockedCount:
               stats.topKeys.map((r) => (
                 <tr>
                   <td>
-                    {r.name || <span class="badge badge-ghost">anonymous</span>}
+                    {r.name || <span class="text-base-content/40">anonymous</span>}
                   </td>
                   <td class="text-right tabular-nums">{r.n}</td>
                   <td class="text-right tabular-nums">{humanBytes(r.bytes)}</td>
@@ -133,76 +141,13 @@ function DashboardContent(props: { stats: Stats; keyCount: number; blockedCount:
         />
       </Section>
 
-      <Section title="By status">
-        <DataTable
-          head={
-            <>
-              <th>Status</th>
-              <th class="text-right">Count</th>
-            </>
-          }
-          body={
-            stats.byStatus.length === 0 ? (
-              <EmptyRow cols={2} text="no data" />
-            ) : (
-              stats.byStatus.map((r) => (
-                <tr>
-                  <td>
-                    <StatusBadge status={r.status} />
-                  </td>
-                  <td class="text-right tabular-nums">{r.n}</td>
-                </tr>
-              ))
-            )
-          }
-        />
-      </Section>
-
-      <Section title="By method">
-        <DataTable
-          head={
-            <>
-              <th>Method</th>
-              <th class="text-right">Count</th>
-            </>
-          }
-          body={
-            stats.byMethod.length === 0 ? (
-              <EmptyRow cols={2} text="no data" />
-            ) : (
-              stats.byMethod.map((r) => (
-                <tr>
-                  <td>
-                    <MethodBadge method={r.method} />
-                  </td>
-                  <td class="text-right tabular-nums">{r.n}</td>
-                </tr>
-              ))
-            )
-          }
-        />
-      </Section>
-
-      <Section title="By country">
-        <DataTable
-          head={
-            <>
-              <th>Country</th>
-              <th class="text-right">Count</th>
-            </>
-          }
-          body={
-            stats.byCountry.length === 0 ? (
-              <EmptyRow cols={2} text="no data" />
-            ) : (
-              stats.byCountry.map((r) => (
-                <tr>
-                  <td>{r.country || <span class="badge badge-ghost">—</span>}</td>
-                  <td class="text-right tabular-nums">{r.n}</td>
-                </tr>
-              ))
-            )
-          }
+      <Section title="Breakdown">
+        <StatsTabs
+          status={stats.byStatus.map(
+            (r): BreakdownRow => ({ label: String(r.status), n: r.n, tone: toneForStatus(r.status) }),
+          )}
+          method={stats.byMethod.map((r): BreakdownRow => ({ label: r.method, n: r.n }))}
+          country={stats.byCountry.map((r): BreakdownRow => ({ label: r.country || "—", n: r.n }))}
         />
       </Section>
 

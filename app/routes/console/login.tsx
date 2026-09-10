@@ -59,8 +59,8 @@ export default app;
 function LoginPage(props: { accessDetected: boolean; accessEmail: string | null; error?: string }) {
   return (
     <LoginShell title="Sign in">
-      <h1 class="card-title flex items-center gap-2">
-        <span class="size-7 rounded-lg bg-gradient-to-br from-accent to-warning text-white inline-flex items-center justify-center text-xs font-extrabold">
+      <h1 class="card-title flex items-center gap-2.5">
+        <span class="corx-mark size-8 rounded-lg text-white inline-flex items-center justify-center text-xs font-extrabold">
           cx
         </span>
         corx console
