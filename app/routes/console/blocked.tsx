@@ -33,7 +33,7 @@ export default app;
 function BlockedContent(props: { hosts: Array<{ hostname: string; reason: string; created_at: string }> }) {
   return (
     <>
-      <h1 class="text-2xl font-semibold mb-1">Host blocklist</h1>
+      <h1 class="text-3xl font-semibold tracking-tight mb-1">Host blocklist</h1>
       <p class="text-sm text-base-content/60 mb-4">Extra SSRF blocks on top of the built-in private-range protection.</p>
       <div class="bg-base-100 border border-base-300 rounded-box p-4 mb-4">
         <form method="post" action="/console/blocked">

@@ -47,7 +47,14 @@ never stored either.
 Responses carry `X-Corx-Cache: HIT/MISS`, `X-Corx-Target`, `X-Corx-Latency-Ms`.
 Preflight `OPTIONS` is answered on every route. Upstream `set-cookie` is stripped.
 
-## Media (video / audio)
+**Encoding:** upstreams are asked for identity (uncompressed) bodies
+(`accept-encoding: identity`), and any `Content-Encoding` header is stripped on
+streamed responses too — the Workers runtime already decompresses `fetch()`
+bodies, so pairing an encoding header with decoded bytes breaks browsers. One
+immediate retry (300 ms) is made on transient upstream `fetch` failures; the
+shared AbortController still caps the total time at `TIMEOUT_MS`.
+
+**Media (video / audio)**
 
 Yes — with streaming. Small responses (≤ 5 MB `GET` 200s) are buffered for the
 R2 cache; everything else streams straight through untouched, so:
@@ -60,6 +67,15 @@ R2 cache; everything else streams straight through untouched, so:
 
 One limitation: HLS/DASH playlists (`.m3u8`/`.mpd`) with absolute segment URLs
 break out of the proxy — relative URLs (or subdomain mode) work fine.
+
+## Landing page
+
+`/` is a Cloudflare-styled marketing page: full-viewport hero, a **live
+"Try it" demo** (a mockup-browser that rotates example URLs every 10 s and
+fetches them through the real proxy — type any URL to take over), a feature
+grid and a dark footer. The demo is a client island (`app/islands/cors-demo.tsx`)
+and needs the `HasIslands` client script, which the landing's own full document
+includes. Scroll is plain native scrolling (the page-flip scroller was removed).
 
 ## Quickstart
 
@@ -103,10 +119,19 @@ appended to proxied HTML pages — dev-only artifact, production is untouched.
 
 ## Admin console (SSR + Cloudflare login)
 
-Open `https://<your-host>/console/`. Pure server-rendered pages (no JS build):
-Dashboard (24h requests, traffic in/out, cache bandwidth saved, hourly chart,
-top hosts/keys/methods/countries, recent errors) · API keys (create shown once,
-revoke, per-key origins/cache policy) · Logs (per-request size) · Host blocklist.
+Open `https://<your-host>/console/`. Server-rendered pages with islands only
+where needed (stats tabs):
+Dashboard (24h requests, traffic in/out, cache bandwidth saved, Requests per
+hour chart, a **Breakdown** selector with vertical bar charts for status /
+method / country, top hosts/keys, recent errors) · API keys (create shown once,
+revoke, per-key origins/cache policy) · Logs (per-request size) · Host
+blocklist · Profile · Billing.
+
+Shell: the sidebar collapses to an icon rail on desktop — hovering a nav item
+floats the real menu open without pushing the content, and the pin persists in
+localStorage; on mobile there is no rail, only the topbar hamburger, which
+opens the full menu as a floating drawer overlay. The topbar holds a user menu
+(Profile / Billing / Log out).
 
 Login is Cloudflare Access (Zero Trust):
 
@@ -186,7 +211,11 @@ app/              HonoX frontend (entry + console UI + API routes)
   routes/console/   console pages as file routes (_renderer dash shell,
                 _middleware login guard, _layout document shell, colocated
                 chrome _nav/_sidebar/_topbar, and
-                index/keys/logs/blocked/login pages via c.render()).
+                index/keys/logs/blocked/profile/billing/login pages
+                via c.render()). The sidebar collapse pin + hover-float
+                is a plain inline <script> in _layout (honox islands
+                re-render their own DOM, and Chromium :has/label quirks
+                make checkbox + script the reliable combo).
                 Island hydration is honox-managed: the renderer uses
                 <HasIslands/> so the client script loads only on pages
                 that import an island.
@@ -198,7 +227,8 @@ app/              HonoX frontend (entry + console UI + API routes)
                 <style> by landing + console shell, PostCSS-processed by the
                 build; injected with dangerouslySetInnerHTML)
   client.ts     island hydration entry (builds to /static/client.js)
-  islands/      interactive components (CopyButton, …)
+  islands/      interactive components (CopyButton, CorsDemo — landing
+                demo, StatsTabs — dashboard Breakdown selector)
   console/      dash-style shell, pages, landing (JSX server components)
   lib/format.ts esc/humanBytes helpers
   proxy/        proxy feature: handler, guard (SSRF), subdomain mode,

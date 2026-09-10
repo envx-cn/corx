@@ -16,7 +16,7 @@ app.get("/", (c) => {
     return proxyHandler(c); // malformed target -> let proxyHandler return the 400
   }
   // Plain call (not JSX) so this handler file stays .ts.
-  return c.html(LandingPage({ host: reqUrl.host }));
+  return c.html(LandingPage({ host: reqUrl.host, origin: `${reqUrl.protocol}//${reqUrl.host}` }));
 });
 
 export default app;

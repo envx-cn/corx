@@ -38,6 +38,11 @@ const STRIP_REQUEST = new Set([
   "x-forwarded-for",
   "x-forwarded-proto",
   "x-real-ip",
+  // Ask upstreams for identity (uncompressed) bodies: we strip content-encoding
+  // on buffered responses, and streaming gzip through the dev server / workers
+  // edge is a double-encoding hazard. Media streams unaffected (already
+  // compressed); correctness over transfer size.
+  "accept-encoding",
 ]);
 
 const STRIP_RESPONSE = new Set([
@@ -50,6 +55,8 @@ const STRIP_RESPONSE = new Set([
 
 /** Minimal strip set for streamed responses: Range/206 + media metadata survive. */
 const STREAM_STRIP_RESPONSE = new Set([
+  "content-encoding", // runtimes decompress the body (and miniflare keeps the
+  // header) — never pair an encoding header with already-decoded bytes.
   "transfer-encoding",
   "connection",
   "keep-alive",
@@ -188,6 +195,10 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       });
       outHeaders.set("X-Forwarded-For", ip);
       outHeaders.set("X-Proxied-By", "corx");
+      // Ask upstreams for identity bodies: runtimes decompress fetch() bodies
+      // themselves, so a Content-Encoding header upstream is a double-encoding
+      // hazard downstream (browsers decode it again).
+      outHeaders.set("accept-encoding", "identity");
 
       let body: BodyInit | undefined;
       if (c.req.method !== "GET" && c.req.method !== "HEAD") {
@@ -201,13 +212,24 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
 
       let upstream: Response;
       try {
-        upstream = await fetch(url.toString(), {
-          method: c.req.method,
-          headers: outHeaders,
-          body,
-          signal: controller.signal,
-          redirect: "follow",
-        });
+        // One retry on transient network errors (fetch failed). The shared
+        // AbortController keeps the total time bounded by timeoutMs, and the
+        // body buffer is reusable, so a re-sent POST is safe.
+        const attempt = (): Promise<Response> =>
+          fetch(url.toString(), {
+            method: c.req.method,
+            headers: outHeaders,
+            body,
+            signal: controller.signal,
+            redirect: "follow",
+          });
+        try {
+          upstream = await attempt();
+        } catch (err) {
+          if ((err as Error)?.name === "AbortError") throw err;
+          await new Promise((r) => setTimeout(r, 300));
+          upstream = await attempt();
+        }
       } catch (err) {
         if ((err as Error)?.name === "AbortError") throw new ProxyError(504, "Upstream timed out");
         throw new ProxyError(502, `Upstream fetch failed: ${(err as Error)?.message ?? "unknown"}`);
