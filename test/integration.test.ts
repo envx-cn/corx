@@ -56,6 +56,13 @@ describe("route wiring (integration)", () => {
     expect(await res.json()).toMatchObject({ error: expect.stringContaining("Unknown API endpoint") });
   });
 
+  it("bare /api also gets 404 JSON, not the HTML 404 page", async () => {
+    const res = await call("/api", { headers: { authorization: "Bearer test-token" } });
+    expect(res.status).toBe(404);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining("Unknown API endpoint") });
+  });
+
   it("serves the login page (public console path, no auth bounce)", async () => {
     const res = await call("/console/login");
     expect(res.status).toBe(200);
@@ -90,14 +97,20 @@ describe("route wiring (integration)", () => {
     expect(html).toContain('type="button"');
   });
 
-  it("unknown /console/* paths get a real 404 (not proxy 400)", async () => {
+  it("unknown /console/* paths redirect to the console root", async () => {
     const res = await call("/console/nonexistent", { headers: { cookie: `corx_session=${sessionCookie}` } });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/console/");
   });
 
-  it("unknown non-console paths get a 404 too", async () => {
+  it("unknown non-console paths get the branded HTML 404 page", async () => {
     const res = await call("/random/path");
     expect(res.status).toBe(404);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    const html = await res.text();
+    expect(html).toContain("<!DOCTYPE html>");
+    expect(html).toContain("404");
+    expect(html).toContain("This page doesn&#39;t exist");
   });
 });
 
