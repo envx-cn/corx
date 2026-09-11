@@ -10,9 +10,9 @@ import {
   applyHeaderRules,
   applyParamRules,
   assertHostAllowed,
+  effectiveInjection,
   hasInjection,
   hostAllowed,
-  readStoredInjection,
   varMap,
 } from "./inject.js";
 import {
@@ -173,11 +173,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     // so its variables can never be attached to a caller-chosen URL.
     // Belt and braces: a row with rules but no allowlist (hand-edited DB) is
     // treated as having no injection at all — fail closed on secrets.
-    const stored = readStoredInjection(row);
-    const injection =
-      hasInjection(stored) && stored.hosts.length === 0
-        ? { ...stored, vars: [], headers: [], params: [] }
-        : stored;
+    const injection = effectiveInjection(row);
     const vars = varMap(injection.vars);
     const hasRules = hasInjection(injection);
     const manualRedirects = hasRules || injection.hosts.length > 0;

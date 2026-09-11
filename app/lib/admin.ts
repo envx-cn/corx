@@ -1,4 +1,4 @@
-import type { Env } from "./types.js";
+import type { ApiKeyRow, Env } from "./types.js";
 import { ProxyError } from "./types.js";
 import { hashKey, newRawKey } from "./auth.js";
 import { normalizeOriginsInput, parseOrigins } from "../proxy/cors.js";
@@ -210,6 +210,16 @@ export async function queryKeys(db: D1Database): Promise<KeyRow[]> {
     )
     .all<KeyRow>();
   return rows.results;
+}
+
+/** One key row by id (console playground selects a key without its raw value). */
+export async function queryKeyById(db: D1Database, id: string): Promise<ApiKeyRow | null> {
+  return db
+    .prepare(
+      "SELECT id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, allowed_hosts, keyless, created_at, revoked_at FROM api_keys WHERE id = ?",
+    )
+    .bind(id)
+    .first<ApiKeyRow>();
 }
 
 /** Variable values never leave the server — mask them on every read path. */

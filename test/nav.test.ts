@@ -9,6 +9,8 @@ describe("activeNavItem", () => {
   it("matches each section exactly and by prefix", () => {
     expect(activeNavItem("/console/keys")).toBe("/console/keys");
     expect(activeNavItem("/console/keys/abc")).toBe("/console/keys");
+    expect(activeNavItem("/console/playground")).toBe("/console/playground");
+    expect(activeNavItem("/console/playground/run")).toBe("/console/playground");
     expect(activeNavItem("/console/logs")).toBe("/console/logs");
     expect(activeNavItem("/console/blocked")).toBe("/console/blocked");
   });
