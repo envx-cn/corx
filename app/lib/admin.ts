@@ -1,8 +1,18 @@
 import type { Env } from "./types.js";
 import { ProxyError } from "./types.js";
 import { hashKey, newRawKey } from "./auth.js";
-import { normalizeOriginsInput } from "../proxy/cors.js";
+import { normalizeOriginsInput, parseOrigins } from "../proxy/cors.js";
 import { normalizeCacheTtlInput } from "../proxy/cache.js";
+import {
+  assertInjectionParts,
+  collectVarRefs,
+  parseHostsInput,
+  parseRulesInput,
+  parseVarsInput,
+  readStoredInjection,
+  serializeInjection,
+} from "../proxy/inject.js";
+import type { InjectionParts } from "../proxy/inject.js";
 
 // D1 query helpers shared by the /api/* file routes and the SSR console.
 // (HTTP routes live in app/routes/api/; the proxy logger is lib/db.ts.)
@@ -184,6 +194,11 @@ export interface KeyRow {
   no_cache: number;
   ip_check: number;
   dns_check: number;
+  vars: string | null;
+  header_rules: string | null;
+  param_rules: string | null;
+  allowed_hosts: string | null;
+  keyless: number;
   created_at: string;
   revoked_at: string | null;
 }
@@ -191,10 +206,15 @@ export interface KeyRow {
 export async function queryKeys(db: D1Database): Promise<KeyRow[]> {
   const rows = await db
     .prepare(
-      "SELECT id, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, created_at, revoked_at FROM api_keys ORDER BY created_at DESC",
+      "SELECT id, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, allowed_hosts, keyless, created_at, revoked_at FROM api_keys ORDER BY created_at DESC",
     )
     .all<KeyRow>();
   return rows.results;
+}
+
+/** Variable values never leave the server — mask them on every read path. */
+export function redactKeyRow(k: KeyRow): KeyRow {
+  return { ...k, vars: JSON.stringify(readStoredInjection(k).vars.map((v) => ({ name: v.name }))) };
 }
 
 /** Fields shared by key creation and updates (raw form/JSON values). */
@@ -210,6 +230,13 @@ export interface KeyInput {
   ipCheck?: boolean;
   /** Run the DoH resolve-and-classify check (default true). */
   dnsCheck?: boolean;
+  /** Allowed origins may use this key without presenting it (keyless access). */
+  keyless?: boolean;
+  /** Injection fields — raw textarea text or the array forms (see inject.ts). */
+  vars?: unknown;
+  headerRules?: unknown;
+  paramRules?: unknown;
+  allowedHosts?: unknown;
 }
 
 /** API keys need a name — it's the only human handle for the key. */
@@ -219,25 +246,118 @@ function normalizeName(raw: unknown): string {
   return name;
 }
 
+/**
+ * Merge the injection fields of an update with the stored parts. Untouched
+ * fields keep their stored value, blank variable values keep the secret
+ * (the console never renders values), and rules may not end up referencing a
+ * variable that no longer exists.
+ */
+function buildInjection(
+  input: Pick<KeyInput, "vars" | "headerRules" | "paramRules" | "allowedHosts">,
+  previous: InjectionParts,
+): InjectionParts {
+  const vars = input.vars === undefined ? previous.vars : parseVarsInput(input.vars, previous.vars);
+  const names = new Set(vars.map((v) => v.name));
+  const headers =
+    input.headerRules === undefined ? previous.headers : parseRulesInput(input.headerRules, "header", names);
+  const params =
+    input.paramRules === undefined ? previous.params : parseRulesInput(input.paramRules, "param", names);
+  const hosts = input.allowedHosts === undefined ? previous.hosts : parseHostsInput(input.allowedHosts);
+
+  for (const rule of [...headers, ...params]) {
+    for (const ref of collectVarRefs(rule.value ?? "")) {
+      if (!names.has(ref)) {
+        throw new ProxyError(400, `Rule "${rule.name}" references \${${ref}}, which is not a configured variable`);
+      }
+    }
+  }
+
+  const parts = { vars, headers, params, hosts };
+  assertInjectionParts(parts);
+  return parts;
+}
+
+/**
+ * Keyless access is a quota-binding convenience, not a credential: require
+ * explicit origins (never "*") and keep the per-key SSRF opt-outs out of it.
+ */
+function keylessGrants(keyless: boolean, allowedOrigins: string, ipCheck: number, dnsCheck: number): string[] {
+  if (!keyless) return [];
+  const origins = parseOrigins(allowedOrigins);
+  if (origins === null) {
+    throw new ProxyError(400, "Keyless access requires explicit allowed origins (not blank)");
+  }
+  if (origins === "*") {
+    throw new ProxyError(400, 'Keyless access requires explicit allowed origins — "*" would grant every site');
+  }
+  if (ipCheck === 0 || dnsCheck === 0) {
+    throw new ProxyError(400, "Keyless access cannot disable the SSRF checks");
+  }
+  return origins;
+}
+
+interface GrantOwner {
+  key_id: string;
+  name: string | null;
+}
+
+/** An origin can be granted to exactly one key — say who holds it, don't steal it. */
+async function assertOriginGrantsFree(db: D1Database, origins: string[], selfId: string): Promise<void> {
+  for (const origin of origins) {
+    const owner = await db
+      .prepare(
+        "SELECT o.key_id AS key_id, k.name AS name FROM keyless_origins o LEFT JOIN api_keys k ON k.id = o.key_id WHERE o.origin = ?",
+      )
+      .bind(origin)
+      .first<GrantOwner>();
+    if (owner && owner.key_id !== selfId) {
+      throw new ProxyError(400, `Origin ${origin} is already granted to key "${owner.name ?? owner.key_id}"`);
+    }
+  }
+}
+
+/** Replace a key's grant rows ([] clears them, e.g. keyless turned off). */
+async function writeOriginGrants(db: D1Database, keyId: string, origins: string[]): Promise<void> {
+  await db.prepare("DELETE FROM keyless_origins WHERE key_id = ?").bind(keyId).run();
+  for (const origin of origins) {
+    await db.prepare("INSERT OR IGNORE INTO keyless_origins (origin, key_id) VALUES (?, ?)").bind(origin, keyId).run();
+  }
+}
+
 export async function createApiKey(db: D1Database, input: KeyInput): Promise<{ id: string; key: string }> {
   const raw = newRawKey();
   const id = crypto.randomUUID();
+  const allowedOrigins = normalizeOriginsInput(input.allowedOrigins ?? "");
+  const ipCheck = input.ipCheck === false ? 0 : 1;
+  const dnsCheck = input.dnsCheck === false ? 0 : 1;
+  const keyless = input.keyless === true;
+  const injection = buildInjection(input, { vars: [], headers: [], params: [], hosts: [] });
+  const stored = serializeInjection(injection);
+  const grants = keylessGrants(keyless, allowedOrigins ?? "", ipCheck, dnsCheck);
+  if (grants.length) await assertOriginGrantsFree(db, grants, id);
+
   await db
     .prepare(
-      "INSERT INTO api_keys (id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO api_keys (id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, allowed_hosts, keyless) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(
       id,
       await hashKey(raw),
       normalizeName(input.name),
       input.rateLimitPerMin ?? null,
-      normalizeOriginsInput(input.allowedOrigins ?? ""),
+      allowedOrigins,
       normalizeCacheTtlInput(input.cacheTtl ?? ""),
       input.noCache ? 1 : 0,
-      input.ipCheck === false ? 0 : 1,
-      input.dnsCheck === false ? 0 : 1,
+      ipCheck,
+      dnsCheck,
+      stored.vars,
+      stored.headerRules,
+      stored.paramRules,
+      stored.allowedHosts,
+      keyless ? 1 : 0,
     )
     .run();
+  if (grants.length) await writeOriginGrants(db, id, grants);
   return { id, key: raw };
 }
 
@@ -251,9 +371,51 @@ export interface KeyUpdate {
   noCache?: boolean;
   ipCheck?: boolean;
   dnsCheck?: boolean;
+  keyless?: boolean;
+  /** Injection fields — see KeyInput. */
+  vars?: unknown;
+  headerRules?: unknown;
+  paramRules?: unknown;
+  allowedHosts?: unknown;
+}
+
+/** The stored columns an update needs to merge against. */
+interface CurrentKey {
+  vars: string | null;
+  header_rules: string | null;
+  param_rules: string | null;
+  allowed_hosts: string | null;
+  keyless: number;
+  allowed_origins: string | null;
+  ip_check: number;
+  dns_check: number;
 }
 
 export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate): Promise<void> {
+  const touchesInjection =
+    update.vars !== undefined ||
+    update.headerRules !== undefined ||
+    update.paramRules !== undefined ||
+    update.allowedHosts !== undefined;
+  const touchesAuth =
+    update.keyless !== undefined ||
+    update.allowedOrigins !== undefined ||
+    update.ipCheck !== undefined ||
+    update.dnsCheck !== undefined;
+
+  // Partial updates merge with the stored row: blank variable values keep the
+  // secret, untouched injection fields stay, and keyless grants are re-derived.
+  let current: CurrentKey | null = null;
+  if (touchesInjection || touchesAuth) {
+    current = await db
+      .prepare(
+        "SELECT vars, header_rules, param_rules, allowed_hosts, keyless, allowed_origins, ip_check, dns_check FROM api_keys WHERE id = ?",
+      )
+      .bind(id)
+      .first<CurrentKey>();
+    if (!current) throw new ProxyError(404, "Key not found");
+  }
+
   const sets: string[] = [];
   const values: Array<string | number | null> = [];
   if (update.name !== undefined) {
@@ -284,12 +446,38 @@ export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate
     sets.push("dns_check = ?");
     values.push(update.dnsCheck ? 1 : 0);
   }
+  if (touchesInjection) {
+    const stored = serializeInjection(buildInjection(update, readStoredInjection(current)));
+    sets.push("vars = ?", "header_rules = ?", "param_rules = ?", "allowed_hosts = ?");
+    values.push(stored.vars, stored.headerRules, stored.paramRules, stored.allowedHosts);
+  }
+
+  // Validate the keyless policy against the *effective* values (a guard toggle
+  // alone can invalidate keyless), then sync the grant rows to match.
+  let grants: string[] | null = null;
+  if (touchesAuth && current) {
+    const keyless = update.keyless !== undefined ? update.keyless === true : current.keyless === 1;
+    const origins =
+      update.allowedOrigins !== undefined
+        ? normalizeOriginsInput(update.allowedOrigins) ?? ""
+        : current.allowed_origins ?? "";
+    const ipCheck = update.ipCheck !== undefined ? (update.ipCheck ? 1 : 0) : current.ip_check;
+    const dnsCheck = update.dnsCheck !== undefined ? (update.dnsCheck ? 1 : 0) : current.dns_check;
+    grants = keylessGrants(keyless, origins, ipCheck, dnsCheck);
+    if (update.keyless !== undefined) {
+      sets.push("keyless = ?");
+      values.push(keyless ? 1 : 0);
+    }
+    if (grants.length) await assertOriginGrantsFree(db, grants, id);
+  }
+
   if (sets.length === 0) return;
   const res = await db
     .prepare(`UPDATE api_keys SET ${sets.join(", ")} WHERE id = ?`)
     .bind(...values, id)
     .run();
   if ((res.meta?.changes ?? 0) === 0) throw new ProxyError(404, "Key not found");
+  if (grants) await writeOriginGrants(db, id, grants);
 }
 
 export interface BlockedRow {

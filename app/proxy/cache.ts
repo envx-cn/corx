@@ -42,11 +42,17 @@ export function ttlSeconds(env: Env, reqUrl: URL, keyRow?: { cache_ttl?: number 
   return cap;
 }
 
-export type KeyCachePolicy = Pick<{ cache_ttl: number | null; no_cache: number }, "cache_ttl" | "no_cache">;
+export type KeyCachePolicy = Pick<
+  { cache_ttl: number | null; no_cache: number; header_rules?: string | null },
+  "cache_ttl" | "no_cache" | "header_rules"
+>;
 
 export function shouldBypassCache(req: Request, reqUrl: URL, keyRow?: KeyCachePolicy | null): boolean {
   if (req.method !== "GET") return true;
   if (keyRow?.no_cache) return true;
+  // Injected headers make the upstream response caller/key-specific (and may
+  // carry credentials), so that key never reads or writes the shared cache.
+  if (keyRow?.header_rules && keyRow.header_rules !== "[]") return true;
   // Media seeking: a Range request must reach upstream, never be served a full cached body.
   if (req.headers.has("range")) return true;
   // Authenticated requests must never be cached or served from cache: the key

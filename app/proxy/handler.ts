@@ -2,9 +2,19 @@ import type { Context } from "hono";
 import type { Env } from "../lib/types.js";
 import { ProxyError } from "../lib/types.js";
 import type { ProxyVariables } from "../lib/auth.js";
+import { normalizeOrigin } from "../lib/auth.js";
 import { validateTargetUrl, checkDbBlocklist } from "./guard.js";
 import { resolveRawTarget } from "./subdomain.js";
 import { assertPublicHost } from "./dns-check.js";
+import {
+  applyHeaderRules,
+  applyParamRules,
+  assertHostAllowed,
+  hasInjection,
+  hostAllowed,
+  readStoredInjection,
+  varMap,
+} from "./inject.js";
 import {
   getCached,
   putCached,
@@ -45,6 +55,10 @@ const STRIP_REQUEST = new Set([
   "accept-encoding",
 ]);
 
+/** Credentials a redirect must not carry to a different origin (fetch spec
+ * drops Authorization; we also drop the proxy key and cookies). */
+const DROP_ON_CROSS_ORIGIN = new Set(["authorization", "cookie", "x-api-key"]);
+
 const STRIP_RESPONSE = new Set([
   "content-encoding", // we buffer the body; avoid double-decoding issues
   "content-length",
@@ -63,6 +77,8 @@ const STREAM_STRIP_RESPONSE = new Set([
   "upgrade",
   "set-cookie", // don't leak upstream cookies cross-origin
 ]);
+
+const MAX_REDIRECTS = 5;
 
 /**
  * Wrap a stream and count the bytes actually delivered, then call onDone.
@@ -111,10 +127,13 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
   const reqUrl = new URL(c.req.url);
   const ip = clientIp(c.req.raw);
   const country = c.req.header("cf-ipcountry") ?? "";
+  const authVia = c.get("authVia") ?? "";
+  const origin = c.req.header("origin") ?? "";
   let target = "";
   let host = "";
   let apiKeyId: string | null = null;
   let cached = false;
+  let injected = false;
   let reqBytes = c.req.method === "GET" || c.req.method === "HEAD" ? reqUrl.toString().length : 0;
   let resBytes: number | null = null;
 
@@ -133,6 +152,9 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         error,
         reqBytes,
         resBytes,
+        authVia,
+        origin,
+        injected,
       }),
     );
   };
@@ -143,8 +165,24 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     const row = c.get("apiKey");
     const { target: rawTarget, viaSubdomain } = resolveRawTarget(reqUrl, c.env);
     const url = validateTargetUrl(rawTarget, { ipCheck: row?.ip_check !== 0 });
+    // Log the pre-injection URL: injected params may carry secrets.
     target = url.toString();
     host = url.hostname;
+
+    // Confused-deputy guard: an injecting key only reaches its allowed hosts,
+    // so its variables can never be attached to a caller-chosen URL.
+    // Belt and braces: a row with rules but no allowlist (hand-edited DB) is
+    // treated as having no injection at all — fail closed on secrets.
+    const stored = readStoredInjection(row);
+    const injection =
+      hasInjection(stored) && stored.hosts.length === 0
+        ? { ...stored, vars: [], headers: [], params: [] }
+        : stored;
+    const vars = varMap(injection.vars);
+    const hasRules = hasInjection(injection);
+    const manualRedirects = hasRules || injection.hosts.length > 0;
+    assertHostAllowed(host, injection.hosts);
+
     // SSRF: literal checks (above, per-key ip_check) + DNS-resolved IP check
     // (per-key dns_check) + admin blocklist (always on).
     // Blocklist runs even on cache hits — we must not serve cached content of
@@ -158,13 +196,25 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       throw new ProxyError(401, "Valid API key required (X-Api-Key, Authorization: Bearer, or ?key=)");
     }
 
+    // Param rules go into the effective upstream URL *before* the cache key:
+    // two keys injecting different values must not share cached responses.
+    let fetchUrl = url;
+    if (injection.params.length > 0) {
+      fetchUrl = applyParamRules(url, injection.params, vars, host);
+      if (fetchUrl.toString() !== url.toString()) injected = true;
+      if (fetchUrl.toString().length > 8192) {
+        throw new ProxyError(414, "Target URL too long after injecting params");
+      }
+    }
+
     // R2 cache for GET. Runs BEFORE the rate limit so cheap cache hits don't
-    // burn D1 writes/reads (and don't consume the caller's quota).
+    // burn D1 writes/reads (and don't consume the caller's quota). Keys with
+    // header rules are excluded by shouldBypassCache (personalized requests).
     const bypass = shouldBypassCache(c.req.raw, reqUrl, row);
     let cacheKey: string | null = null;
     if (!bypass) {
       try {
-        cacheKey = await cacheKeyForUrl(target);
+        cacheKey = await cacheKeyForUrl(fetchUrl.toString());
         const hit = await getCached(c.env.CACHE_BUCKET, cacheKey);
         if (hit) {
           cached = true;
@@ -181,7 +231,13 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     }
 
     // Rate limit per key (or per IP for anonymous) — cache misses only.
-    const bucket = `rl:${apiKeyId ?? `ip:${ip || "unknown"}`}`;
+    // Keyless traffic is metered per origin+IP so one site's visitors can't
+    // drain the whole key's quota.
+    const normalizedOrigin = normalizeOrigin(origin);
+    const bucket =
+      authVia === "origin" && normalizedOrigin
+        ? `rl:origin:${normalizedOrigin}:ip:${ip || "unknown"}`
+        : `rl:${apiKeyId ?? `ip:${ip || "unknown"}`}`;
     const { limit, remaining } = await checkRateLimit(c.env.DB, c.env, bucket, row?.rate_limit_per_min);
     c.header("X-RateLimit-Limit", String(limit));
     c.header("X-RateLimit-Remaining", String(remaining));
@@ -192,16 +248,28 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const outHeaders = new Headers();
-      c.req.raw.headers.forEach((value, key) => {
-        if (!STRIP_REQUEST.has(key.toLowerCase())) outHeaders.set(key, value);
-      });
-      outHeaders.set("X-Forwarded-For", ip);
-      outHeaders.set("X-Proxied-By", "corx");
-      // Ask upstreams for identity bodies: runtimes decompress fetch() bodies
-      // themselves, so a Content-Encoding header upstream is a double-encoding
-      // hazard downstream (browsers decode it again).
-      outHeaders.set("accept-encoding", "identity");
+      // Client headers + injection rules, rebuilt for every redirect hop so a
+      // rule scoped to api.vendor.com is never attached to a different host.
+      const buildOutHeaders = (forUrl: URL, dropClientAuth: boolean): Headers => {
+        const outHeaders = new Headers();
+        c.req.raw.headers.forEach((value, key) => {
+          const k = key.toLowerCase();
+          if (STRIP_REQUEST.has(k)) return;
+          if (dropClientAuth && DROP_ON_CROSS_ORIGIN.has(k)) return;
+          outHeaders.set(key, value);
+        });
+        if (injection.headers.length > 0) {
+          const applied = applyHeaderRules(outHeaders, injection.headers, vars, forUrl.hostname);
+          if (applied > 0) injected = true;
+        }
+        outHeaders.set("X-Forwarded-For", ip);
+        outHeaders.set("X-Proxied-By", "corx");
+        // Ask upstreams for identity bodies: runtimes decompress fetch() bodies
+        // themselves, so a Content-Encoding header upstream is a double-encoding
+        // hazard downstream (browsers decode it again).
+        outHeaders.set("accept-encoding", "identity");
+        return outHeaders;
+      };
 
       let body: BodyInit | undefined;
       if (c.req.method !== "GET" && c.req.method !== "HEAD") {
@@ -213,30 +281,80 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         body = buf ?? undefined;
       }
 
-      let upstream: Response;
-      try {
-        // One retry on transient network errors (fetch failed). The shared
-        // AbortController keeps the total time bounded by timeoutMs, and the
-        // body buffer is reusable, so a re-sent POST is safe.
+      let upstream: Response | null = null;
+      let stoppedRedirect: string | null = null;
+      let currentUrl = fetchUrl;
+      let method = c.req.method;
+      let hopBody = body;
+      let dropClientAuth = false;
+      let hops = 0;
+
+      // When the key injects anything (or bounds its hosts), redirects are
+      // followed manually: the fetch spec drops `Authorization` on a
+      // cross-origin redirect but keeps custom headers (X-Api-Key, …), which
+      // would leak injected secrets to the redirect target.
+      for (;;) {
+        const outHeaders = buildOutHeaders(currentUrl, dropClientAuth);
         const attempt = (): Promise<Response> =>
-          fetch(url.toString(), {
-            method: c.req.method,
+          fetch(currentUrl.toString(), {
+            method,
             headers: outHeaders,
-            body,
+            body: hopBody,
             signal: controller.signal,
-            redirect: "follow",
+            redirect: manualRedirects ? "manual" : "follow",
           });
         try {
-          upstream = await attempt();
+          // One retry on transient network errors (fetch failed). The shared
+          // AbortController keeps the total time bounded by timeoutMs, and the
+          // body buffer is reusable, so a re-sent POST is safe.
+          try {
+            upstream = await attempt();
+          } catch (err) {
+            if ((err as Error)?.name === "AbortError") throw err;
+            await new Promise((r) => setTimeout(r, 300));
+            upstream = await attempt();
+          }
         } catch (err) {
-          if ((err as Error)?.name === "AbortError") throw err;
-          await new Promise((r) => setTimeout(r, 300));
-          upstream = await attempt();
+          if ((err as Error)?.name === "AbortError") throw new ProxyError(504, "Upstream timed out");
+          throw new ProxyError(502, `Upstream fetch failed: ${(err as Error)?.message ?? "unknown"}`);
         }
-      } catch (err) {
-        if ((err as Error)?.name === "AbortError") throw new ProxyError(504, "Upstream timed out");
-        throw new ProxyError(502, `Upstream fetch failed: ${(err as Error)?.message ?? "unknown"}`);
+
+        if (!manualRedirects) break;
+        const location =
+          upstream.status >= 300 && upstream.status < 400 ? upstream.headers.get("location") : null;
+        if (!location) break;
+
+        let next: URL;
+        try {
+          next = new URL(location, currentUrl);
+        } catch {
+          break;
+        }
+        if (next.protocol !== "http:" && next.protocol !== "https:") break;
+
+        // Outside the key's host allowlist: stop and hand the 3xx to the
+        // caller (absolute Location) — no injected header ever reaches it.
+        if (!hostAllowed(next.hostname, injection.hosts)) {
+          stoppedRedirect = next.toString();
+          break;
+        }
+        if (++hops > MAX_REDIRECTS) throw new ProxyError(502, "Too many redirects");
+
+        // A redirect target inside the allowlist still goes through the same
+        // SSRF checks as the original host (a rebinding name can't sneak in).
+        await checkDbBlocklist(c.env.DB, next.hostname);
+        if (row?.dns_check !== 0) await assertPublicHost(next.hostname);
+
+        if (next.origin !== currentUrl.origin) dropClientAuth = true;
+        if ((method === "POST" && (upstream.status === 301 || upstream.status === 302 || upstream.status === 303))) {
+          method = "GET";
+          hopBody = undefined;
+        }
+        const nextUrl = applyParamRules(next, injection.params, vars, next.hostname);
+        if (nextUrl.toString() !== next.toString()) injected = true;
+        currentUrl = nextUrl;
       }
+      if (!upstream) throw new ProxyError(502, "Upstream fetch failed");
 
       // Stream helper: minimal header stripping so Range/206 + media metadata survive.
       // res_bytes/latency are recorded by countStream when the body finishes
@@ -246,6 +364,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         upstream.headers.forEach((value, key) => {
           if (!STREAM_STRIP_RESPONSE.has(key.toLowerCase())) streamHeaders.set(key, value);
         });
+        if (stoppedRedirect) streamHeaders.set("location", stoppedRedirect);
         streamHeaders.set("X-Corx-Cache", "MISS");
         streamHeaders.set("X-Corx-Target", host);
         streamHeaders.set("X-Corx-Latency-Ms", String(Date.now() - started));
@@ -281,6 +400,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       upstream.headers.forEach((value, key) => {
         if (!STRIP_RESPONSE.has(key.toLowerCase())) resHeaders.set(key, value);
       });
+      if (stoppedRedirect) resHeaders.set("location", stoppedRedirect);
       // Keep redirects inside the proxy in subdomain mode (relative Location
       // resolves against the proxy host, not the target).
       if (viaSubdomain) {

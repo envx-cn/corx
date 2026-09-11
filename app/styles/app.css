@@ -119,11 +119,13 @@ code:not(pre code) {
   @apply bg-black/15 border-black/10 text-inherit;
 }
 
-/* daisyUI 5 outlines focused inputs with 2px of --color-base-content (a black
-   box in this theme). The console wants the quiet look: just the darker
-   focused border, no ring. */
+/* daisyUI 5 outlines focused inputs/textareas with 2px of --color-base-content
+   (a black box in this theme). The console wants the quiet look: just the
+   darker focused border, no ring. */
 .input:focus,
-.input:focus-within {
+.input:focus-within,
+.textarea:focus,
+.textarea:focus-within {
   outline: none;
 }
 

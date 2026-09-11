@@ -42,6 +42,16 @@ export interface ApiKeyRow {
   ip_check: number;
   /** 1 (default) = run the DoH resolve-and-classify check for this key. */
   dns_check: number;
+  /** JSON array of variables ({name,value}); see app/proxy/inject.ts. */
+  vars: string | null;
+  /** JSON array of upstream header rules. */
+  header_rules: string | null;
+  /** JSON array of upstream query-param rules. */
+  param_rules: string | null;
+  /** Comma-separated host patterns this key may reach. NULL/'' = unrestricted. */
+  allowed_hosts: string | null;
+  /** 1 = allowed origins can use this key without presenting it (keyless access). */
+  keyless: number;
   created_at: string;
   revoked_at: string | null;
 }

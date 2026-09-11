@@ -45,6 +45,59 @@ round-trip is what trusted internal keys may want to drop). The D1 blocklist
 and Cloudflare's own private-IP rules for Workers are never bypassed. Skipping
 a guard widens what that key can reach, so both default to on.
 
+**Upstream injection (per key)**
+
+A key can carry variables plus header/query rules that corx applies when
+forwarding — the browser never holds the upstream secret:
+
+| Field | Editor format |
+| --- | --- |
+| Variables | `NAME=value` per line. Values are **write-only**: the panel shows `NAME=` and a blank value keeps the stored secret. |
+| Header rules | `Name: value`, `!Name` removes, `@hosts` scopes the lines below (`@` alone resets), `${VAR}` substitutes, `\${` escapes. |
+| Query rules | `name = value`, `!name` removes. |
+
+- Rules always win over client input — a `set` overrides a spoofed header, a
+  `remove` drops it — and removes run before sets, so results never depend on
+  line order.
+- Hop-by-hop and proxy-owned headers (`Host`, `Content-Length`,
+  `X-Forwarded-For`, `Accept-Encoding`, `CF-*`, …) and the reserved
+  `ttl`/`no-cache`/`key`/`corx-scheme`/`corx-port` query params are rejected at
+  save time, as are unknown `${VAR}` references.
+- **Allowed target hosts** is mandatory once anything is injected: the key can
+  only reach those hosts (exact, `*.suffix`, or an explicit `*`). This is the
+  confused-deputy guard — without it the proxy would attach the secret to any
+  URL a caller supplies. Per-rule `@hosts` narrows a rule further
+  (multi-upstream keys).
+- **Cache:** keys with header rules never read or write the shared R2 cache
+  (personalized/credentialed requests, same rule as client-sent
+  `Authorization`); param-only keys cache under the injected URL, so different
+  secrets never share entries.
+- **Redirects:** injection switches the upstream fetch to manual redirect
+  handling — a cross-origin redirect keeps custom headers (e.g. `X-Api-Key`)
+  per the fetch spec, which would leak secrets. In-scope redirects are followed
+  with the rules re-applied per hop; a redirect that leaves the allowed hosts
+  is returned to the caller with an absolute `Location` and never fetched.
+- Secrets stay out of logs and errors: `target_url` in `request_logs` is the
+  pre-injection URL, `X-Corx-Target` carries only the host, and variable values
+  are masked on every read path (`GET /api/keys` returns names only).
+
+**Keyless access (per key)**
+
+Turn on `keyless` and browsers from the key's **allowed origins** can call the
+proxy without sending the key at all:
+
+- `Origin` is matched exactly against the origins the key already declares;
+  blank and `*` are rejected (keyless needs an explicit list), and an origin
+  can be granted to exactly one key — the second save fails naming the holder.
+- The SSRF opt-outs (`ipCheck`/`dnsCheck` off) cannot be combined with keyless.
+- Keyless requests are rate-limited per `origin + IP` (not per key), and logs
+  record `auth_via = origin` plus the request `Origin`.
+- **Honest caveat:** this is quota attribution, not authentication. Browsers
+  cannot forge `Origin`, but non-browser clients can — it is exactly as strict
+  as shipping the key in a frontend, which is the model corx targets. Anyone
+  who can forge a granted origin can do whatever the key may do (including
+  injected variables), so keep the allowed hosts tight.
+
 **Cache safety:** requests carrying `Authorization` / `Cookie` headers never
 read or write the cache (the key is the URL only, so user-specific responses
 would leak across callers). Upstream responses marked `Cache-Control:
@@ -140,8 +193,9 @@ where needed (stats tabs):
 Dashboard (24h requests, traffic in/out, cache bandwidth saved, Requests per
 hour chart, a **Breakdown** selector with vertical bar charts for status /
 method / country, top hosts/keys, recent errors) · API keys (create and edit
-in a modal panel — name, rate limit, per-key origins/cache policy and SSRF
-checks; the raw key is shown once; delete asks you to type the key name) ·
+in a modal panel — name, rate limit, per-key origins/cache policy, keyless
+access, allowed target hosts and upstream injection (variables + header/query
+rules); the raw key is shown once; delete asks you to type the key name) ·
 Logs (per-request size, with a 1h–7d lookback **Window** slider that re-filters
 on release) · Host
 blocklist (add inline, remove behind a confirm dialog; logout confirms too) ·
@@ -208,6 +262,19 @@ curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: applicat
 # tip: browsers don't send API keys on OPTIONS preflights — pass the key via
 # ?key= if preflights must be evaluated per-key, or keep the global permissive
 
+# upstream injection + the host allowlist it requires (values are write-only):
+curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"allowedHosts":"api.vendor.com, *.vendor.com",
+       "vars":[{"name":"UPSTREAM_TOKEN","value":"sk-live-…"}],
+       "headerRules":"Authorization: Bearer ${UPSTREAM_TOKEN}",
+       "paramRules":"api_key = ${UPSTREAM_TOKEN}"}' \
+  https://corx.<you>.workers.dev/api/keys/KEY_ID
+
+# keyless access: these origins may call without presenting the key
+# (blank/"*" origins are rejected; one key per origin)
+curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"keyless":true,"allowedOrigins":"https://app.example"}' \
+  https://corx.<you>.workers.dev/api/keys/KEY_ID
 # revoke (kill switch; the console's Delete removes the row for good) / block hosts
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" https://corx.<you>.workers.dev/api/keys/KEY_ID/revoke
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
@@ -220,13 +287,17 @@ curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: applicati
 ```
 browser ──► corx (Worker)
               ├─ CORS preflight / origin check (proxy routes only)
+              ├─ identity: presented key → keyless Origin grant → anonymous
               ├─ SSRF guard (private/reserved IPs incl. IPv6 + CGNAT,
               │    DNS-resolved IP check via Cloudflare DoH, D1 blocklist)
               ├─ API key? ──► D1 api_keys
-              ├─ GET cache? ──► R2 corx-cache (SHA-256 of URL, TTL metadata;
+              ├─ host allowlist (per key; mandatory with injection)
+              ├─ inject params (effective URL) + headers (rules always win)
+              ├─ GET cache? ──► R2 corx-cache (header-rule keys bypass;
               │    auth'd requests & no-store/vary responses never cached)
               ├─ rate limit (misses only) ──► D1 rate_windows (fixed window)
-              ├─ fetch upstream (timeout, size caps, header filtering)
+              ├─ fetch upstream (timeout, size caps, header filtering,
+              │    manual redirects when the key injects/bounds hosts)
               └─ log ──► D1 request_logs (waitUntil, pruned after 30d by cron)
 ```
 
@@ -276,7 +347,7 @@ app/              HonoX frontend (entry + console UI + API routes)
   console/      dash-style shell, pages, landing (JSX server components)
   lib/format.ts esc/humanBytes helpers
   proxy/        proxy feature: handler, guard (SSRF), subdomain mode,
-                CORS, R2 cache, D1 rate limit
+                CORS, R2 cache, D1 rate limit, inject (variables + rules)
   lib/          shared kernel (no HTTP wiring): types, utils, API-key
                 auth, Access identity, sessions, request logging,
                 D1 query helpers, formatting
@@ -284,6 +355,7 @@ app/              HonoX frontend (entry + console UI + API routes)
   cors.ts     origin allowlist + preflight middleware
   guard.ts    URL extraction + SSRF protection
   cache.ts    R2 GET cache
+  inject.ts   variables + header/query injection (parse at save, evaluate per request)
   ratelimit.ts  D1 fixed-window rate limit
   auth.ts     API key helpers
   db.ts       request logging

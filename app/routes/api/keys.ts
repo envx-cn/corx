@@ -1,12 +1,13 @@
 import { Hono } from "hono";
 import type { Env } from "../../lib/types.js";
 import { ProxyError } from "../../lib/types.js";
-import { createApiKey, queryKeys } from "../../lib/admin.js";
+import { createApiKey, queryKeys, redactKeyRow } from "../../lib/admin.js";
 import type { KeyInput } from "../../lib/admin.js";
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.get("/", async (c) => c.json({ keys: await queryKeys(c.env.DB) }));
+// Variable values are write-only: reads return names only (see redactKeyRow).
+app.get("/", async (c) => c.json({ keys: (await queryKeys(c.env.DB)).map(redactKeyRow) }));
 
 app.post("/", async (c) => {
   const body = await c.req.json<Partial<KeyInput>>().catch(() => ({}) as Partial<KeyInput>);

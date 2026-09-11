@@ -14,6 +14,12 @@ export interface KeyFormValues {
   noCache: boolean;
   ipCheck: boolean;
   dnsCheck: boolean;
+  keyless: boolean;
+  allowedHosts: string;
+  /** Editor text; variable values stay blank ("blank = keep existing"). */
+  vars: string;
+  headerRules: string;
+  paramRules: string;
 }
 
 /** UI strings for the key panel (injected from the server dict). */
@@ -35,6 +41,18 @@ export interface KeyPanelI18n {
   ipCheckHint: string;
   dnsCheck: string;
   dnsCheckHint: string;
+  keyless: string;
+  keylessHint: string;
+  allowedHosts: string;
+  allowedHostsPh: string;
+  injection: string;
+  injectionHint: string;
+  vars: string;
+  varsPh: string;
+  headerRules: string;
+  headerRulesPh: string;
+  paramRules: string;
+  paramRulesPh: string;
   danger: string;
   dangerHint: string;
   delete: string;
@@ -177,6 +195,17 @@ export default function KeyPanel(props: {
                   class="input input-bordered w-full"
                 />
               </Field>
+              <div class="sm:col-span-2 rounded-box border border-base-300 p-3">
+                <Check name="keyless" label={labels.keyless} hint={labels.keylessHint} checked={v?.keyless ?? false} />
+              </div>
+              <Field label={labels.allowedHosts} class="sm:col-span-2">
+                <input
+                  name="allowedHosts"
+                  value={v?.allowedHosts ?? ""}
+                  placeholder={labels.allowedHostsPh}
+                  class="input input-bordered w-full font-mono text-xs"
+                />
+              </Field>
               <Field label={labels.cacheTtl}>
                 <input
                   name="cacheTtl"
@@ -200,6 +229,45 @@ export default function KeyPanel(props: {
               <div class="space-y-3">
                 <Check name="ipCheck" label={labels.ipCheck} hint={labels.ipCheckHint} checked={v?.ipCheck ?? true} />
                 <Check name="dnsCheck" label={labels.dnsCheck} hint={labels.dnsCheckHint} checked={v?.dnsCheck ?? true} />
+              </div>
+            </div>
+
+            {/* Upstream injection: variables are write-only — the editor shows
+                "NAME=" and a blank value keeps the stored secret. */}
+            <div class="mt-4 rounded-box border border-base-300 p-3">
+              <div class="text-xs font-medium uppercase tracking-wide text-base-content/50">{labels.injection}</div>
+              <p class="mt-1 text-xs text-base-content/60">{labels.injectionHint}</p>
+              <div class="mt-3 grid gap-3">
+                <Field label={labels.vars}>
+                  <textarea
+                    name="vars"
+                    rows={2}
+                    placeholder={labels.varsPh}
+                    class="textarea textarea-bordered w-full font-mono text-xs leading-5"
+                  >
+                    {v?.vars ?? ""}
+                  </textarea>
+                </Field>
+                <Field label={labels.headerRules}>
+                  <textarea
+                    name="headerRules"
+                    rows={3}
+                    placeholder={labels.headerRulesPh}
+                    class="textarea textarea-bordered w-full font-mono text-xs leading-5"
+                  >
+                    {v?.headerRules ?? ""}
+                  </textarea>
+                </Field>
+                <Field label={labels.paramRules}>
+                  <textarea
+                    name="paramRules"
+                    rows={2}
+                    placeholder={labels.paramRulesPh}
+                    class="textarea textarea-bordered w-full font-mono text-xs leading-5"
+                  >
+                    {v?.paramRules ?? ""}
+                  </textarea>
+                </Field>
               </div>
             </div>
 

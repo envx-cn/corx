@@ -7,6 +7,7 @@ import { DataTable, EmptyRow } from "../../components/table.js";
 import { RelTime } from "../../components/time.js";
 import CopyButton from "../../islands/copy-button.js";
 import KeyPanel, { type KeyFormValues, type KeyPanelI18n } from "../../islands/key-panel.js";
+import { readStoredInjection, rulesToText, varsToText } from "../../proxy/inject.js";
 import { consoleT } from "../../lib/i18n/hono.js";
 import type { TFunc } from "../../lib/i18n/locale.js";
 
@@ -31,6 +32,11 @@ app.post("/", async (c) => {
       noCache: values.noCache,
       ipCheck: values.ipCheck,
       dnsCheck: values.dnsCheck,
+      keyless: values.keyless,
+      allowedHosts: values.allowedHosts,
+      vars: values.vars,
+      headerRules: values.headerRules,
+      paramRules: values.paramRules,
     });
     // The raw key is shown once — re-render with it, don't redirect.
     return c.render(<KeysContent keys={await queryKeys(c.env.DB)} newKey={{ id, key, name: values.name }} t={t} />, {
@@ -58,6 +64,11 @@ app.post("/:id", async (c) => {
       noCache: values.noCache,
       ipCheck: values.ipCheck,
       dnsCheck: values.dnsCheck,
+      keyless: values.keyless,
+      allowedHosts: values.allowedHosts,
+      vars: values.vars,
+      headerRules: values.headerRules,
+      paramRules: values.paramRules,
     });
     return c.redirect("/console/keys", 302);
   } catch (err) {
@@ -112,6 +123,11 @@ function readKeyForm(form: Record<string, unknown>): KeyFormValues {
     noCache: on("noCache"),
     ipCheck: panel ? on("ipCheck") : true,
     dnsCheck: panel ? on("dnsCheck") : true,
+    keyless: on("keyless"),
+    allowedHosts: String(form["allowedHosts"] ?? ""),
+    vars: String(form["vars"] ?? ""),
+    headerRules: String(form["headerRules"] ?? ""),
+    paramRules: String(form["paramRules"] ?? ""),
   };
 }
 
@@ -124,6 +140,7 @@ function parseRate(raw: string): number | null {
 
 /** A key row as panel values (used as the edit panel's initial state). */
 function rowValues(k: KeyRow): KeyFormValues {
+  const injection = readStoredInjection(k);
   return {
     name: k.name,
     rateLimitPerMin: k.rate_limit_per_min != null ? String(k.rate_limit_per_min) : "",
@@ -132,7 +149,18 @@ function rowValues(k: KeyRow): KeyFormValues {
     noCache: !!k.no_cache,
     ipCheck: !!k.ip_check,
     dnsCheck: !!k.dns_check,
+    keyless: !!k.keyless,
+    allowedHosts: k.allowed_hosts ?? "",
+    vars: varsToText(injection.vars),
+    headerRules: rulesToText(injection.headers, "header"),
+    paramRules: rulesToText(injection.params, "param"),
   };
+}
+
+/** How many injection entries a key carries (badge on the keys table). */
+function injectionCount(k: KeyRow): number {
+  const injection = readStoredInjection(k);
+  return injection.vars.length + injection.headers.length + injection.params.length;
 }
 
 function cacheText(k: KeyRow, t: TFunc): string {
@@ -160,6 +188,18 @@ function panelLabels(t: TFunc): KeyPanelI18n {
     ipCheckHint: t("console.keys.ipCheckHint"),
     dnsCheck: t("console.keys.dnsCheck"),
     dnsCheckHint: t("console.keys.dnsCheckHint"),
+    keyless: t("console.keys.keyless"),
+    keylessHint: t("console.keys.keylessHint"),
+    allowedHosts: t("console.keys.allowedHosts"),
+    allowedHostsPh: t("console.keys.allowedHostsPh"),
+    injection: t("console.keys.injection"),
+    injectionHint: t("console.keys.injectionHint"),
+    vars: t("console.keys.vars"),
+    varsPh: t("console.keys.varsPh"),
+    headerRules: t("console.keys.headerRules"),
+    headerRulesPh: t("console.keys.headerRulesPh"),
+    paramRules: t("console.keys.paramRules"),
+    paramRulesPh: t("console.keys.paramRulesPh"),
     danger: t("console.keys.danger"),
     dangerHint: t("console.keys.dangerHint"),
     delete: t("console.keys.delete"),
@@ -239,7 +279,17 @@ function KeysContent(props: {
           ) : (
             keys.map((k) => (
               <tr>
-                <td class="whitespace-nowrap">{k.name || <span class="text-base-content/40">—</span>}</td>
+                <td class="whitespace-nowrap">
+                  {k.name || <span class="text-base-content/40">—</span>}
+                  {k.keyless ? (
+                    <span class="badge badge-outline badge-sm ml-2 align-middle">{t("console.keys.badgeKeyless")}</span>
+                  ) : null}
+                  {injectionCount(k) > 0 ? (
+                    <span class="badge badge-outline badge-sm ml-2 align-middle">
+                      {t("console.keys.badgeInject", { n: injectionCount(k) })}
+                    </span>
+                  ) : null}
+                </td>
                 <td class="tabular-nums">{k.rate_limit_per_min ?? t("console.keys.default")}</td>
                 <td>
                   <code class="text-base-content/60">{k.allowed_origins || t("console.keys.global")}</code>
@@ -283,6 +333,7 @@ function KeysContent(props: {
           }),
         }}
       />
+      <p class="mt-1 text-xs text-base-content/50">{t("console.keys.hintInjection")}</p>
     </>
   );
 }

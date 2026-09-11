@@ -118,7 +118,13 @@ describe("route wiring (integration)", () => {
   it("authenticated console pages render; creating a key shows the Copy island", async () => {
     const res = await call("/console/keys", { headers: { cookie: `corx_session=${sessionCookie}` } });
     expect(res.status).toBe(200);
-    expect(await res.text()).toContain("API keys");
+    const page = await res.text();
+    expect(page).toContain("API keys");
+    // The key panel carries the injection + keyless fields (island SSR).
+    expect(page).toContain("Upstream injection");
+    expect(page).toContain("Keyless access");
+    expect(page).toContain('name="headerRules"');
+    expect(page).toContain('name="allowedHosts"');
 
     // Creating a key renders the CopyButton island (assert SSR output — the
     // hydration meta itself is injected at build time by the honox plugin).
@@ -189,6 +195,185 @@ describe("route wiring (integration)", () => {
     expect(html).toContain("Open console");
     expect(html).toContain("We can&#39;t find the page you were looking for");
     expect(html).toContain("/random/path");
+  });
+});
+
+describe("upstream injection + keyless access (integration)", () => {
+  interface UpstreamCall {
+    url: string;
+    headers: Headers;
+  }
+
+  /** fetch stub: answers DoH, records (and answers) upstream calls. */
+  function stubFetch(handler: (url: string, call: UpstreamCall) => Response | Promise<Response>): UpstreamCall[] {
+    const calls: UpstreamCall[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("cloudflare-dns.com")) {
+          return new Response(JSON.stringify({ Answer: [{ type: 1, data: "1.2.3.4" }] }), { status: 200 });
+        }
+        const call: UpstreamCall = { url, headers: new Headers(init?.headers) };
+        calls.push(call);
+        return handler(url, call);
+      }),
+    );
+    return calls;
+  }
+
+  /** Env whose D1 answers key + keyless-origin lookups, capturing rate buckets. */
+  function envForKey(row: Record<string, unknown>, opts: { grants?: boolean } = {}) {
+    const rateBinds: unknown[][] = [];
+    const stmt = (sql: string) => {
+      const s = {
+        bind: (...values: unknown[]) => {
+          if (sql.includes("INTO rate_windows")) rateBinds.push(values);
+          return s;
+        },
+        run: async () => ({ meta: { changes: 0 } }),
+        first: async () => {
+          if (sql.includes("FROM api_keys")) return row;
+          if (sql.includes("FROM keyless_origins") && opts.grants !== false) return row;
+          return null;
+        },
+        all: async () => ({ results: [] }),
+      };
+      return s;
+    };
+    return { env: { ...env, DB: { prepare: stmt } } as unknown as Env, rateBinds };
+  }
+
+  const injectingRow = {
+    id: "k1",
+    key_hash: "h",
+    name: "vendor",
+    rate_limit_per_min: null,
+    allowed_origins: null,
+    cache_ttl: null,
+    no_cache: 0,
+    ip_check: 1,
+    dns_check: 1,
+    vars: JSON.stringify([{ name: "TOKEN", value: "sk-live-1" }]),
+    header_rules: JSON.stringify([{ action: "set", name: "Authorization", value: "Bearer ${TOKEN}" }]),
+    param_rules: JSON.stringify([{ action: "set", name: "api_key", value: "${TOKEN}" }]),
+    allowed_hosts: "api.vendor.com",
+    keyless: 0,
+    created_at: "2026-01-01T00:00:00.000Z",
+    revoked_at: null,
+  };
+
+  it("injects headers + params and overrides client-supplied values", async () => {
+    const calls = stubFetch(() => new Response("ok", { status: 200 }));
+    const { env: keyed } = envForKey(injectingRow);
+    const res = await call("/fetch?url=https://api.vendor.com/data", { headers: { "x-api-key": "corx_k" } }, keyed);
+
+    expect(res.status).toBe(200);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.headers.get("authorization")).toBe("Bearer sk-live-1");
+    expect(calls[0]?.url).toBe("https://api.vendor.com/data?api_key=sk-live-1");
+    // The pre-injection URL is what gets logged — no secrets in request_logs.
+    expect(res.headers.get("x-corx-target")).toBe("api.vendor.com");
+  });
+
+  it("client headers can never spoof an injected one", async () => {
+    const calls = stubFetch(() => new Response("ok", { status: 200 }));
+    const { env: keyed } = envForKey(injectingRow);
+    await call(
+      "/fetch?url=https://api.vendor.com/data",
+      { headers: { "x-api-key": "corx_k", authorization: "Bearer attacker" } },
+      keyed,
+    );
+    expect(calls[0]?.headers.get("authorization")).toBe("Bearer sk-live-1");
+  });
+
+  it("refuses a target outside the key's allowed hosts before any fetch", async () => {
+    const calls = stubFetch(() => new Response("should not happen", { status: 200 }));
+    const { env: keyed } = envForKey(injectingRow);
+    const res = await call("/fetch?url=https://evil.test/steal", { headers: { "x-api-key": "corx_k" } }, keyed);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining("not allowed") });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("stops at a redirect that leaves the allowed hosts — no header leak", async () => {
+    const calls = stubFetch(() => new Response(null, { status: 302, headers: { location: "https://evil.test/steal" } }));
+    const { env: keyed } = envForKey(injectingRow);
+    const res = await call("/fetch?url=https://api.vendor.com/data", { headers: { "x-api-key": "corx_k" } }, keyed);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("https://evil.test/steal");
+    expect(calls).toHaveLength(1); // evil.test was never fetched
+  });
+
+  it("follows an in-scope redirect and re-applies the rules on every hop", async () => {
+    let hop = 0;
+    const calls = stubFetch(() => {
+      hop++;
+      if (hop === 1) return new Response(null, { status: 302, headers: { location: "/next" } });
+      return new Response("done", { status: 200 });
+    });
+    const { env: keyed } = envForKey(injectingRow);
+    const res = await call("/fetch?url=https://api.vendor.com/data", { headers: { "x-api-key": "corx_k" } }, keyed);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("done");
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.url).toBe("https://api.vendor.com/next?api_key=sk-live-1");
+    expect(calls[1]?.headers.get("authorization")).toBe("Bearer sk-live-1");
+  });
+
+  it("header rules keep the key out of the shared cache", async () => {
+    const calls = stubFetch(() => new Response("ok", { status: 200 }));
+    const puts: unknown[] = [];
+    const { env: keyed } = envForKey(injectingRow);
+    const withBucket = {
+      ...keyed,
+      CACHE_BUCKET: {
+        get: async () => null,
+        put: async (...args: unknown[]) => {
+          puts.push(args);
+        },
+        list: async () => ({ objects: [] }),
+        delete: async () => undefined,
+      },
+    } as unknown as Env;
+    const res = await call("/fetch?url=https://api.vendor.com/data", { headers: { "x-api-key": "corx_k" } }, withBucket);
+    expect(res.status).toBe(200);
+    expect(calls).toHaveLength(1);
+    expect(puts).toHaveLength(0);
+  });
+
+  it("never injects without a host allowlist, even if the row was hand-edited", async () => {
+    const calls = stubFetch(() => new Response("ok", { status: 200 }));
+    const { env: keyed } = envForKey({ ...injectingRow, allowed_hosts: null });
+    const res = await call("/fetch?url=https://example.com/data", { headers: { "x-api-key": "corx_k" } }, keyed);
+    expect(res.status).toBe(200);
+    expect(calls[0]?.headers.get("authorization")).toBeNull();
+    expect(calls[0]?.url).toBe("https://example.com/data");
+  });
+
+  it("keyless access resolves the key from the Origin and meters per origin+IP", async () => {
+    const keylessRow = { ...injectingRow, keyless: 1, allowed_origins: "https://app.example", vars: "[]", header_rules: "[]", param_rules: "[]", allowed_hosts: null };
+    const calls = stubFetch(() => new Response("ok", { status: 200 }));
+    const { env: keyed, rateBinds } = envForKey(keylessRow);
+    const res = await call(
+      "/fetch?url=https://example.com/data",
+      { headers: { origin: "https://app.example", "cf-connecting-ip": "203.0.113.9" } },
+      { ...keyed, REQUIRE_API_KEY: "true" } as Env,
+    );
+    expect(res.status).toBe(200);
+    expect(calls).toHaveLength(1);
+    expect(rateBinds[0]?.[0]).toBe("rl:origin:https://app.example:ip:203.0.113.9");
+  });
+
+  it("keyless access still 401s an origin without a grant", async () => {
+    const keylessRow = { ...injectingRow, keyless: 1, allowed_origins: "https://app.example", vars: "[]", header_rules: "[]", param_rules: "[]", allowed_hosts: null };
+    const { env: keyed } = envForKey(keylessRow, { grants: false });
+    const res = await call(
+      "/fetch?url=https://example.com/data",
+      { headers: { origin: "https://evil.test" } },
+      { ...keyed, REQUIRE_API_KEY: "true" } as Env,
+    );
+    expect(res.status).toBe(401);
   });
 });
 
