@@ -440,6 +440,20 @@ export function readStoredInjection(row: InjectionRow | null | undefined): Injec
   };
 }
 
+/**
+ * Effective injection parts for one request. Belt and braces: a row with
+ * rules but no host allowlist (hand-edited DB) is treated as having no
+ * injection at all — fail closed on secrets. Shared by the proxy handler and
+ * the console playground preview so both tell the same story.
+ */
+export function effectiveInjection(row: InjectionRow | null | undefined): InjectionParts {
+  const stored = readStoredInjection(row);
+  if (hasInjection(stored) && stored.hosts.length === 0) {
+    return { ...stored, vars: [], headers: [], params: [] };
+  }
+  return stored;
+}
+
 /** Loose parse of a stored host list — never throws, drops invalid entries. */
 export function splitHosts(raw: string | null | undefined): string[] {
   if (!raw) return [];

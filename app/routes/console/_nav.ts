@@ -1,5 +1,6 @@
 import dashboardSvg from "lucide-static/icons/layout-dashboard.svg?raw";
 import keySvg from "lucide-static/icons/key-round.svg?raw";
+import playgroundSvg from "lucide-static/icons/flask-conical.svg?raw";
 import logsSvg from "lucide-static/icons/scroll-text.svg?raw";
 import blockedSvg from "lucide-static/icons/shield-alert.svg?raw";
 import type { MessageKey } from "../../lib/i18n/messages.js";
@@ -16,6 +17,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { href: "/console/", label: "console.nav.overview", svg: dashboardSvg },
   { href: "/console/keys", label: "console.nav.keys", svg: keySvg },
+  { href: "/console/playground", label: "console.nav.playground", svg: playgroundSvg },
   { href: "/console/logs", label: "console.nav.logs", svg: logsSvg },
   { href: "/console/blocked", label: "console.nav.blocked", svg: blockedSvg },
 ];

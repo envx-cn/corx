@@ -196,6 +196,15 @@ method / country, top hosts/keys, recent errors) · API keys (create and edit
 in a modal panel — name, rate limit, per-key origins/cache policy, keyless
 access, allowed target hosts and upstream injection (variables + header/query
 rules); the raw key is shown once; delete asks you to type the key name) ·
+Playground (compose a proxy request — method, route style `/fetch` /
+`/proxy/*` / bare path / simulated subdomain, headers, body, `ttl` / `no-cache`,
+Origin, simulated client IP, anonymous / stored / pasted key — and inspect the
+full response: status, every header, body (pretty JSON, base64 for binary),
+latency, size, cache HIT/MISS and an injection preview with secrets masked.
+Runs execute in-process through the real pipeline, so auth, SSRF guards, rate
+limiting, caching and `request_logs` all apply, while stored keys never expose
+their raw value; one-click presets cover cache, SSRF blocks, CORS preflight,
+Range and POST echo, and recent runs stay in localStorage) ·
 Logs (per-request size, with a 1h–7d lookback **Window** slider that re-filters
 on release) · Host
 blocklist (add inline, remove behind a confirm dialog; logout confirms too) ·
