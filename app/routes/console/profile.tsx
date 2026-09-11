@@ -20,7 +20,7 @@ function ProfileContent(props: { user: { email: string; via: "access" | "token" 
   return (
     <>
       <h1 class="text-3xl font-semibold tracking-tight mb-4">{t("console.title.profile")}</h1>
-      <div class="bg-base-100 border border-base-300 rounded-box p-6 max-w-2xl">
+      <div class="bg-base-100 border border-base-300 rounded-box p-6">
         <div class="flex items-center gap-4">
           <span class="size-12 rounded-full bg-black/10 text-base font-semibold text-base-content/80 inline-flex items-center justify-center">
             {initial}
@@ -44,7 +44,7 @@ function ProfileContent(props: { user: { email: string; via: "access" | "token" 
         </dl>
       </div>
       <p
-        class="text-xs text-base-content/50 mt-4 max-w-2xl"
+        class="text-xs text-base-content/50 mt-4"
         dangerouslySetInnerHTML={{ __html: t("console.profile.hint", { code: "<code>ADMIN_TOKEN</code>" }) }}
       />
     </>

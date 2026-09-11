@@ -142,8 +142,15 @@ hour chart, a **Breakdown** selector with vertical bar charts for status /
 method / country, top hosts/keys, recent errors) · API keys (create and edit
 in a modal panel — name, rate limit, per-key origins/cache policy and SSRF
 checks; the raw key is shown once; delete asks you to type the key name) ·
-Logs (per-request size) · Host
-blocklist · Profile · Billing.
+Logs (per-request size, with a 1h–7d lookback **Window** slider that re-filters
+on release) · Host
+blocklist (add inline, remove behind a confirm dialog; logout confirms too) ·
+Profile · Billing.
+
+Timestamps are rendered relative ("5m ago") with the exact UTC value on hover,
+and the console tightens itself on small screens: secondary table columns are
+hidden, long hosts truncate, and every page stays inside the viewport (tables
+scroll horizontally on their own).
 
 Shell: the sidebar collapses to an icon rail on desktop — hovering a nav item
 floats the real menu open without pushing the content, and the pin persists in
@@ -184,6 +191,8 @@ All `/api/*` need `Authorization: Bearer <ADMIN_TOKEN>`.
 # stats (last 24h) + recent logs
 curl -H "Authorization: Bearer $ADMIN_TOKEN" https://corx.<you>.workers.dev/api/stats
 curl -H "Authorization: Bearer $ADMIN_TOKEN" 'https://corx.<you>.workers.dev/api/logs?limit=20'
+# same endpoint, but only the last 24h (1–168 = 7 days):
+curl -H "Authorization: Bearer $ADMIN_TOKEN" 'https://corx.<you>.workers.dev/api/logs?limit=50&hours=24'
 
 # create a key (raw key shown once!; "name" is required)
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
@@ -249,7 +258,11 @@ app/              HonoX frontend (entry + console UI + API routes)
                 form fields are never re-rendered while typing. A second
                 dialog (delete confirmation) is a sibling of the first,
                 never a descendant — daisyUI's .modal-box is scaled, which
-                would reposition a fixed-position child.
+                would reposition a fixed-position child. The <honox-island>
+                wrapper is made display:contents in app.css so an island's
+                own root is what participates in layout (flex rows, daisyUI
+                menu items); confirm-button.tsx also reparents its dialog to
+                <body>, since a closed dropdown is display:none.
   routes/index.ts     landing page file route (subdomain-aware)
   components/   shared presentational primitives (badges, chart, lucide,
                 table) — console-only chrome lives in routes/console/

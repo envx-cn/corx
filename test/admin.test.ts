@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createApiKey, updateApiKey } from "../app/lib/admin.js";
+import { createApiKey, queryLogs, queryStats, updateApiKey } from "../app/lib/admin.js";
 import { ProxyError } from "../app/lib/types.js";
 
 /**
@@ -16,9 +16,12 @@ function recordingDb() {
   const calls: Call[] = [];
   const db = {
     prepare(sql: string) {
+      // Recorded on prepare (queryStats never binds); bind() fills the values.
+      const call: Call = { sql, values: [] };
+      calls.push(call);
       const stmt = {
         bind(...values: unknown[]) {
-          calls.push({ sql, values });
+          call.values = values;
           return stmt;
         },
         run: async () => ({ meta: { changes: 1 } }),
@@ -70,7 +73,7 @@ describe("createApiKey", () => {
   it("requires a name", async () => {
     const { db, calls } = recordingDb();
     await expect(createApiKey(db, { name: "   ", rateLimitPerMin: null })).rejects.toBeInstanceOf(ProxyError);
-    expect(calls).toHaveLength(0);
+    expect(calls.every((c) => c.values.length === 0)).toBe(true); // never bound, so never run
   });
 });
 
@@ -88,5 +91,46 @@ describe("updateApiKey", () => {
     const { db, calls } = recordingDb();
     await expect(updateApiKey(db, "key-1", { name: "  " })).rejects.toBeInstanceOf(ProxyError);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("queryLogs", () => {
+  it("caps the row limit and skips the time filter by default", async () => {
+    const { db, calls } = recordingDb();
+    await queryLogs(db, {});
+    expect(calls[0]?.sql).not.toContain("WHERE");
+    expect(calls[0]?.sql).toContain("ORDER BY created_at DESC, id DESC");
+    expect(calls[0]?.values).toEqual([50]);
+
+    await queryLogs(db, { limit: 9999 });
+    expect(calls[1]?.values).toEqual([200]);
+  });
+
+  it("filters by a clamped hour window, comparing like-for-like timestamps", async () => {
+    const { db, calls } = recordingDb();
+    await queryLogs(db, { hours: 24, limit: 200 });
+    // The boundary must use the stored format ("…T…Z", milliseconds): rows are
+    // ISO strings, and datetime('now', …) ("… …", no ms) would sort behind them.
+    expect(calls[0]?.sql).toContain("created_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)");
+    expect(calls[0]?.sql).not.toContain("datetime('now'");
+    expect(calls[0]?.values).toEqual(["-24 hours", 200]);
+
+    await queryLogs(db, { hours: 10_000 });
+    expect(calls[1]?.values).toEqual(["-168 hours", 50]);
+
+    await queryLogs(db, { hours: 0.2 });
+    expect(calls[2]?.values).toEqual(["-1 hours", 50]);
+  });
+});
+
+describe("queryStats", () => {
+  it("filters the 24h window with the stored ISO format (not datetime())", async () => {
+    const { db, calls } = recordingDb();
+    await queryStats(db);
+    expect(calls.length).toBeGreaterThan(4);
+    for (const c of calls) expect(c.sql).not.toContain("datetime('now'");
+    expect(
+      calls.some((c) => c.sql.includes("created_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')")),
+    ).toBe(true);
   });
 });

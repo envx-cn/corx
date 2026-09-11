@@ -214,7 +214,7 @@ export default function KeyPanel(props: {
                 </div>
                 <button
                   type="button"
-                  class="btn btn-sm btn-error btn-outline shrink-0"
+                  class="btn btn-error btn-outline shrink-0"
                   onClick={() => confirmRef.current?.showModal()}
                 >
                   {labels.delete}

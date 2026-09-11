@@ -6,6 +6,7 @@ import type { Stats } from "../../lib/admin.js";
 import { humanBytes } from "../../lib/format.js";
 import { MethodBadge, StatusBadge } from "../../components/badges.js";
 import { DataTable, EmptyRow } from "../../components/table.js";
+import { RelTime } from "../../components/time.js";
 import { HourlyChart } from "../../components/chart.js";
 import StatsTabs, { type StatsTabsI18n } from "../../islands/stats-tabs.js";
 import type { BreakdownRow } from "../../islands/stats-tabs.js";
@@ -114,7 +115,9 @@ function DashboardContent(props: { stats: Stats; keyCount: number; blockedCount:
               stats.topHosts.map((r) => (
                 <tr>
                   <td>
-                    <code>{r.target_host}</code>
+                    <code class="inline-block max-w-[11rem] truncate align-bottom sm:max-w-[22rem]" title={r.target_host}>
+                      {r.target_host}
+                    </code>
                   </td>
                   <td class="text-right tabular-nums">{r.n}</td>
                   <td class="text-right tabular-nums">{humanBytes(r.bytes)}</td>
@@ -140,7 +143,11 @@ function DashboardContent(props: { stats: Stats; keyCount: number; blockedCount:
             ) : (
               stats.topKeys.map((r) => (
                 <tr>
-                  <td>{r.name || <span class="text-base-content/40">{t("console.overview.anonymous")}</span>}</td>
+                  <td class="whitespace-nowrap">
+                    <span class="inline-block max-w-[12rem] truncate align-bottom sm:max-w-[20rem]" title={r.name || undefined}>
+                      {r.name ? r.name : <span class="text-base-content/40">{t("console.overview.anonymous")}</span>}
+                    </span>
+                  </td>
                   <td class="text-right tabular-nums">{r.n}</td>
                   <td class="text-right tabular-nums">{humanBytes(r.bytes)}</td>
                 </tr>
@@ -164,7 +171,7 @@ function DashboardContent(props: { stats: Stats; keyCount: number; blockedCount:
           head={
             <>
               <th>{t("console.overview.time")}</th>
-              <th>{t("console.overview.method")}</th>
+              <th class="hidden sm:table-cell">{t("console.overview.method")}</th>
               <th>{t("console.overview.host")}</th>
               <th>{t("console.overview.status")}</th>
               <th>{t("console.overview.error")}</th>
@@ -176,12 +183,16 @@ function DashboardContent(props: { stats: Stats; keyCount: number; blockedCount:
             ) : (
               stats.recentErrors.map((l) => (
                 <tr>
-                  <td class="text-base-content/50">{l.created_at}</td>
-                  <td>
+                  <td class="text-base-content/50">
+                    <RelTime value={l.created_at} t={t} />
+                  </td>
+                  <td class="hidden sm:table-cell">
                     <MethodBadge method={l.method} />
                   </td>
                   <td>
-                    <code>{l.target_host}</code>
+                    <code class="inline-block max-w-[9rem] truncate align-bottom sm:max-w-[16rem]" title={l.target_host}>
+                      {l.target_host}
+                    </code>
                   </td>
                   <td>
                     <StatusBadge status={l.status} />

@@ -147,6 +147,17 @@ describe("route wiring (integration)", () => {
     expect(await res.json()).toMatchObject({ error: "Name is required" });
   });
 
+  it("renders the logs window slider and clamps ?hours=", async () => {
+    const res = await call("/console/logs?hours=9999", {
+      headers: { cookie: `corx_session=${sessionCookie}` },
+    });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('type="range"');
+    expect(html).toContain('value="168"');
+    expect(html).toContain("7d"); // the slider label, clamped to the 7-day max
+  });
+
   it("delete route reports an unknown key instead of deleting", async () => {
     const res = await call("/console/keys/nope/delete", {
       method: "POST",
@@ -270,5 +281,11 @@ describe("proxy wiring (integration)", () => {
     const res = await call("/api/blocked-hosts", { headers: { authorization: "Bearer test-token" } });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ hosts: [] });
+  });
+
+  it("logs API accepts a lookback window", async () => {
+    const res = await call("/api/logs?limit=5&hours=48", { headers: { authorization: "Bearer test-token" } });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ logs: [] });
   });
 });

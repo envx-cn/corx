@@ -101,6 +101,8 @@ const en = {
       profile: "Profile",
       billing: "Billing",
       logout: "Log out",
+      logoutTitle: "Log out?",
+      logoutBody: "The session cookie is cleared — sign in again with your Access session or admin token.",
       account: "Account",
       session: "Session",
     },
@@ -148,8 +150,6 @@ const en = {
       createTitle: "Create API key",
       editTitle: "Edit key",
       save: "Save",
-      cancel: "Cancel",
-      close: "Close",
       checks: "Safety checks",
       ipCheck: "IP check",
       ipCheckHint: "Block private/reserved IP literals and internal hostnames.",
@@ -181,8 +181,9 @@ const en = {
     },
     logs: {
       title: "Request logs",
-      limit: "Limit",
+      window: "Window",
       refresh: "Refresh",
+      truncated: "Showing the newest {n} rows in this window — narrow it to see older entries.",
       headTime: "Time",
       headMethod: "Method",
       headHost: "Host",
@@ -205,6 +206,8 @@ const en = {
       reasonPh: "abuse",
       block: "Block host",
       remove: "Remove",
+      removeTitle: "Remove from blocklist?",
+      removeBody: "Requests to {host} will be allowed again through the proxy.",
       headHostname: "Hostname",
       headReason: "Reason",
       headAdded: "Added",
@@ -263,6 +266,16 @@ const en = {
   copy: {
     copy: "Copy",
     copied: "Copied",
+  },
+  ui: {
+    cancel: "Cancel",
+    close: "Close",
+  },
+  time: {
+    now: "just now",
+    minutes: "{n}m ago",
+    hours: "{n}h ago",
+    days: "{n}d ago",
   },
 } as const;
 
@@ -378,6 +391,8 @@ const zh: Messages = {
       profile: "个人资料",
       billing: "账单",
       logout: "退出登录",
+      logoutTitle: "退出登录？",
+      logoutBody: "会话 cookie 会被清除——需要重新使用 Access 身份或管理员令牌登录。",
       account: "账户",
       session: "会话",
     },
@@ -425,8 +440,6 @@ const zh: Messages = {
       createTitle: "创建 API 密钥",
       editTitle: "编辑密钥",
       save: "保存",
-      cancel: "取消",
-      close: "关闭",
       checks: "安全检查",
       ipCheck: "IP 检测",
       ipCheckHint: "拦截私有/保留 IP 字面量与内网主机名。",
@@ -458,8 +471,9 @@ const zh: Messages = {
     },
     logs: {
       title: "请求日志",
-      limit: "数量",
+      window: "时间窗口",
       refresh: "刷新",
+      truncated: "仅显示该时间窗口内最新的 {n} 条——缩小时间窗口可查看更早的记录。",
       headTime: "时间",
       headMethod: "方法",
       headHost: "主机",
@@ -482,6 +496,8 @@ const zh: Messages = {
       reasonPh: "滥用",
       block: "加入黑名单",
       remove: "移除",
+      removeTitle: "从黑名单移除？",
+      removeBody: "移除后，指向 {host} 的请求将重新允许通过代理访问。",
       headHostname: "主机名",
       headReason: "原因",
       headAdded: "添加时间",
@@ -540,6 +556,16 @@ const zh: Messages = {
   copy: {
     copy: "复制",
     copied: "已复制",
+  },
+  ui: {
+    cancel: "取消",
+    close: "关闭",
+  },
+  time: {
+    now: "刚刚",
+    minutes: "{n} 分钟前",
+    hours: "{n} 小时前",
+    days: "{n} 天前",
   },
 };
 
