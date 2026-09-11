@@ -28,16 +28,71 @@ function Doc(props: { title: string; children: Child; scripts?: Child }) {
             otherwise HTML-escape it, mangling selectors like `.a > .b` into
             `.a &gt; .b` and silently dropping those rules. */}
         <style dangerouslySetInnerHTML={{ __html: appCss }}></style>
-        {/* Sidebar collapse: restore + persist the #sidebar-collapse checkbox
+        {/* Console chrome wiring, inline on purpose: hono islands re-render
+            their own DOM subtree, so anything they'd own here gets clobbered —
+            and a page whose islands failed to hydrate still needs logout to
+            work.
+
+            Sidebar: restore + persist the #sidebar-collapse checkbox
             (survives navigation), drive it from the bottom-left button, and
             float the real menu open ONLY while a nav item (icon) is hovered
             (.flyout-open on the aside) — hovering the panel padding or the
             collapse button does nothing. A <label for> would also toggle the
             checkbox, but Chromium skips :checked style invalidation for label
             activation here — the button calls checkbox.click(), which does
-            invalidate. Plain script on purpose: hono islands re-render their
-            own DOM, this must not. */}
-        <script dangerouslySetInnerHTML={{ __html: `(function(){function init(){try{var cb=document.getElementById("sidebar-collapse");if(!cb)return;var aside=document.querySelector("aside[data-sidebar]");cb.checked=localStorage.getItem("corx:sidebar-collapsed")==="1";var btn=document.getElementById("sidebar-collapse-toggle");if(btn)btn.addEventListener("click",function(e){e.preventDefault();cb.click()});        if(aside){var closeTimer=null;aside.querySelectorAll(".nav-item").forEach(function(a){a.addEventListener("mouseenter",function(){if(closeTimer){clearTimeout(closeTimer);closeTimer=null}aside.classList.add("flyout-open")});a.addEventListener("mouseleave",function(){if(closeTimer){clearTimeout(closeTimer)}closeTimer=setTimeout(function(){aside.classList.remove("flyout-open");closeTimer=null},120)})});}cb.addEventListener("change",function(){localStorage.setItem("corx:sidebar-collapsed",cb.checked?"1":"0")})}catch(e){}}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",init)}else{init()}})();` }} />
+            invalidate.
+
+            Confirm dialogs (logout, blocklist remove): server-rendered in
+            _confirm.tsx with a [data-corx-confirm] trigger, so this script
+            only has to open them — and reparent them to <body>, because a
+            closed daisyUI dropdown is display:none and would hide the dialog
+            with it. Cancel/backdrop close via <form method="dialog">. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function () {
+  function wireSidebar() {
+    var cb = document.getElementById("sidebar-collapse");
+    if (!cb) return;
+    cb.checked = localStorage.getItem("corx:sidebar-collapsed") === "1";
+    var toggle = document.getElementById("sidebar-collapse-toggle");
+    if (toggle) toggle.addEventListener("click", function (e) { e.preventDefault(); cb.click(); });
+    var aside = document.querySelector("aside[data-sidebar]");
+    if (aside) {
+      var closeTimer = null;
+      aside.querySelectorAll(".nav-item").forEach(function (a) {
+        a.addEventListener("mouseenter", function () {
+          if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+          aside.classList.add("flyout-open");
+        });
+        a.addEventListener("mouseleave", function () {
+          if (closeTimer) clearTimeout(closeTimer);
+          closeTimer = setTimeout(function () { aside.classList.remove("flyout-open"); closeTimer = null; }, 120);
+        });
+      });
+    }
+    cb.addEventListener("change", function () { localStorage.setItem("corx:sidebar-collapsed", cb.checked ? "1" : "0"); });
+  }
+  function wireConfirms() {
+    document.querySelectorAll("[data-corx-confirm]").forEach(function (btn) {
+      var dialog = document.getElementById(btn.getAttribute("data-corx-confirm"));
+      if (!dialog) return;
+      if (dialog.parentElement !== document.body) document.body.appendChild(dialog);
+      btn.addEventListener("click", function () {
+        if (dialog.parentElement !== document.body) document.body.appendChild(dialog);
+        if (typeof dialog.showModal === "function") { if (!dialog.open) dialog.showModal(); }
+        else dialog.setAttribute("open", "");
+      });
+    });
+  }
+  function init() {
+    try { wireSidebar(); } catch (e) { console.error(e); }
+    try { wireConfirms(); } catch (e) { console.error(e); }
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+  else init();
+})();`,
+          }}
+        />
         {props.scripts}
       </head>
       <body class="bg-base-200 font-sans antialiased">{props.children}</body>

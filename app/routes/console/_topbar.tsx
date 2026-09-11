@@ -1,6 +1,6 @@
 import userSvg from "lucide-static/icons/user.svg?raw";
 import { Lucide } from "../../components/lucide.js";
-import ConfirmButton from "../../islands/confirm-button.js";
+import { ConfirmButton } from "./_confirm.js";
 import type { Locale, TFunc } from "../../lib/i18n/locale.js";
 
 /**
@@ -86,9 +86,9 @@ export function Topbar(props: { title: string; user: string; locale: Locale; t: 
               <ConfirmButton
                 action="/console/logout"
                 label={t("console.topbar.logout")}
-                // The island wrapper sits between the <li> and the button, so
-                // daisyUI's `li > *` menu-item box can't match — restate it
-                // (menu-sm metrics: px-2.5 py-1, radius-field = rounded-lg).
+                // Restate the menu-item metrics explicitly (menu-sm: px-2.5 py-1,
+                // radius-field = rounded-lg) so the trigger keeps them even if
+                // the markup around it changes.
                 triggerClass="w-full justify-start rounded-lg px-2.5 py-1 text-left hover:bg-black/[0.045]"
                 i18n={{
                   title: t("console.topbar.logoutTitle"),

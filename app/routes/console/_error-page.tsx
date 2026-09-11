@@ -10,9 +10,9 @@ import { activeNavItem } from "./_nav.js";
  * app/server.ts; when the request has no identity — or this render throws —
  * the standalone document (`app/routes/_error-page.tsx`) is used instead.
  *
- * The shell always renders the topbar user-menu island, so the hydration entry
- * is loaded unconditionally here (no <HasIslands/> gate — that flag is set by
- * route modules importing islands, not by the error path).
+ * The shell now renders no islands (the user menu is a server-rendered
+ * confirm dialog wired by the Doc's inline script), so this document needs no
+ * hydration entry at all.
  */
 export function ConsoleErrorDocument(props: {
   status: number;
@@ -23,11 +23,6 @@ export function ConsoleErrorDocument(props: {
   locale: Locale;
   t: TFunc;
 }) {
-  const scripts = import.meta.env.PROD ? (
-    <script type="module" src="/static/client.js"></script>
-  ) : (
-    <script type="module" src="/app/client.ts"></script>
-  );
   return (
     <ConsoleLayout
       title={props.t("errorpage.consoleTitle")}
@@ -35,7 +30,6 @@ export function ConsoleErrorDocument(props: {
       active={activeNavItem(props.path)}
       locale={props.locale}
       t={props.t}
-      scripts={scripts}
     >
       <ConsoleErrorPanel status={props.status} path={props.path} message={props.message} t={props.t} />
     </ConsoleLayout>
