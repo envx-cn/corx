@@ -1,10 +1,12 @@
 import type { NavItem } from "./_nav.js";
 import { Lucide } from "../../components/lucide.js";
+import { CorxLogo, CorxMark } from "../../components/logo.js";
 import chevronsLeftSvg from "lucide-static/icons/chevrons-left.svg?raw";
 import type { TFunc } from "../../lib/i18n/locale.js";
 
 /**
- * Console sidebar, styled after dash.cloudflare.com. The aside itself is
+ * Console sidebar (layout after dash.cloudflare.com, colours from the COR X
+ * logo). The aside itself is
  * absolutely positioned inside drawer-side (over a .sidebar-slot that holds
  * the in-flow gutter), so it can float over the content without pushing it.
  *
@@ -22,10 +24,9 @@ export function Sidebar(props: { user: string; active: string; items: NavItem[];
       class="absolute top-0 left-0 h-full transition-[width] duration-200 ease-out w-64 min-h-full bg-base-100 border-r border-base-300 flex flex-col"
     >
       <div class="flex items-center gap-2.5 px-5 h-16 border-b border-base-300 shrink-0 whitespace-nowrap">
-        <span class="corx-mark size-8 rounded-lg text-white inline-flex items-center justify-center text-xs font-extrabold shrink-0">
-          cx
-        </span>
-        <b class="text-lg tracking-tight brand-text">CORX</b>
+        {/* expanded: the wordmark; collapsed rail: the X alone (see .brand-text/.brand-mark in app.css) */}
+        <CorxLogo class="h-7 brand-text" />
+        <CorxMark class="h-7 brand-mark" />
       </div>
 
       {/* The nav band: hovering it (when collapsed) floats the menu open. */}

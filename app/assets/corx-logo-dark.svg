@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1681 835" role="img" aria-label="COR X">
+  <title>COR X</title>
+  <!-- COR X wordmark, for dark backgrounds (README dark mode, dark bands).
+       Letters are class="corx-ink" and the X class="corx-x" so the app can
+       recolour them (app.css: ink follows `color`, so the same file works on
+       light and dark chrome). No width/height on purpose — size it with CSS. -->
+  <path class="corx-ink" fill="#ffffff" fill-rule="evenodd" d="
+    M598.99 371.03A140.07 140.07 0 1 1 598.36 306.49L537.71 306.49A80.77 80.77 0 1 0 538.74 371.03L598.99 371.02Z M903.39 339.9A141.81 141.81 0 1 1 619.77 339.9A141.81 141.81 0 1 1 903.39 339.9Z M843.14 339.92A81.59 81.59 0 1 1 679.96 339.92A81.59 81.59 0 1 1 843.14 339.92Z M1158.5 472.96L1088.77 472.96L1040.5 390.16L1001.16 390.16L1001.16 472.97L940.88 472.97L940.88 206.85L1059.52 206.85A91.8 91.8 0 0 1 1103.79 381.15L1158.5 472.96Z M1056.51 259.11L1000.53 259.5L1000.53 338.5L1056.5 338.59A39.84 39.84 0 0 0 1056.51 259.09Z
+  "/>
+  <path class="corx-x" fill="#fd0700" fill-rule="evenodd" d="
+    M1198.86 829.8L1373.56 540.57L1436.94 643.9L1526.54 641.48L1420.97 462.69L1680.53 32.33L1620.3 151.52L1460.49 463.33L1590.1 678.78L1418.2 677.24L1372.87 596.09Z M1064.15 832.99L1281.56 440.14L1142.28 209.24L1301.21 211.31L1358.1 308.25L1549.24 32.53L1504.26 107.4L1356.51 350.61L1287.68 233.03L1183.53 231.97L1305.87 434.75Z
+  "/>
+</svg>

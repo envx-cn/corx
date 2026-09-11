@@ -1,21 +1,13 @@
 import type { Child } from "hono/jsx";
 import appCss from "../styles/app.css?inline";
+import { CorxLogo } from "./logo.js";
 import type { Locale, TFunc } from "../lib/i18n/locale.js";
 
 /**
- * Shared chrome for the full-document public pages (landing + 404): the corx
- * mark, document <head>, the sticky nav, and the dark footer. The console has
+ * Shared chrome for the full-document public pages (landing + 404): the COR X
+ * logo, document <head>, the sticky nav, and the dark footer. The console has
  * its own shell (app/routes/console/_layout.tsx) and doesn't use these.
  */
-
-/** corx logo mark: Cloudflare-orange gradient tile (brand, both themes). */
-export function CorxMark() {
-  return (
-    <span class="corx-mark size-8 rounded-lg text-white inline-flex items-center justify-center text-xs font-extrabold shadow-sm">
-      cx
-    </span>
-  );
-}
 
 /** Document <head>: fonts + injected app CSS. Inject it with
     dangerouslySetInnerHTML — hono/jsx would otherwise HTML-escape the CSS and
@@ -26,6 +18,7 @@ export function SiteHead(props: { title: string }) {
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <title>{props.title}</title>
+      <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" />
       <link
@@ -48,9 +41,8 @@ export function SiteNav(props: { links?: Child; locale?: Locale; t?: TFunc }) {
   return (
     <nav class="sticky top-0 z-30 bg-base-100/85 backdrop-blur border-b border-base-300">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-        <a href="/" class="flex items-center gap-2.5">
-          <CorxMark />
-          <b class="text-lg tracking-tight">CORX</b>
+        <a href="/" class="flex items-center" aria-label="CORX">
+          <CorxLogo class="h-8" />
         </a>
         {props.links && (
           <div class="hidden md:flex items-center gap-1 text-sm text-base-content/70">{props.links}</div>
@@ -95,12 +87,10 @@ export function SiteFooter(props: { origin?: string; t?: TFunc }) {
   return (
     <footer class="bg-secondary text-secondary-content">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 py-12 flex flex-col sm:flex-row items-center justify-between gap-6">
-        <div class="flex items-center gap-2.5">
-          <CorxMark />
-          <div>
-            <b>CORX</b>
-            <div class="text-xs text-secondary-content/60">{t("site.tagline")}</div>
-          </div>
+        <div class="text-center sm:text-left">
+          {/* Wordmark: letters follow the band's text colour, the X stays brand red. */}
+          <CorxLogo class="h-8 mx-auto sm:mx-0" />
+          <div class="mt-2 text-xs text-secondary-content/60">{t("site.tagline")}</div>
         </div>
         <div class="flex items-center gap-6 text-sm text-secondary-content/70">
           <a href="/console/" class="hover:text-secondary-content">

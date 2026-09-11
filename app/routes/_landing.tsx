@@ -13,11 +13,12 @@ import type { Locale, TFunc } from "../lib/i18n/locale.js";
 import CorsDemo, { type CorsDemoI18n } from "../islands/cors-demo.js";
 
 /**
- * Marketing landing page, styled after cloudflare.com: white canvas, orange
- * CTAs, marker-highlighted hero word, a live mockup-browser "try it" demo
- * (rotating example URLs proxied in real time), feature grid and a dark navy
- * footer. Fully translated via the t() function (en/zh); served at /, /zh,
- * /en by app/routes/index.ts.
+ * Marketing landing page: paper canvas, brand-red (#FD0700) CTAs and marker
+ * highlight, slate ink — the COR X palette (see app/styles/app.css). The layout
+ * follows cloudflare.com: marker-highlighted hero word, a live mockup-browser
+ * "try it" demo (rotating example URLs proxied in real time), feature grid and
+ * a dark slate footer. Fully translated via the t() function (en/zh); served
+ * at /, /zh, /en by app/routes/index.ts.
  */
 export function LandingPage(props: { host: string; origin: string; locale: Locale; t: TFunc }) {
   const { t } = props;
