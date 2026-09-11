@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="app/assets/corx-logo-dark.svg">
+    <img src="app/assets/corx-logo.svg" alt="COR X" width="300">
+  </picture>
+</p>
+
 # CORX
 
 A CORS proxy running on Cloudflare. Stack: **HonoX + D1 + R2**.
@@ -361,10 +368,14 @@ app/              HonoX frontend (entry + console UI + API routes)
   components/   shared presentational primitives (badges, chart, lucide,
                 table, logo) — console-only chrome lives in routes/console/
                 instead (interactive bits in islands/)
-  assets/       corx-logo.svg (wordmark) + corx-mark.svg (the X), inlined
-                via ?raw by components/logo.tsx. Letters are currentColor
-                so the same file works on light and dark chrome; the X is
-                var(--corx-brand-red).
+  assets/       corx-logo.svg + corx-logo-dark.svg (wordmark, light/dark
+                variants — the README header uses the pair via <picture>) and
+                corx-mark.svg (the X, for the collapsed sidebar rail). The
+                wordmark is inlined via ?raw by components/logo.tsx; app.css
+                then paints .corx-ink with currentColor and .corx-x with
+                --corx-brand-red, so one file works on light and dark chrome.
+                public/favicon.svg is the square X icon (Vite copies public/
+                into dist/, which wrangler serves at /favicon.svg).
   styles/       app.css = Tailwind v4 + daisyUI 5 (imported ?inline into
                 <style> by landing + console shell, PostCSS-processed by the
                 build; injected with dangerouslySetInnerHTML). Themes

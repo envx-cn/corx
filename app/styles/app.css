@@ -112,8 +112,11 @@
 /* --- Shared bits ----------------------------------------------------------- */
 
 /* corx logo: inline SVG (app/components/logo.tsx). The wrapper carries a
-   height utility (h-7, h-8, …) and the SVG follows it; the letters inherit
-   `color`, the X is painted with var(--corx-brand-red). */
+   height utility (h-7, h-8, …) and the SVG follows it. The file ships the
+   brand colours (#3e454b letters / #fd0700 X) so it also works standalone —
+   e.g. as the README image — while in the app the letters follow the text
+   colour and the X the theme's brand red, which is what lets one file render
+   on light chrome and on the dark footer/CTA band. */
 .corx-logo {
   display: inline-flex;
   align-items: center;
@@ -122,6 +125,12 @@
   display: block;
   height: 100%;
   width: auto;
+}
+.corx-logo .corx-ink {
+  fill: currentColor;
+}
+.corx-logo .corx-x {
+  fill: var(--corx-brand-red);
 }
 
 /* Sidebar rail: the X mark replaces the wordmark when collapsed. */
