@@ -1,5 +1,6 @@
 import userSvg from "lucide-static/icons/user.svg?raw";
 import { Lucide } from "../../components/lucide.js";
+import ConfirmButton from "../../islands/confirm-button.js";
 import type { Locale, TFunc } from "../../lib/i18n/locale.js";
 
 /**
@@ -82,11 +83,21 @@ export function Topbar(props: { title: string; user: string; locale: Locale; t: 
             </li>
             <li class="menu-title px-3 pt-3 pb-0.5">{t("console.topbar.session")}</li>
             <li>
-              <form method="post" action="/console/logout">
-                <button type="submit" class="w-full justify-start">
-                  {t("console.topbar.logout")}
-                </button>
-              </form>
+              <ConfirmButton
+                action="/console/logout"
+                label={t("console.topbar.logout")}
+                // The island wrapper sits between the <li> and the button, so
+                // daisyUI's `li > *` menu-item box can't match — restate it
+                // (menu-sm metrics: px-2.5 py-1, radius-field = rounded-lg).
+                triggerClass="w-full justify-start rounded-lg px-2.5 py-1 text-left hover:bg-black/[0.045]"
+                i18n={{
+                  title: t("console.topbar.logoutTitle"),
+                  body: t("console.topbar.logoutBody"),
+                  confirm: t("console.topbar.logout"),
+                  cancel: t("ui.cancel"),
+                  close: t("ui.close"),
+                }}
+              />
             </li>
           </ul>
         </div>

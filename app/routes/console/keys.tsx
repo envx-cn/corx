@@ -4,6 +4,7 @@ import { ProxyError } from "../../lib/types.js";
 import { createApiKey, queryKeys, updateApiKey } from "../../lib/admin.js";
 import type { KeyRow } from "../../lib/admin.js";
 import { DataTable, EmptyRow } from "../../components/table.js";
+import { RelTime } from "../../components/time.js";
 import CopyButton from "../../islands/copy-button.js";
 import KeyPanel, { type KeyFormValues, type KeyPanelI18n } from "../../islands/key-panel.js";
 import { consoleT } from "../../lib/i18n/hono.js";
@@ -165,8 +166,8 @@ function panelLabels(t: TFunc): KeyPanelI18n {
     deleteTitle: t("console.keys.deleteTitle"),
     deleteHint: t("console.keys.deleteHint"),
     deleteConfirm: t("console.keys.deleteConfirm"),
-    cancel: t("console.keys.cancel"),
-    close: t("console.keys.close"),
+    cancel: t("ui.cancel"),
+    close: t("ui.close"),
   };
 }
 
@@ -227,8 +228,8 @@ function KeysContent(props: {
             <th>{t("console.keys.headName")}</th>
             <th>{t("console.keys.headRate")}</th>
             <th>{t("console.keys.headOrigins")}</th>
-            <th>{t("console.keys.headCache")}</th>
-            <th>{t("console.keys.headCreated")}</th>
+            <th class="hidden sm:table-cell">{t("console.keys.headCache")}</th>
+            <th class="hidden sm:table-cell">{t("console.keys.headCreated")}</th>
             <th></th>
           </>
         }
@@ -238,15 +239,17 @@ function KeysContent(props: {
           ) : (
             keys.map((k) => (
               <tr>
-                <td>{k.name || <span class="text-base-content/40">—</span>}</td>
+                <td class="whitespace-nowrap">{k.name || <span class="text-base-content/40">—</span>}</td>
                 <td class="tabular-nums">{k.rate_limit_per_min ?? t("console.keys.default")}</td>
                 <td>
                   <code class="text-base-content/60">{k.allowed_origins || t("console.keys.global")}</code>
                 </td>
-                <td>
+                <td class="hidden sm:table-cell">
                   <code class="text-base-content/60">{cacheText(k, t)}</code>
                 </td>
-                <td class="text-base-content/50">{k.created_at}</td>
+                <td class="hidden text-base-content/50 sm:table-cell">
+                  <RelTime value={k.created_at} t={t} />
+                </td>
                 <td>
                   <div class="flex items-center justify-end">
                     <KeyPanel

@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import type { Env } from "../../lib/types.js";
 import { queryBlockedHosts } from "../../lib/admin.js";
 import { DataTable, EmptyRow } from "../../components/table.js";
+import { RelTime } from "../../components/time.js";
+import ConfirmButton from "../../islands/confirm-button.js";
 import { consoleT } from "../../lib/i18n/hono.js";
 import type { TFunc } from "../../lib/i18n/locale.js";
 
@@ -42,22 +44,20 @@ function BlockedContent(props: { hosts: Array<{ hostname: string; reason: string
       <h1 class="text-3xl font-semibold tracking-tight mb-1">{t("console.blocked.title")}</h1>
       <p class="text-sm text-base-content/60 mb-4">{t("console.blocked.sub")}</p>
       <div class="bg-base-100 border border-base-300 rounded-box p-4 mb-4">
-        <form method="post" action="/console/blocked">
-          <div class="flex flex-wrap items-end gap-3">
-            <label class="form-control">
-              <div class="label pb-1">
-                <span class="label-text">{t("console.blocked.hostname")}</span>
-              </div>
-              <input name="hostname" placeholder={t("console.blocked.hostnamePh")} class="input input-bordered input-sm" />
-            </label>
-            <label class="form-control">
-              <div class="label pb-1">
-                <span class="label-text">{t("console.blocked.reason")}</span>
-              </div>
-              <input name="reason" placeholder={t("console.blocked.reasonPh")} class="input input-bordered input-sm" />
-            </label>
-            <button class="btn btn-primary">{t("console.blocked.block")}</button>
-          </div>
+        <form method="post" action="/console/blocked" class="flex flex-wrap items-center gap-3">
+          <input
+            name="hostname"
+            placeholder={t("console.blocked.hostnamePh")}
+            aria-label={t("console.blocked.hostname")}
+            class="input input-bordered input-sm flex-1 min-w-[12rem]"
+          />
+          <input
+            name="reason"
+            placeholder={t("console.blocked.reasonPh")}
+            aria-label={t("console.blocked.reason")}
+            class="input input-bordered input-sm flex-1 min-w-[10rem]"
+          />
+          <button class="btn btn-primary btn-sm shrink-0">{t("console.blocked.block")}</button>
         </form>
       </div>
       <DataTable
@@ -65,7 +65,7 @@ function BlockedContent(props: { hosts: Array<{ hostname: string; reason: string
           <>
             <th>{t("console.blocked.headHostname")}</th>
             <th>{t("console.blocked.headReason")}</th>
-            <th>{t("console.blocked.headAdded")}</th>
+            <th class="hidden sm:table-cell">{t("console.blocked.headAdded")}</th>
             <th></th>
           </>
         }
@@ -75,15 +75,29 @@ function BlockedContent(props: { hosts: Array<{ hostname: string; reason: string
           ) : (
             props.hosts.map((h) => (
               <tr>
-                <td>
+                <td class="whitespace-nowrap">
                   <code>{h.hostname}</code>
                 </td>
                 <td>{h.reason}</td>
-                <td class="text-base-content/50">{h.created_at}</td>
+                <td class="hidden text-base-content/60 sm:table-cell">
+                  <RelTime value={h.created_at} t={t} />
+                </td>
                 <td>
-                  <form method="post" action={`/console/blocked/${h.hostname}/delete`}>
-                    <button class="btn btn-xs btn-error btn-outline">{t("console.blocked.remove")}</button>
-                  </form>
+                  <div class="flex items-center justify-end">
+                    <ConfirmButton
+                      action={`/console/blocked/${h.hostname}/delete`}
+                      label={t("console.blocked.remove")}
+                      triggerClass="btn btn-xs btn-error btn-outline"
+                      confirmClass="btn btn-error"
+                      i18n={{
+                        title: t("console.blocked.removeTitle"),
+                        body: t("console.blocked.removeBody", { host: h.hostname }),
+                        confirm: t("console.blocked.remove"),
+                        cancel: t("ui.cancel"),
+                        close: t("ui.close"),
+                      }}
+                    />
+                  </div>
                 </td>
               </tr>
             ))

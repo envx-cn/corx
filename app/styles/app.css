@@ -266,6 +266,19 @@ code:not(pre code) {
 
 /* --- Console (dash.cloudflare.com / Kumo) ----------------------------------- */
 
+/* honox renders every island inside a <honox-island> custom element, which is
+   display:inline by default. It must be transparent (display: contents): the
+   island's own root is what should participate in the page layout — the logs
+   window slider has to stretch as a flex item of the filter row, and a daisyUI
+   menu item keeps styling its direct child. `.menu honox-island` needs the
+   extra specificity to beat daisyUI's own `.menu :where(li > *)` box. The
+   landing demo island keeps its own display (#try-it honox-island). */
+main honox-island,
+.menu honox-island,
+.dropdown-content honox-island {
+  display: contents;
+}
+
 /* nav item states: tint pill, exactly like the real sidebar */
 .nav-item {
   @apply flex items-center gap-2.5 rounded-lg px-3 min-h-[34px] text-sm font-medium
@@ -366,13 +379,13 @@ code:not(pre code) {
 
 /* stat card */
 .stat-card {
-  @apply bg-base-100 border border-base-300 rounded-box p-5;
+  @apply bg-base-100 border border-base-300 rounded-box p-4 sm:p-5;
 }
 .stat-card .stat-label {
   @apply text-sm text-base-content/55;
 }
 .stat-card .stat-value {
-  @apply text-3xl font-semibold mt-1.5 tabular-nums tracking-tight;
+  @apply text-2xl sm:text-3xl font-semibold mt-1.5 tabular-nums tracking-tight;
 }
 
 /* data tables: light sentence-case header on hairline rows, hover highlight */

@@ -55,7 +55,18 @@ export function fillHourly(
   return out;
 }
 
-const SINCE_24H = "created_at > datetime('now', '-24 hours')";
+const SINCE_24H = `created_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')`;
+
+/**
+ * Window boundary in the exact format rows are stored in
+ * ("2026-09-11T07:03:27.562Z", see the migration's strftime default).
+ *
+ * Comparing against `datetime('now', …)` would be wrong: that returns
+ * "2026-09-10 07:03:27" — a space instead of "T", no milliseconds — and
+ * "…T…" sorts *after* "… …", so every row of the boundary's calendar day
+ * would silently pass the filter (a 24h window counting up to 31h of rows).
+ */
+const ISO_SINCE = `strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)`;
 
 async function allOrEmpty<T>(db: D1Database, sql: string): Promise<T[]> {
   return db
@@ -113,7 +124,7 @@ export async function queryStats(db: D1Database): Promise<Stats> {
       db,
       `SELECT id, created_at, method, target_host, status, latency_ms, country, cached, error, req_bytes, res_bytes
        FROM request_logs WHERE ${SINCE_24H} AND (status >= 500 OR error != '')
-       ORDER BY id DESC LIMIT 10`,
+       ORDER BY created_at DESC, id DESC LIMIT 10`,
     ),
   ]);
   return {
@@ -142,13 +153,24 @@ export interface LogRow {
   res_bytes: number | null;
 }
 
-export async function queryLogs(db: D1Database, limit: number): Promise<LogRow[]> {
+export interface LogQuery {
+  /** Row cap (default 50, max 200). */
+  limit?: number;
+  /** Only rows newer than N hours (1–168 = 7 days). Omit for no time filter. */
+  hours?: number;
+}
+
+export async function queryLogs(db: D1Database, q: LogQuery = {}): Promise<LogRow[]> {
+  const limit = Math.min(Math.max(Math.round(q.limit ?? 50) || 50, 1), 200);
+  const hours =
+    q.hours == null || !Number.isFinite(q.hours) ? null : Math.min(Math.max(Math.round(q.hours), 1), 168);
   const rows = await db
     .prepare(
       `SELECT id, created_at, method, target_host, status, latency_ms, country, cached, error, req_bytes, res_bytes
-       FROM request_logs ORDER BY id DESC LIMIT ?`,
+       FROM request_logs ${hours == null ? "" : `WHERE created_at > ${ISO_SINCE}`}
+       ORDER BY created_at DESC, id DESC LIMIT ?`,
     )
-    .bind(Math.min(Math.max(limit || 50, 1), 200))
+    .bind(...(hours == null ? [limit] : [`-${hours} hours`, limit]))
     .all<LogRow>();
   return rows.results;
 }

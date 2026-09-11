@@ -6,7 +6,13 @@ const app = new Hono<{ Bindings: Env }>();
 
 app.get("/", async (c) => {
   const limit = Number(c.req.query("limit") ?? 50);
-  return c.json({ logs: await queryLogs(c.env.DB, limit) });
+  const hours = Number(c.req.query("hours") ?? NaN);
+  return c.json({
+    logs: await queryLogs(c.env.DB, {
+      limit: Number.isFinite(limit) ? limit : 50,
+      ...(Number.isFinite(hours) ? { hours } : {}),
+    }),
+  });
 });
 
 export default app;
