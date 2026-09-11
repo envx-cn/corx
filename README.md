@@ -212,12 +212,14 @@ localStorage; on mobile there is no rail, only the topbar hamburger, which
 opens the full menu as a floating drawer overlay. The topbar holds a language
 switch (中文 / EN) and a user menu (Profile / Billing / Log out).
 
-Uncaught errors on browser-facing routes (landing + console) render the same
-branded full-document style as the 404: big status digits, a reference line
-(`status · path · UTC time`) and CTAs back to the console / home. The page is
-self-contained (no session, D1 or island hydration), so it still renders when
-the failure is in exactly those layers. Machine callers keep JSON: `/api/*`,
-`/health` and every proxy route return `{ "error": … }`.
+Uncaught errors on browser-facing routes render the same branded style as the
+404. An authenticated console request keeps the shell — sidebar, topbar, user
+menu — with an error card as the page content; public pages (and console
+requests without an identity) get the standalone full-document variant with
+the big status digits and a `status · path · UTC time` reference line. That
+fallback is self-contained (no session, D1 or island hydration), so it still
+renders when the failure is in exactly those layers. Machine callers keep
+JSON: `/api/*`, `/health` and every proxy route return `{ "error": … }`.
 
 The console is bilingual too: a `?lang=zh|en` query on any console URL sets
 the `corx_lang` cookie (remembered for a year) and redirects back without the

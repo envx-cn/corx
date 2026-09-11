@@ -82,6 +82,7 @@ const en = {
     h1: "{code} — Something went wrong",
     sub: "The request failed unexpectedly on our side. Nothing you did — head back and try again in a moment.",
     backConsole: "Back to console",
+    consoleTitle: "Server error",
     ref: "Reference: {code} · {path} · {time}",
   },
   console: {
@@ -394,6 +395,7 @@ const zh: Messages = {
     h1: "{code} — 出错了",
     sub: "这次请求在我们这边意外失败了，不是你的问题——返回后再试一次即可。",
     backConsole: "返回控制台",
+    consoleTitle: "服务器错误",
     ref: "参考信息：{code} · {path} · {time}",
   },
   console: {

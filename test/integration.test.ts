@@ -385,7 +385,7 @@ describe("error pages (integration)", () => {
     },
   } as unknown as D1Database;
 
-  it("renders the branded HTML error page for browser-facing routes", async () => {
+  it("keeps the console shell when an authenticated console route fails", async () => {
     const res = await call(
       "/console/keys",
       { headers: { cookie: `corx_session=${sessionCookie}` } },
@@ -395,9 +395,11 @@ describe("error pages (integration)", () => {
     expect(res.headers.get("content-type")).toContain("text/html");
     const html = await res.text();
     expect(html).toContain("<!DOCTYPE html>");
-    expect(html).toContain("status-code");
+    // The shell survives: sidebar drawer + the signed-in user in the topbar.
+    expect(html).toContain("console-drawer");
+    expect(html).toContain("tester@example.com");
+    // …with the error card as the page content and a support-friendly reference.
     expect(html).toContain("Back to console");
-    // The reference line names the failing path (support-friendly, no internals).
     expect(html).toContain("/console/keys");
   });
 

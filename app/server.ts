@@ -12,7 +12,9 @@ import { proxyHandler } from "./proxy/handler.js";
 import { resolveRawTarget } from "./proxy/subdomain.js";
 import { NotFoundPage } from "./routes/_not-found.js";
 import { ErrorPage } from "./routes/_error-page.js";
+import { ConsoleErrorDocument } from "./routes/console/_error-page.js";
 import { detectLocale, makeT } from "./lib/i18n/locale.js";
+import { consoleLocale, consoleT } from "./lib/i18n/hono.js";
 
 // Base Hono app with the proxy routes mounted manually (file routing can't
 // express the /* catch-all ordering).
@@ -53,6 +55,7 @@ base.onError((err, c) => {
   const status = (
     err instanceof ProxyError ? err.status : err instanceof HTTPException ? err.status : 500
   ) as ContentfulStatusCode;
+  const devMessage = import.meta.env.DEV ? ((err as Error)?.message ?? String(err)) : undefined;
 
   if (expectsJson(reqUrl, c.env)) {
     // Keep the 500 readable from browsers: the normal cors() middleware chain
@@ -60,21 +63,44 @@ base.onError((err, c) => {
     return withProxyCors(c, c.json({ error: "Internal error" }, status));
   }
 
-  // Browser-facing routes (landing, /console/*): a self-contained branded
-  // document that needs no session, D1 or island hydration to render.
+  // Authenticated console requests keep the shell (sidebar/topbar/user menu), so
+  // the admin can navigate away without losing context. Anything unexpected in
+  // that path — or no identity at all — falls back to the standalone document,
+  // which needs no session, D1 or island hydration to render.
+  const isConsole = reqUrl.pathname === "/console" || reqUrl.pathname.startsWith("/console/");
+  const consoleUser = isConsole ? c.get("consoleUser") : undefined;
+  if (consoleUser) {
+    try {
+      // c.html() doesn't add a doctype; prepend one so browsers stay in standards mode.
+      return c.html(
+        `<!DOCTYPE html>${ConsoleErrorDocument({
+          status,
+          path: reqUrl.pathname,
+          message: devMessage,
+          user: consoleUser,
+          locale: consoleLocale(c),
+          t: consoleT(c),
+        })}`,
+        status,
+      );
+    } catch (shellErr) {
+      console.error("corx console error page failed:", shellErr);
+    }
+  }
+
+  // Browser-facing fallback: a self-contained branded document.
   const locale = detectLocale({
     pathname: reqUrl.pathname,
     cookie: c.req.header("cookie"),
     acceptLanguage: c.req.header("accept-language"),
   });
-  // c.html() doesn't add a doctype; prepend one so browsers stay in standards mode.
   return c.html(
     `<!DOCTYPE html>${ErrorPage({
       status,
       locale,
       origin: reqUrl.origin,
       path: reqUrl.pathname,
-      message: import.meta.env.DEV ? ((err as Error)?.message ?? String(err)) : undefined,
+      message: devMessage,
       t: makeT(locale),
     })}`,
     status,
