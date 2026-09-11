@@ -69,6 +69,32 @@ describe("route wiring (integration)", () => {
     expect(await res.text()).toContain("corx console");
   });
 
+  it("serves the landing page in Chinese via /zh and Accept-Language", async () => {
+    const zh = await call("/zh");
+    expect(zh.status).toBe(200);
+    expect(await zh.text()).toContain("告别 CORS");
+
+    const detected = await call("/", { headers: { "accept-language": "zh-CN,zh;q=0.9" } });
+    expect(await detected.text()).toContain("告别 CORS");
+
+    const en = await call("/en");
+    expect(await en.text()).toContain("without CORS.");
+  });
+
+  it("?lang= switches the console language via cookie + redirect", async () => {
+    const res = await call("/console/keys?lang=zh", {
+      headers: { cookie: `corx_session=${sessionCookie}` },
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/console/keys");
+    expect(res.headers.get("set-cookie")).toContain("corx_lang=zh");
+
+    const zh = await call("/console/keys", {
+      headers: { cookie: `corx_session=${sessionCookie}; corx_lang=zh` },
+    });
+    expect(await zh.text()).toContain("API 密钥");
+  });
+
   it("bounces unauthenticated console pages to login", async () => {
     const res = await call("/console/");
     expect(res.status).toBe(302);

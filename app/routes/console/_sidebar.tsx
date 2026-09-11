@@ -1,6 +1,7 @@
 import type { NavItem } from "./_nav.js";
 import { Lucide } from "../../components/lucide.js";
 import chevronsLeftSvg from "lucide-static/icons/chevrons-left.svg?raw";
+import type { TFunc } from "../../lib/i18n/locale.js";
 
 /**
  * Console sidebar, styled after dash.cloudflare.com. The aside itself is
@@ -14,7 +15,7 @@ import chevronsLeftSvg from "lucide-static/icons/chevrons-left.svg?raw";
  * the content). The header + collapse button never trigger it, and their
  * heights are identical in both states.
  */
-export function Sidebar(props: { user: string; active: string; items: NavItem[] }) {
+export function Sidebar(props: { user: string; active: string; items: NavItem[]; t: TFunc }) {
   return (
     <aside
       data-sidebar
@@ -36,7 +37,7 @@ export function Sidebar(props: { user: string; active: string; items: NavItem[] 
               <li>
                 <a href={item.href} aria-current={isActive ? "page" : undefined} class="nav-item mx-1">
                   <Lucide svg={item.svg} />
-                  <span class="truncate nav-label">{item.label}</span>
+                  <span class="truncate nav-label">{props.t(item.label)}</span>
                 </a>
               </li>
             );
@@ -49,8 +50,8 @@ export function Sidebar(props: { user: string; active: string; items: NavItem[] 
           type="button"
           id="sidebar-collapse-toggle"
           class="size-8.5 grid place-items-center rounded-lg text-base-content/50 hover:bg-black/[0.045] hover:text-base-content cursor-pointer"
-          title="Collapse sidebar"
-          aria-label="Collapse sidebar"
+          title={props.t("console.sidebar.collapse")}
+          aria-label={props.t("console.sidebar.collapse")}
         >
           <span class="inline-flex collapse-chevron transition-transform duration-200">
             <Lucide svg={chevronsLeftSvg} />

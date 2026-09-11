@@ -2,7 +2,13 @@ import { useState } from "hono/jsx/dom";
 import copySvg from "lucide-static/icons/copy.svg?raw";
 import checkSvg from "lucide-static/icons/check.svg?raw";
 
-export default function CopyButton({ text }: { text: string }) {
+/** UI strings for the copy button (injected from the server dict). */
+export interface CopyButtonLabels {
+  copy: string;
+  copied: string;
+}
+
+export default function CopyButton({ text, labels }: { text: string; labels: CopyButtonLabels }) {
   const [done, setDone] = useState(false);
   return (
     <button
@@ -19,7 +25,7 @@ export default function CopyButton({ text }: { text: string }) {
       }}
     >
       <span class="lucide" dangerouslySetInnerHTML={{ __html: done ? checkSvg : copySvg }} />
-      {done ? "Copied" : "Copy"}
+      {done ? labels.copied : labels.copy}
     </button>
   );
 }

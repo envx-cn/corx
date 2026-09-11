@@ -3,6 +3,7 @@ import appCss from "../../styles/app.css?inline";
 import { Sidebar } from "./_sidebar.js";
 import { Topbar } from "./_topbar.js";
 import { NAV_ITEMS } from "./_nav.js";
+import type { Locale, TFunc } from "../../lib/i18n/locale.js";
 
 function Doc(props: { title: string; children: Child; scripts?: Child }) {
   return (
@@ -47,6 +48,8 @@ export function ConsoleLayout(props: {
   title: string;
   user: string;
   active: string;
+  locale: Locale;
+  t: TFunc;
   children: Child;
   /** Head scripts (island hydration entry). Set by the renderer. */
   scripts?: Child;
@@ -56,7 +59,7 @@ export function ConsoleLayout(props: {
       <div class="drawer lg:drawer-open">
         <input id="console-drawer" type="checkbox" class="drawer-toggle" />
         <div class="drawer-content flex flex-col min-h-svh">
-          <Topbar title={props.title} user={props.user} />
+          <Topbar title={props.title} user={props.user} locale={props.locale} t={props.t} />
           <main class="flex-1 w-full max-w-6xl mx-auto p-4 lg:p-6">{props.children}</main>
           <footer class="text-center py-4 text-xs text-base-content/50">corx</footer>
         </div>
@@ -69,7 +72,7 @@ export function ConsoleLayout(props: {
               aside can widen without pushing the content. Mobile uses the
               drawer overlay, so the slot is desktop-only. */}
           <div class="sidebar-slot hidden lg:block w-64"></div>
-          <Sidebar user={props.user} active={props.active} items={NAV_ITEMS} />
+          <Sidebar user={props.user} active={props.active} items={NAV_ITEMS} t={props.t} />
         </div>
       </div>
     </Doc>

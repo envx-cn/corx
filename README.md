@@ -77,6 +77,14 @@ grid and a dark footer. The demo is a client island (`app/islands/cors-demo.tsx`
 and needs the `HasIslands` client script, which the landing's own full document
 includes. Scroll is plain native scrolling (the page-flip scroller was removed).
 
+The landing (and the 404 page) are **bilingual (English / 中文)**: `/en` and
+`/zh` URL prefixes force a language; without a prefix it's resolved from the
+`corx_lang` cookie, then the `Accept-Language` header. The nav has a zh / EN
+switch. All UI copy lives in `app/lib/i18n/messages.ts` (en + zh dictionaries)
+and is looked up through the typed `t()` from `app/lib/i18n/locale.ts`. API
+error messages are intentionally **not** translated (developer-facing wire
+format).
+
 ## Quickstart
 
 ```bash
@@ -130,8 +138,13 @@ blocklist · Profile · Billing.
 Shell: the sidebar collapses to an icon rail on desktop — hovering a nav item
 floats the real menu open without pushing the content, and the pin persists in
 localStorage; on mobile there is no rail, only the topbar hamburger, which
-opens the full menu as a floating drawer overlay. The topbar holds a user menu
-(Profile / Billing / Log out).
+opens the full menu as a floating drawer overlay. The topbar holds a language
+switch (中文 / EN) and a user menu (Profile / Billing / Log out).
+
+The console is bilingual too: a `?lang=zh|en` query on any console URL sets
+the `corx_lang` cookie (remembered for a year) and redirects back without the
+query; the topbar switch uses this. Console language resolution is cookie →
+`Accept-Language` (no URL prefixes).
 
 Login is Cloudflare Access (Zero Trust):
 

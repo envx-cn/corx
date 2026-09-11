@@ -1,5 +1,6 @@
 import type { Child } from "hono/jsx";
 import appCss from "../styles/app.css?inline";
+import type { Locale, TFunc } from "../lib/i18n/locale.js";
 
 /**
  * Shared chrome for the full-document public pages (landing + 404): the corx
@@ -38,9 +39,12 @@ export function SiteHead(props: { title: string }) {
 
 /**
  * Sticky site nav: corx mark + optional center links (the landing page's
- * "Try it / Features") + an "Open console" CTA on the right.
+ * "Try it / Features") + a language switch + an "Open console" CTA.
+ *
+ * The language switch links to the /zh or /en URL-prefixed landing (public
+ * pages only — the console has its own in-shell switcher).
  */
-export function SiteNav(props: { links?: Child }) {
+export function SiteNav(props: { links?: Child; locale?: Locale; t?: TFunc }) {
   return (
     <nav class="sticky top-0 z-30 bg-base-100/85 backdrop-blur border-b border-base-300">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
@@ -52,9 +56,32 @@ export function SiteNav(props: { links?: Child }) {
           <div class="hidden md:flex items-center gap-1 text-sm text-base-content/70">{props.links}</div>
         )}
         <div class="flex items-center gap-3">
-          <a href="/console/" class="btn btn-primary btn-sm rounded-full! px-4">
-            Open console
-          </a>
+          {props.t && (
+            <div class="flex items-center gap-1 text-xs font-medium text-base-content/60">
+              <a
+                href="/zh"
+                lang="zh"
+                aria-current={props.locale === "zh" ? "true" : undefined}
+                class={`px-2 py-1 rounded-md hover:bg-base-200 transition-colors ${props.locale === "zh" ? "text-primary" : ""}`}
+              >
+                {props.t("lang.zh")}
+              </a>
+              <span class="text-base-content/25">/</span>
+              <a
+                href="/en"
+                lang="en"
+                aria-current={props.locale === "en" ? "true" : undefined}
+                class={`px-2 py-1 rounded-md hover:bg-base-200 transition-colors ${props.locale === "en" ? "text-primary" : ""}`}
+              >
+                {props.t("lang.en")}
+              </a>
+            </div>
+          )}
+          <div class="flex items-center gap-3">
+            <a href="/console/" class="btn btn-primary btn-sm rounded-full! px-4">
+              {props.t ? props.t("site.openConsole") : "Open console"}
+            </a>
+          </div>
         </div>
       </div>
     </nav>
@@ -63,7 +90,8 @@ export function SiteNav(props: { links?: Child }) {
 
 /** Site footer: dark navy band with the brand + console link + copyright.
     `origin` (the public base URL) is shown in the bottom bar when provided. */
-export function SiteFooter(props: { origin?: string }) {
+export function SiteFooter(props: { origin?: string; t?: TFunc }) {
+  const t = props.t ?? ((k: string) => k);
   return (
     <footer class="bg-secondary text-secondary-content">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 py-12 flex flex-col sm:flex-row items-center justify-between gap-6">
@@ -71,18 +99,18 @@ export function SiteFooter(props: { origin?: string }) {
           <CorxMark />
           <div>
             <b>corx</b>
-            <div class="text-xs text-secondary-content/60">CORS proxy, served from the edge</div>
+            <div class="text-xs text-secondary-content/60">{t("site.tagline")}</div>
           </div>
         </div>
         <div class="flex items-center gap-6 text-sm text-secondary-content/70">
           <a href="/console/" class="hover:text-secondary-content">
-            Console
+            {t("site.console")}
           </a>
         </div>
       </div>
       <div class="border-t border-white/10">
         <div class="max-w-6xl mx-auto px-4 sm:px-6 py-4 text-xs text-secondary-content/50 flex items-center justify-between">
-          <span>© {new Date().getFullYear()} corx</span>
+          <span>{t("site.copyright", { year: new Date().getFullYear() })}</span>
           {props.origin && <span>{props.origin}</span>}
         </div>
       </div>

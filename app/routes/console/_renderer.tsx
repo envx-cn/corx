@@ -2,6 +2,7 @@ import { jsxRenderer } from "hono/jsx-renderer";
 import { HasIslands } from "honox/server";
 import { ConsoleLayout } from "./_layout.js";
 import { activeNavItem } from "./_nav.js";
+import { consoleLocale, consoleT } from "../../lib/i18n/hono.js";
 
 /**
  * Dash shell for every console page (login renders its own document).
@@ -13,6 +14,8 @@ import { activeNavItem } from "./_nav.js";
  */
 export default jsxRenderer(({ children, title }, c) => {
   const user = c.get("consoleUser");
+  const locale = consoleLocale(c);
+  const t = consoleT(c);
   const scripts = import.meta.env.PROD ? (
     <HasIslands>
       <script type="module" src="/static/client.js"></script>
@@ -25,6 +28,8 @@ export default jsxRenderer(({ children, title }, c) => {
       title={title ?? "Console"}
       user={user?.email ?? ""}
       active={activeNavItem(c.req.path)}
+      locale={locale}
+      t={t}
       scripts={scripts}
     >
       {children}
