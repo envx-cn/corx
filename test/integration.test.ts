@@ -80,13 +80,18 @@ describe("route wiring (integration)", () => {
   it("serves the login page (public console path, no auth bounce)", async () => {
     const res = await call("/console/login");
     expect(res.status).toBe(200);
-    expect(await res.text()).toContain("CORX console");
+    const html = await res.text();
+    // Full-document page: it bypasses the console renderer, so it carries its own doctype.
+    expect(html).toContain("<!DOCTYPE html>");
+    expect(html).toContain("CORX console");
   });
 
   it("serves the landing page in Chinese via /zh and Accept-Language", async () => {
     const zh = await call("/zh");
     expect(zh.status).toBe(200);
-    expect(await zh.text()).toContain("告别 CORS");
+    const zhHtml = await zh.text();
+    expect(zhHtml).toContain("<!DOCTYPE html>");
+    expect(zhHtml).toContain("告别 CORS");
 
     const detected = await call("/", { headers: { "accept-language": "zh-CN,zh;q=0.9" } });
     expect(await detected.text()).toContain("告别 CORS");
@@ -190,7 +195,7 @@ describe("route wiring (integration)", () => {
     const html = await res.text();
     expect(html).toContain("<!DOCTYPE html>");
     // Cloudflare-style 404: outlined digits, subtitle, dual CTAs, shared chrome.
-    expect(html).toContain("nf-404");
+    expect(html).toContain("status-code");
     expect(html).toContain("Take me home");
     expect(html).toContain("Open console");
     expect(html).toContain("We can&#39;t find the page you were looking for");
@@ -374,6 +379,44 @@ describe("upstream injection + keyless access (integration)", () => {
       { ...keyed, REQUIRE_API_KEY: "true" } as Env,
     );
     expect(res.status).toBe(401);
+  });
+});
+
+describe("error pages (integration)", () => {
+  /** D1 that throws on any query — forces a 500 out of a console page. */
+  const brokenDb = {
+    prepare: () => {
+      throw new Error("boom");
+    },
+  } as unknown as D1Database;
+
+  it("keeps the console shell when an authenticated console route fails", async () => {
+    const res = await call(
+      "/console/keys",
+      { headers: { cookie: `corx_session=${sessionCookie}` } },
+      { ...env, DB: brokenDb } as Env,
+    );
+    expect(res.status).toBe(500);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    const html = await res.text();
+    expect(html).toContain("<!DOCTYPE html>");
+    // The shell survives: sidebar drawer + the signed-in user in the topbar.
+    expect(html).toContain("console-drawer");
+    expect(html).toContain("tester@example.com");
+    // …with the error card as the page content and a support-friendly reference.
+    expect(html).toContain("Back to console");
+    expect(html).toContain("/console/keys");
+  });
+
+  it("keeps the JSON wire format for the admin API", async () => {
+    const res = await call(
+      "/api/keys",
+      { headers: { authorization: "Bearer test-token" } },
+      { ...env, DB: brokenDb } as Env,
+    );
+    expect(res.status).toBe(500);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.json()).toEqual({ error: "Internal error" });
   });
 });
 

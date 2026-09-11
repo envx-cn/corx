@@ -26,21 +26,26 @@ app.get("/", async (c) => {
   const t = consoleT(c);
   if (await getAdminUser(c)) return c.redirect("/console/", 302);
   const assertion = c.req.header("cf-access-jwt-assertion");
-  // Full document (bypasses the console renderer — no shell for login).
-  return c.html(
+  // Full document (bypasses the console renderer — no shell for login, and the
+  // renderer's doctype with it), so the doctype is prepended here.
+  const page = (
     <LoginPage
       accessDetected={accessDetected(c.env, c.req.raw)}
       accessEmail={assertion ? `(${t("console.login.verifying")})` : null}
       t={t}
-    />,
+    />
   );
+  return c.html(`<!DOCTYPE html>${page}`);
 });
 
 app.post("/", async (c) => {
   const t = consoleT(c);
   const form = await c.req.parseBody();
   const fail = (error: string) =>
-    c.html(<LoginPage accessDetected={accessDetected(c.env, c.req.raw)} accessEmail={null} error={error} t={t} />, 401);
+    c.html(
+      `<!DOCTYPE html>${<LoginPage accessDetected={accessDetected(c.env, c.req.raw)} accessEmail={null} error={error} t={t} />}`,
+      401,
+    );
 
   if (form["mode"] === "access") {
     const user = await getAdminUser(c);
