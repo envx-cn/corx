@@ -1,4 +1,4 @@
-# corx
+# CORX
 
 A CORS proxy running on Cloudflare. Stack: **HonoX + D1 + R2**.
 

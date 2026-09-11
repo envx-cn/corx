@@ -28,7 +28,7 @@ export function Topbar(props: { title: string; user: string; locale: Locale; t: 
         </label>
       </div>
       <div class="flex-1 flex items-center gap-1.5 text-sm min-w-0">
-        <span class="text-base-content/55">corx</span>
+        <span class="text-base-content/55">CORX</span>
         <span class="text-base-content/30">/</span>
         <b class="font-semibold truncate">{props.title}</b>
       </div>

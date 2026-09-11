@@ -25,7 +25,7 @@ export function Sidebar(props: { user: string; active: string; items: NavItem[];
         <span class="corx-mark size-8 rounded-lg text-white inline-flex items-center justify-center text-xs font-extrabold shrink-0">
           cx
         </span>
-        <b class="text-lg tracking-tight brand-text">corx</b>
+        <b class="text-lg tracking-tight brand-text">CORX</b>
       </div>
 
       {/* The nav band: hovering it (when collapsed) floats the menu open. */}
