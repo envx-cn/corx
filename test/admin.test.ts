@@ -12,7 +12,7 @@ interface Call {
   values: unknown[];
 }
 
-function recordingDb() {
+function recordingDb(current?: Record<string, unknown>, owner?: { key_id: string; name: string }) {
   const calls: Call[] = [];
   const db = {
     prepare(sql: string) {
@@ -25,7 +25,11 @@ function recordingDb() {
           return stmt;
         },
         run: async () => ({ meta: { changes: 1 } }),
-        first: async () => null,
+        first: async () => {
+          if (sql.includes("FROM api_keys WHERE id = ?")) return current ?? null;
+          if (sql.includes("FROM keyless_origins")) return owner ?? null;
+          return null;
+        },
         all: async () => ({ results: [] }),
       };
       return stmt;
@@ -61,13 +65,74 @@ describe("createApiKey", () => {
       1, // no_cache
       0, // ip_check off
       1, // dns_check on
+      "[]", // vars
+      "[]", // header_rules
+      "[]", // param_rules
+      null, // allowed_hosts: no injection, so unrestricted
+      0, // keyless
     ]);
   });
 
-  it("defaults both checks to on", async () => {
+  it("defaults both checks to on (and no injection/keyless)", async () => {
     const { db, calls } = recordingDb();
     await createApiKey(db, { name: "app", rateLimitPerMin: null });
-    expect(calls[0]?.values.slice(7)).toEqual([1, 1]);
+    expect(calls[0]?.values.slice(7)).toEqual([1, 1, "[]", "[]", "[]", null, 0]);
+  });
+
+  it("stores injection fields and requires a host allowlist", async () => {
+    const { db, calls } = recordingDb();
+    await createApiKey(db, {
+      name: "vendor",
+      vars: "TOKEN=sk-1",
+      headerRules: "Authorization: Bearer ${TOKEN}",
+      allowedHosts: "api.vendor.com",
+    });
+    const values = calls[0]?.values ?? [];
+    expect(JSON.parse(String(values[9]))).toEqual([{ name: "TOKEN", value: "sk-1" }]);
+    expect(JSON.parse(String(values[10]))).toEqual([
+      { action: "set", name: "Authorization", value: "Bearer ${TOKEN}" },
+    ]);
+    expect(values[12]).toBe("api.vendor.com");
+
+    const withoutHosts = recordingDb();
+    await expect(
+      createApiKey(withoutHosts.db, { name: "leaky", vars: "TOKEN=x", allowedHosts: "" }),
+    ).rejects.toThrowError(/allowed target host/);
+    expect(withoutHosts.calls).toHaveLength(0);
+  });
+
+  it("keyless access requires explicit origins and keeps the SSRF checks", async () => {
+    for (const bad of [
+      { allowedOrigins: "", keyless: true },
+      { allowedOrigins: "*", keyless: true },
+      { allowedOrigins: "https://a.example", keyless: true, ipCheck: false },
+      { allowedOrigins: "https://a.example", keyless: true, dnsCheck: false },
+    ]) {
+      const { db } = recordingDb();
+      await expect(createApiKey(db, { name: "pub", ...bad })).rejects.toBeInstanceOf(ProxyError);
+    }
+  });
+
+  it("keyless creation writes the origin grants and marks the key", async () => {
+    const { db, calls } = recordingDb();
+    const { id } = await createApiKey(db, {
+      name: "pub",
+      allowedOrigins: "https://app.example",
+      keyless: true,
+    });
+    const insert = calls.find((c) => c.sql.includes("INSERT INTO api_keys"));
+    expect(insert?.values[13]).toBe(1); // keyless
+    const grant = calls.find((c) => c.sql.includes("INSERT OR IGNORE INTO keyless_origins"));
+    expect(grant?.values).toEqual(["https://app.example", id]);
+    expect(calls.some((c) => c.sql.includes("DELETE FROM keyless_origins"))).toBe(true);
+  });
+
+  it("rejects an origin already granted to another key", async () => {
+    const { db, calls } = recordingDb(undefined, { key_id: "other-id", name: "other" });
+    await expect(
+      createApiKey(db, { name: "pub", allowedOrigins: "https://app.example", keyless: true }),
+    ).rejects.toThrowError(/already granted to key "other"/);
+    expect(calls.some((c) => c.sql.includes("INSERT INTO api_keys"))).toBe(false);
   });
 
   it("requires a name", async () => {
@@ -78,13 +143,49 @@ describe("createApiKey", () => {
 });
 
 describe("updateApiKey", () => {
-  it("updates the checks alongside the rest", async () => {
-    const { db, calls } = recordingDb();
+  const stored = {
+    vars: "[]",
+    header_rules: "[]",
+    param_rules: "[]",
+    allowed_hosts: null,
+    keyless: 0,
+    allowed_origins: null,
+    ip_check: 1,
+    dns_check: 1,
+  };
+
+  it("updates the checks alongside the rest (and syncs grants)", async () => {
+    const { db, calls } = recordingDb(stored);
     await updateApiKey(db, "key-1", { ipCheck: false, dnsCheck: true, name: "renamed" });
-    expect(calls[0]?.sql).toContain("name = ?");
-    expect(calls[0]?.sql).toContain("ip_check = ?");
-    expect(calls[0]?.sql).toContain("dns_check = ?");
-    expect(calls[0]?.values).toEqual(["renamed", 0, 1, "key-1"]);
+    const update = calls.find((c) => c.sql.startsWith("UPDATE api_keys"));
+    expect(update?.sql).toContain("name = ?");
+    expect(update?.sql).toContain("ip_check = ?");
+    expect(update?.sql).toContain("dns_check = ?");
+    expect(update?.values).toEqual(["renamed", 0, 1, "key-1"]);
+    // No keyless → the grant rows are cleared (a no-op for a non-keyless key).
+    expect(calls.some((c) => c.sql.includes("DELETE FROM keyless_origins"))).toBe(true);
+  });
+
+  it("keeps stored variable values when the editor sends blanks", async () => {
+    const { db, calls } = recordingDb({ ...stored, vars: '[{"name":"TOKEN","value":"sk-1"}]' });
+    await updateApiKey(db, "key-1", { vars: "TOKEN=", headerRules: "X-Token: ${TOKEN}", allowedHosts: "a.example" });
+    const update = calls.find((c) => c.sql.startsWith("UPDATE api_keys"));
+    expect(update?.sql).toContain("vars = ?");
+    expect(JSON.parse(String(update?.values[0]))).toEqual([{ name: "TOKEN", value: "sk-1" }]);
+  });
+
+  it("rejects removing a variable that a stored rule still references", async () => {
+    const { db } = recordingDb({
+      ...stored,
+      vars: '[{"name":"TOKEN","value":"sk-1"}]',
+      header_rules: '[{"action":"set","name":"X-Token","value":"${TOKEN}"}]',
+    });
+    await expect(updateApiKey(db, "key-1", { vars: "" })).rejects.toThrowError(/not a configured variable/);
+  });
+
+  it("validates keyless against the effective values (guard toggle alone)", async () => {
+    const { db } = recordingDb({ ...stored, keyless: 1, allowed_origins: "https://a.example" });
+    await expect(updateApiKey(db, "key-1", { ipCheck: false })).rejects.toThrowError(/cannot disable the SSRF checks/);
   });
 
   it("requires a non-blank name when a name is sent", async () => {
