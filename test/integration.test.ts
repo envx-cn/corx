@@ -66,7 +66,7 @@ describe("route wiring (integration)", () => {
   it("serves the login page (public console path, no auth bounce)", async () => {
     const res = await call("/console/login");
     expect(res.status).toBe(200);
-    expect(await res.text()).toContain("corx console");
+    expect(await res.text()).toContain("CORX console");
   });
 
   it("serves the landing page in Chinese via /zh and Accept-Language", async () => {

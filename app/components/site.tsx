@@ -50,7 +50,7 @@ export function SiteNav(props: { links?: Child; locale?: Locale; t?: TFunc }) {
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         <a href="/" class="flex items-center gap-2.5">
           <CorxMark />
-          <b class="text-lg tracking-tight">corx</b>
+          <b class="text-lg tracking-tight">CORX</b>
         </a>
         {props.links && (
           <div class="hidden md:flex items-center gap-1 text-sm text-base-content/70">{props.links}</div>
@@ -98,7 +98,7 @@ export function SiteFooter(props: { origin?: string; t?: TFunc }) {
         <div class="flex items-center gap-2.5">
           <CorxMark />
           <div>
-            <b>corx</b>
+            <b>CORX</b>
             <div class="text-xs text-secondary-content/60">{t("site.tagline")}</div>
           </div>
         </div>

@@ -20,14 +20,14 @@ const en = {
     features: "Features",
     tagline: "CORS proxy, served from the edge",
     console: "Console",
-    copyright: "© {year} corx",
+    copyright: "© {year} CORX",
   },
   landing: {
-    title: "corx — CORS proxy on Cloudflare",
+    title: "CORX — CORS proxy on Cloudflare",
     hero: {
       h1a: "Fetch any URL,",
       h1b: "without CORS.",
-      sub: "corx is an edge CORS proxy. Prefix any URL and fetch it cross-origin — responses are cached at the edge, rate-limited, and guarded against SSRF.",
+      sub: "CORX is an edge CORS proxy. Prefix any URL and fetch it cross-origin — responses are cached at the edge, rate-limited, and guarded against SSRF.",
       tryLive: "Try it live",
       openConsole: "Open console",
     },
@@ -70,12 +70,12 @@ const en = {
     },
   },
   notfound: {
-    title: "404 — Not found · corx",
+    title: "404 — Not found · CORX",
     h1: "404 — Page not found",
     sub: "We can't find the page you were looking for. It may have been moved, renamed, or never existed.",
     takeHome: "Take me home",
     openConsole: "Open console",
-    noMatch: "No corx route matches {path}",
+    noMatch: "No CORX route matches {path}",
   },
   console: {
     nav: {
@@ -205,12 +205,12 @@ const en = {
       hint: "Console access is controlled by your deployment's Access policy or {code}. Changes to the account (email, permissions) happen on the upstream identity provider, not here.",
     },
     billing: {
-      body: "corx is self-hosted on your own Cloudflare account, so there is nothing to bill here. Usage of the proxy (requests, cache, storage) is charged by Cloudflare against the plan of the account this worker runs on.",
+      body: "CORX is self-hosted on your own Cloudflare account, so there is nothing to bill here. Usage of the proxy (requests, cache, storage) is charged by Cloudflare against the plan of the account this worker runs on.",
       active: "active",
       noBill: "No plan, no seat, no invoice.",
     },
     login: {
-      consoleTitle: "corx console",
+      consoleTitle: "CORX console",
       detected: "Detected Access identity:",
       unknown: "unknown",
       continueAccess: "Continue with Cloudflare",
@@ -284,14 +284,14 @@ const zh: Messages = {
     features: "功能特性",
     tagline: "边缘 CORS 代理",
     console: "控制台",
-    copyright: "© {year} corx",
+    copyright: "© {year} CORX",
   },
   landing: {
-    title: "corx — Cloudflare 上的 CORS 代理",
+    title: "CORX — Cloudflare 上的 CORS 代理",
     hero: {
       h1a: "抓取任意 URL，",
       h1b: "告别 CORS。",
-      sub: "corx 是一个边缘 CORS 代理。给任意 URL 加个前缀即可跨域抓取——响应缓存在边缘、有限流保护、内置 SSRF 防护。",
+      sub: "CORX 是一个边缘 CORS 代理。给任意 URL 加个前缀即可跨域抓取——响应缓存在边缘、有限流保护、内置 SSRF 防护。",
       tryLive: "在线体验",
       openConsole: "打开控制台",
     },
@@ -334,12 +334,12 @@ const zh: Messages = {
     },
   },
   notfound: {
-    title: "404 — 页面不存在 · corx",
+    title: "404 — 页面不存在 · CORX",
     h1: "404 — 页面不存在",
     sub: "找不到你要访问的页面。它可能已被移动、重命名，或从未存在过。",
     takeHome: "返回首页",
     openConsole: "打开控制台",
-    noMatch: "corx 没有匹配 {path} 的路由",
+    noMatch: "CORX 没有匹配 {path} 的路由",
   },
   console: {
     nav: {
@@ -469,12 +469,12 @@ const zh: Messages = {
       hint: "控制台访问由部署时的 Access 策略或 {code} 控制。账号相关修改（邮箱、权限）发生在上游身份提供商，而不是这里。",
     },
     billing: {
-      body: "corx 自托管在你自己的 Cloudflare 账户上，因此这里没有任何账单。代理的使用量（请求、缓存、存储）由 Cloudflare 按该 Worker 所在账户的套餐计费。",
+      body: "CORX 自托管在你自己的 Cloudflare 账户上，因此这里没有任何账单。代理的使用量（请求、缓存、存储）由 Cloudflare 按该 Worker 所在账户的套餐计费。",
       active: "活跃",
       noBill: "没有套餐、没有席位、没有账单。",
     },
     login: {
-      consoleTitle: "corx 控制台",
+      consoleTitle: "CORX 控制台",
       detected: "检测到 Access 身份：",
       unknown: "未知",
       continueAccess: "使用 Cloudflare 继续",

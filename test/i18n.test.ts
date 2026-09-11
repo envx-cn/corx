@@ -41,7 +41,7 @@ describe("makeT / lookup", () => {
   });
 
   it("interpolates {vars}", () => {
-    expect(makeT("en")("site.copyright", { year: 2026 })).toBe("© 2026 corx");
+    expect(makeT("en")("site.copyright", { year: 2026 })).toBe("© 2026 CORX");
     expect(makeT("zh")("console.keys.ttlValue", { ttl: 300 })).toBe("TTL 300s");
   });
 
