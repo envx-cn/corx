@@ -5,53 +5,58 @@ import type { LogRow } from "../../lib/admin.js";
 import { humanBytes } from "../../lib/format.js";
 import { MethodBadge, StatusBadge } from "../../components/badges.js";
 import { DataTable, EmptyRow } from "../../components/table.js";
+import { consoleT } from "../../lib/i18n/hono.js";
+import type { TFunc } from "../../lib/i18n/locale.js";
 
 const app = new Hono<{ Bindings: Env }>({ strict: false });
 
 app.get("/", async (c) => {
+  const t = consoleT(c);
   const limit = Number(c.req.query("limit") ?? 100);
-  return c.render(<LogsContent logs={await queryLogs(c.env.DB, limit)} limit={Number.isFinite(limit) ? limit : 100} />, {
-    title: "Logs",
-  });
+  return c.render(
+    <LogsContent logs={await queryLogs(c.env.DB, limit)} limit={Number.isFinite(limit) ? limit : 100} t={t} />,
+    { title: t("console.title.logs") },
+  );
 });
 
 export default app;
 
 // ---------- Page markup (colocated) ----------
-function LogsContent(props: { logs: LogRow[]; limit: number }) {
+function LogsContent(props: { logs: LogRow[]; limit: number; t: TFunc }) {
+  const { t } = props;
   return (
     <>
-      <h1 class="text-3xl font-semibold tracking-tight mb-4">Request logs</h1>
+      <h1 class="text-3xl font-semibold tracking-tight mb-4">{t("console.logs.title")}</h1>
       <div class="bg-base-100 border border-base-300 rounded-box p-4 mb-4">
         <form method="get" action="/console/logs">
           <div class="flex flex-wrap items-end gap-3">
             <label class="form-control">
               <div class="label pb-1">
-                <span class="label-text">Limit</span>
+                <span class="label-text">{t("console.logs.limit")}</span>
               </div>
               <input name="limit" value={String(props.limit)} inputmode="numeric" class="input input-bordered input-sm w-24" />
             </label>
-            <button class="btn btn-sm">Refresh</button>
+            <button class="btn btn-sm">{t("console.logs.refresh")}</button>
           </div>
         </form>
       </div>
       <DataTable
         head={
           <>
-            <th>Time</th>
-            <th>Method</th>
-            <th>Host</th>
-            <th>Status</th>
-            <th class="text-right">Latency</th>
-            <th>CC</th>
-            <th>Cache</th>
-            <th class="text-right">Size</th>
-            <th>Error</th>
+            <th>{t("console.logs.headTime")}</th>
+            <th>{t("console.logs.headMethod")}</th>
+            <th>{t("console.logs.headHost")}</th>
+            <th>{t("console.logs.headStatus")}</th>
+            <th class="text-right">{t("console.logs.headLatency")}</th>
+            <th>{t("console.logs.headCc")}</th>
+            <th>{t("console.logs.headCache")}</th>
+            <th class="text-right">{t("console.logs.headSize")}</th>
+            <th>{t("console.logs.headError")}</th>
           </>
         }
         body={
           props.logs.length === 0 ? (
-            <EmptyRow cols={9} text="no logs" />
+            <EmptyRow cols={9} text={t("console.logs.empty")} />
           ) : (
             props.logs.map((l) => (
               <tr>
@@ -70,7 +75,13 @@ function LogsContent(props: { logs: LogRow[]; limit: number }) {
                   {l.latency_ms == null ? "" : " ms"}
                 </td>
                 <td>{l.country}</td>
-                <td>{l.cached ? <span class="font-medium text-success">HIT</span> : <span class="text-base-content/50">MISS</span>}</td>
+                <td>
+                  {l.cached ? (
+                    <span class="font-medium text-success">{t("console.logs.hit")}</span>
+                  ) : (
+                    <span class="text-base-content/50">{t("console.logs.miss")}</span>
+                  )}
+                </td>
                 <td class="text-right tabular-nums">{humanBytes(l.res_bytes)}</td>
                 <td class="text-error">{l.error}</td>
               </tr>

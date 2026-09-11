@@ -14,6 +14,15 @@ const TONE_BAR: Record<string, string> = {
   error: "bar-error",
 };
 
+/** UI strings for the breakdown tabs (injected from the server dict). */
+export interface StatsTabsI18n {
+  aria: string;
+  byStatus: string;
+  byMethod: string;
+  byCountry: string;
+  noData: string;
+}
+
 /**
  * Dashboard breakdown selector: "By status / By method / By country" tabs,
  * each rendering a vertical bar chart (same visual language as "Requests per
@@ -23,11 +32,12 @@ export default function StatsTabs(props: {
   status: BreakdownRow[];
   method: BreakdownRow[];
   country: BreakdownRow[];
+  i18n: StatsTabsI18n;
 }) {
   const tabs = [
-    { label: "By status", data: props.status },
-    { label: "By method", data: props.method },
-    { label: "By country", data: props.country },
+    { label: props.i18n.byStatus, data: props.status },
+    { label: props.i18n.byMethod, data: props.method },
+    { label: props.i18n.byCountry, data: props.country },
   ] as const;
   const [active, setActive] = useState(0);
   const data = tabs[active]!.data;
@@ -35,7 +45,7 @@ export default function StatsTabs(props: {
 
   return (
     <div class="bg-base-100 border border-base-300 rounded-box">
-      <div class="flex border-b border-base-300 px-2" role="tablist" aria-label="Breakdown">
+      <div class="flex border-b border-base-300 px-2" role="tablist" aria-label={props.i18n.aria}>
         {tabs.map((t, i) => (
           <button
             type="button"
@@ -54,7 +64,7 @@ export default function StatsTabs(props: {
       </div>
       <div class="p-4">
         {data.length === 0 ? (
-          <p class="text-sm text-base-content/50 text-center py-6">no data</p>
+          <p class="text-sm text-base-content/50 text-center py-6">{props.i18n.noData}</p>
         ) : (
           <>
             <div class="chart">

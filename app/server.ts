@@ -8,6 +8,7 @@ import { cors, withProxyCors } from "./proxy/cors.js";
 import { proxyHandler } from "./proxy/handler.js";
 import { resolveRawTarget } from "./proxy/subdomain.js";
 import { NotFoundPage } from "./routes/_not-found.js";
+import { detectLocale, makeT } from "./lib/i18n/locale.js";
 
 // Base Hono app with the proxy routes mounted manually (file routing can't
 // express the /* catch-all ordering).
@@ -87,7 +88,15 @@ app.all("/*", (c) => {
   }
   if (!isProxy) {
     // c.html() doesn't add a doctype; prepend it so browsers don't fall into quirks mode.
-    return c.html(`<!DOCTYPE html>${NotFoundPage({ path: reqUrl.pathname, origin: reqUrl.origin })}`, 404);
+    const locale = detectLocale({
+      pathname: reqUrl.pathname,
+      cookie: c.req.header("cookie"),
+      acceptLanguage: c.req.header("accept-language"),
+    });
+    return c.html(
+      `<!DOCTYPE html>${NotFoundPage({ path: reqUrl.pathname, origin: reqUrl.origin, locale, t: makeT(locale) })}`,
+      404,
+    );
   }
   return proxyHandler(c);
 });

@@ -14,6 +14,21 @@ const EXAMPLES = [
   { name: "Zippopotam · Beverly Hills zip", url: "https://api.zippopotam.us/us/90210" },
 ] as const;
 
+export interface CorsDemoI18n {
+  urlAria: string;
+  urlPh: string;
+  go: string;
+  error: string;
+  cache: string;
+  truncated: string;
+  requestFailed: string;
+  waiting: string;
+  autoRotating: string;
+  manualMode: string;
+  pause: string;
+  resume: string;
+}
+
 interface DemoResult {
   status: number;
   ok: boolean;
@@ -34,7 +49,7 @@ function humanBytes(n: number): string {
  * Live "try it" browser mockup: examples rotate every 10s and auto-load
  * through the proxy; typing in the URL bar pauses rotation and takes over.
  */
-export default function CorsDemo({ base }: { base: string }) {
+export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI18n }) {
   const [url, setUrl] = useState<string>(EXAMPLES[0]!.url);
   const [auto, setAuto] = useState(true);
   const [idx, setIdx] = useState(0);
@@ -65,7 +80,7 @@ export default function CorsDemo({ base }: { base: string }) {
       } catch {
         /* not JSON — show raw text */
       }
-      if (snippet.length > 4000) snippet = `${snippet.slice(0, 4000)}\n… (truncated)`;
+      if (snippet.length > 4000) snippet = `${snippet.slice(0, 4000)}\n${i18n.truncated}`;
       setResult({
         status: res.status,
         ok: res.ok,
@@ -130,8 +145,8 @@ export default function CorsDemo({ base }: { base: string }) {
             key={flipKey}
             value={url}
             spellcheck={false}
-            placeholder="https://api.example.com/…"
-            aria-label="URL to proxy"
+            placeholder={i18n.urlPh}
+            aria-label={i18n.urlAria}
             onInput={(e) => {
               const value = (e.currentTarget as HTMLInputElement | null)?.value ?? "";
               setUrl(value);
@@ -143,7 +158,7 @@ export default function CorsDemo({ base }: { base: string }) {
             class="flex-1 min-w-0 bg-transparent outline-none text-sm font-mono py-1 url-slide"
           />
           <button type="button" onClick={go} class="btn btn-primary btn-sm rounded-full! shrink-0">
-            Go
+            {i18n.go}
           </button>
         </div>
       </div>
@@ -170,17 +185,17 @@ export default function CorsDemo({ base }: { base: string }) {
           <div key="result" class="demo-fade-in p-4">
             <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3 font-sans text-xs text-base-content/50">
               <span class={`font-medium ${statusCls}`}>
-                {result.status === 0 ? "error" : `HTTP ${result.status}`}
+                {result.status === 0 ? i18n.error : `HTTP ${result.status}`}
               </span>
               <span>{result.latency} ms</span>
               <span>{humanBytes(result.bytes)}</span>
-              {result.cache && <span>cache {result.cache}</span>}
+              {result.cache && <span>{i18n.cache.replace("{value}", result.cache)}</span>}
               <span class="truncate max-w-[50%]">{result.type || "—"}</span>
             </div>
             <pre class="font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-all">{result.snippet}</pre>
           </div>
         ) : (
-          <div class="py-20 text-center text-sm text-base-content/50">Waiting for the first request…</div>
+          <div class="py-20 text-center text-sm text-base-content/50">{i18n.waiting}</div>
         )}
       </div>
       <div class="flex items-center justify-between px-4 py-2 border-t border-base-300 text-xs text-base-content/55 bg-base-100">
@@ -189,16 +204,16 @@ export default function CorsDemo({ base }: { base: string }) {
             <>
               <span class="inline-flex items-center gap-1.5">
                 <span class="size-1.5 rounded-full bg-primary animate-pulse"></span>
-                Auto-rotating examples every 10s
+                {i18n.autoRotating}
               </span>
             </>
           ) : (
-            <span>Manual mode — type a URL and press Go</span>
+            <span>{i18n.manualMode}</span>
           )}
         </span>
         <button type="button" onClick={() => setAuto((a) => !a)} class="btn btn-ghost btn-xs gap-1 rounded-full!">
           <Lucide svg={auto ? pauseSvg : playSvg} />
-          {auto ? "Pause" : "Resume"}
+          {auto ? i18n.pause : i18n.resume}
         </button>
       </div>
     </div>
