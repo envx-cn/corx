@@ -3,7 +3,7 @@ import type { Env } from "../../lib/types.js";
 import { queryBlockedHosts } from "../../lib/admin.js";
 import { DataTable, EmptyRow } from "../../components/table.js";
 import { RelTime } from "../../components/time.js";
-import ConfirmButton from "../../islands/confirm-button.js";
+import { ConfirmButton } from "./_confirm.js";
 import { consoleT } from "../../lib/i18n/hono.js";
 import type { TFunc } from "../../lib/i18n/locale.js";
 

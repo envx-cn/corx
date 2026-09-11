@@ -341,8 +341,12 @@ app/              HonoX frontend (entry + console UI + API routes)
                 would reposition a fixed-position child. The <honox-island>
                 wrapper is made display:contents in app.css so an island's
                 own root is what participates in layout (flex rows, daisyUI
-                menu items); confirm-button.tsx also reparents its dialog to
-                <body>, since a closed dropdown is display:none.
+                menu items). Confirm dialogs (logout, blocklist remove) are
+                deliberately NOT islands: routes/console/_confirm.tsx renders
+                them server-side and the Doc's inline script wires
+                [data-corx-confirm] → showModal() and reparents the dialog to
+                <body> (a closed dropdown is display:none), so they keep
+                working even when island hydration doesn't.
   routes/index.ts     landing page file route (subdomain-aware)
   components/   shared presentational primitives (badges, chart, lucide,
                 table) — console-only chrome lives in routes/console/

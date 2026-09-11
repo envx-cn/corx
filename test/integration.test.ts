@@ -169,6 +169,18 @@ describe("route wiring (integration)", () => {
     expect(html).toContain("7d"); // the slider label, clamped to the 7-day max
   });
 
+  it("server-renders the shell confirm dialog (logout needs no island)", async () => {
+    const res = await call("/console/profile", { headers: { cookie: `corx_session=${sessionCookie}` } });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("data-corx-confirm"); // trigger → showModal() hook
+    expect(html).toContain('id="corx-confirm-'); // the dialog itself
+    expect(html).toContain("Log out?");
+    expect(html).toContain("[data-corx-confirm]"); // the Doc's wiring script
+    // Profile renders no island at all now, so there is no hydration to fail.
+    expect(html).not.toContain("<honox-island");
+  });
+
   it("delete route reports an unknown key instead of deleting", async () => {
     const res = await call("/console/keys/nope/delete", {
       method: "POST",
