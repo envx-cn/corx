@@ -138,18 +138,21 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
   };
 
   try {
+    // Per-key SSRF opt-outs (api_keys.ip_check / dns_check, both default on).
+    // Read the row before the guards so a key can skip them.
+    const row = c.get("apiKey");
     const { target: rawTarget, viaSubdomain } = resolveRawTarget(reqUrl, c.env);
-    const url = validateTargetUrl(rawTarget);
+    const url = validateTargetUrl(rawTarget, { ipCheck: row?.ip_check !== 0 });
     target = url.toString();
     host = url.hostname;
-    // SSRF: literal checks (above) + DNS-resolved IP check + admin blocklist.
+    // SSRF: literal checks (above, per-key ip_check) + DNS-resolved IP check
+    // (per-key dns_check) + admin blocklist (always on).
     // Blocklist runs even on cache hits — we must not serve cached content of
     // a host that got blocked after the fact.
-    await assertPublicHost(host);
+    if (row?.dns_check !== 0) await assertPublicHost(host);
     await checkDbBlocklist(c.env.DB, host);
 
     // Auth: optional unless REQUIRE_API_KEY=true (key resolved by apiKeyMiddleware).
-    const row = c.get("apiKey");
     apiKeyId = row?.id ?? null;
     if ((c.env.REQUIRE_API_KEY ?? "false").toLowerCase() === "true" && !apiKeyId) {
       throw new ProxyError(401, "Valid API key required (X-Api-Key, Authorization: Bearer, or ?key=)");

@@ -2,39 +2,16 @@ import { Hono } from "hono";
 import type { Env } from "../../lib/types.js";
 import { ProxyError } from "../../lib/types.js";
 import { createApiKey, queryKeys } from "../../lib/admin.js";
+import type { KeyInput } from "../../lib/admin.js";
 
 const app = new Hono<{ Bindings: Env }>();
 
 app.get("/", async (c) => c.json({ keys: await queryKeys(c.env.DB) }));
 
 app.post("/", async (c) => {
-  const body = await c.req
-    .json<{
-      name?: string;
-      rateLimitPerMin?: number;
-      allowedOrigins?: string;
-      cacheTtl?: string;
-      noCache?: boolean;
-    }>()
-    .catch(
-      () =>
-        ({}) as {
-          name?: string;
-          rateLimitPerMin?: number;
-          allowedOrigins?: string;
-          cacheTtl?: string;
-          noCache?: boolean;
-        },
-    );
+  const body = await c.req.json<Partial<KeyInput>>().catch(() => ({}) as Partial<KeyInput>);
   try {
-    const { id, key } = await createApiKey(
-      c.env.DB,
-      body.name ?? "",
-      body.rateLimitPerMin ?? null,
-      body.allowedOrigins,
-      body.cacheTtl,
-      body.noCache,
-    );
+    const { id, key } = await createApiKey(c.env.DB, { ...body, name: body.name ?? "" });
     // Raw key is shown once — store it somewhere safe.
     return c.json({ id, key, name: body.name ?? "" }, 201);
   } catch (err) {

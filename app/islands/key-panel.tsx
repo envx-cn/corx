@@ -1,0 +1,275 @@
+import type { Child } from "hono/jsx";
+import { useEffect, useId, useRef } from "hono/jsx/dom";
+
+/**
+ * Raw API-key form values, kept as strings. The server reads the same shape off
+ * the request body and echoes it back when a save fails, so the panel can
+ * re-open with exactly what the user had typed.
+ */
+export interface KeyFormValues {
+  name: string;
+  rateLimitPerMin: string;
+  allowedOrigins: string;
+  cacheTtl: string;
+  noCache: boolean;
+  ipCheck: boolean;
+  dnsCheck: boolean;
+}
+
+/** UI strings for the key panel (injected from the server dict). */
+export interface KeyPanelI18n {
+  name: string;
+  namePh: string;
+  ratePerMin: string;
+  ratePh: string;
+  allowedOrigins: string;
+  originsPh: string;
+  cacheTtl: string;
+  cacheTtlTitle: string;
+  ttlPh: string;
+  noCache: string;
+  noCacheShort: string;
+  noCacheHint: string;
+  checks: string;
+  ipCheck: string;
+  ipCheckHint: string;
+  dnsCheck: string;
+  dnsCheckHint: string;
+  danger: string;
+  dangerHint: string;
+  delete: string;
+  deleteTitle: string;
+  deleteHint: string;
+  deleteConfirm: string;
+  cancel: string;
+  close: string;
+}
+
+function Field(props: { label: string; class?: string; children: Child }) {
+  return (
+    <label class={`form-control ${props.class ?? ""}`}>
+      <div class="label pb-1">
+        <span class="label-text">{props.label}</span>
+      </div>
+      {props.children}
+    </label>
+  );
+}
+
+/** One SSRF-guard switch: label + explanation on the left, toggle on the right. */
+function Check(props: { name: string; label: string; hint: string; checked: boolean }) {
+  return (
+    <label class="flex cursor-pointer items-start justify-between gap-4">
+      <span>
+        <span class="block text-sm font-medium">{props.label}</span>
+        <span class="block text-xs text-base-content/60">{props.hint}</span>
+      </span>
+      <input type="checkbox" name={props.name} value="on" class="toggle toggle-sm mt-0.5" checked={props.checked} />
+    </label>
+  );
+}
+
+/**
+ * Modal panel for one API-key form: a trigger button that opens a native
+ * <dialog> (top layer, Esc + backdrop close for free) whose form POSTs to the
+ * server. Used twice — "Create key" with no values, and a per-row "Edit" with
+ * that key's current policy plus the delete danger zone.
+ *
+ * Deliberately state-less: the island only wires buttons to showModal(), so
+ * honox never re-renders (and never clobbers) the fields while typing. The
+ * delete confirmation's "type the name" check is synced to the submit button
+ * imperatively for the same reason — the server re-checks it anyway.
+ *
+ * The confirm <dialog> is a sibling of the panel <dialog> (not a descendant):
+ * daisyUI's .modal-box is scaled, and a top-layer dialog is safest outside it.
+ */
+export default function KeyPanel(props: {
+  /** Form target: /console/keys to create, /console/keys/:id to update. */
+  action: string;
+  title: string;
+  trigger: string;
+  triggerClass: string;
+  submit: string;
+  labels: KeyPanelI18n;
+  values?: KeyFormValues;
+  /** Re-open right after hydration (the server echoed a failed save). */
+  open?: boolean;
+  /** Delete endpoint — set on the edit panel to render the danger zone. */
+  deleteAction?: string;
+  /** Current name of the key (delete confirmation). */
+  keyName?: string;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const confirmRef = useRef<HTMLDialogElement>(null);
+  const confirmInputRef = useRef<HTMLInputElement>(null);
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  const titleId = useId();
+  const confirmTitleId = useId();
+  const { labels } = props;
+  const v = props.values;
+
+  useEffect(() => {
+    if (props.open && ref.current && !ref.current.open) ref.current.showModal();
+  }, []);
+
+  const show = () => ref.current?.showModal();
+  const hide = () => ref.current?.close();
+  const closeConfirm = () => {
+    confirmRef.current?.close();
+    if (confirmInputRef.current) confirmInputRef.current.value = "";
+    syncConfirm();
+  };
+  /** Enable the confirm submit only once the typed name matches. */
+  const syncConfirm = () => {
+    if (confirmButtonRef.current && confirmInputRef.current) {
+      confirmButtonRef.current.disabled = confirmInputRef.current.value.trim() !== props.keyName;
+    }
+  };
+
+  return (
+    <>
+      <button type="button" class={props.triggerClass} onClick={show}>
+        {props.trigger}
+      </button>
+      <dialog ref={ref} class="modal" aria-labelledby={titleId}>
+        <div class="modal-box">
+          <button
+            type="button"
+            class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+            aria-label={labels.close}
+            onClick={hide}
+          >
+            ✕
+          </button>
+          <h3 id={titleId} class="text-lg font-semibold">
+            {props.title}
+          </h3>
+          <form method="post" action={props.action} class="mt-4">
+            {/* Marker: a hand-rolled POST without it (script, stale form) gets
+                the safe defaults (both checks on) instead of an absent -
+                unchecked - field silently turning the guards off. */}
+            <input type="hidden" name="checks" value="1" />
+            <div class="grid gap-x-4 gap-y-3 sm:grid-cols-2">
+              <Field label={labels.name}>
+                <input
+                  name="name"
+                  value={v?.name ?? ""}
+                  placeholder={labels.namePh}
+                  class="input input-bordered w-full"
+                  required
+                  autofocus
+                />
+              </Field>
+              <Field label={labels.ratePerMin}>
+                <input
+                  name="rateLimitPerMin"
+                  value={v?.rateLimitPerMin ?? ""}
+                  placeholder={labels.ratePh}
+                  inputmode="numeric"
+                  class="input input-bordered w-full"
+                />
+              </Field>
+              <Field label={labels.allowedOrigins} class="sm:col-span-2">
+                <input
+                  name="allowedOrigins"
+                  value={v?.allowedOrigins ?? ""}
+                  placeholder={labels.originsPh}
+                  class="input input-bordered w-full"
+                />
+              </Field>
+              <Field label={labels.cacheTtl}>
+                <input
+                  name="cacheTtl"
+                  value={v?.cacheTtl ?? ""}
+                  placeholder={labels.ttlPh}
+                  inputmode="numeric"
+                  title={labels.cacheTtlTitle}
+                  class="input input-bordered w-full"
+                />
+              </Field>
+              <Field label={labels.noCache}>
+                <div class="flex h-10 items-center gap-2 text-sm text-base-content/70" title={labels.noCacheHint}>
+                  <input type="checkbox" name="noCache" value="on" class="checkbox checkbox-sm" checked={v?.noCache ?? false} />
+                  <span>{labels.noCacheShort}</span>
+                </div>
+              </Field>
+            </div>
+
+            <div class="mt-4 rounded-box border border-base-300 p-3">
+              <div class="mb-2 text-xs font-medium uppercase tracking-wide text-base-content/50">{labels.checks}</div>
+              <div class="space-y-3">
+                <Check name="ipCheck" label={labels.ipCheck} hint={labels.ipCheckHint} checked={v?.ipCheck ?? true} />
+                <Check name="dnsCheck" label={labels.dnsCheck} hint={labels.dnsCheckHint} checked={v?.dnsCheck ?? true} />
+              </div>
+            </div>
+
+            {/* Danger zone sits inside the save form (its button is
+                type="button", so it never submits) — order-wise it belongs
+                above the Cancel/Save row. */}
+            {props.deleteAction && props.keyName ? (
+              <div class="mt-4 flex items-center justify-between gap-4 rounded-box border border-error/30 bg-error/5 p-3">
+                <div>
+                  <div class="text-sm font-medium text-error">{labels.danger}</div>
+                  <p class="text-xs text-base-content/60">{labels.dangerHint}</p>
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-error btn-outline shrink-0"
+                  onClick={() => confirmRef.current?.showModal()}
+                >
+                  {labels.delete}
+                </button>
+              </div>
+            ) : null}
+
+            <div class="modal-action">
+              <button type="button" class="btn btn-ghost" onClick={hide}>
+                {labels.cancel}
+              </button>
+              <button type="submit" class="btn btn-primary">
+                {props.submit}
+              </button>
+            </div>
+          </form>
+        </div>
+        {/* Backdrop: a dialog form closes the <dialog> without any JS. */}
+        <form method="dialog" class="modal-backdrop">
+          <button aria-label={labels.close}>{labels.close}</button>
+        </form>
+      </dialog>
+
+      {props.deleteAction && props.keyName ? (
+        <dialog ref={confirmRef} class="modal" aria-labelledby={confirmTitleId}>
+          <div class="modal-box max-w-md">
+            <h3 id={confirmTitleId} class="text-lg font-semibold">
+              {labels.deleteTitle}
+            </h3>
+            <p class="mt-2 text-sm text-base-content/70">{labels.deleteHint.replace("{name}", props.keyName)}</p>
+            <form method="post" action={props.deleteAction} class="mt-4">
+              <input
+                ref={confirmInputRef}
+                name="confirmName"
+                onInput={syncConfirm}
+                autocomplete="off"
+                placeholder={labels.deleteConfirm}
+                aria-label={labels.deleteConfirm}
+                class="input input-bordered w-full"
+              />
+              <div class="modal-action">
+                <button type="button" class="btn btn-ghost" onClick={closeConfirm}>
+                  {labels.cancel}
+                </button>
+                <button ref={confirmButtonRef} type="submit" class="btn btn-error" disabled>
+                  {labels.delete}
+                </button>
+              </div>
+            </form>
+          </div>
+          <form method="dialog" class="modal-backdrop">
+            <button aria-label={labels.close}>{labels.close}</button>
+          </form>
+        </dialog>
+      ) : null}
+    </>
+  );
+}

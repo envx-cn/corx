@@ -37,6 +37,14 @@ can set its own default TTL (`cacheTtl`, blank = global `CACHE_TTL_SECONDS`,
 that key — handy for live data or high-churn scrapers sharing the proxy with
 cache-friendly traffic.
 
+Per-key SSRF guards (console → API keys → Edit): the two guards run for every
+request by default and can each be turned off for a single key — `ipCheck`
+(private/reserved IP literals and internal hostnames) and `dnsCheck` (resolve
+the host via DoH and reject names pointing at a non-public IP; the extra
+round-trip is what trusted internal keys may want to drop). The D1 blocklist
+and Cloudflare's own private-IP rules for Workers are never bypassed. Skipping
+a guard widens what that key can reach, so both default to on.
+
 **Cache safety:** requests carrying `Authorization` / `Cookie` headers never
 read or write the cache (the key is the URL only, so user-specific responses
 would leak across callers). Upstream responses marked `Cache-Control:
@@ -131,8 +139,10 @@ Open `https://<your-host>/console/`. Server-rendered pages with islands only
 where needed (stats tabs):
 Dashboard (24h requests, traffic in/out, cache bandwidth saved, Requests per
 hour chart, a **Breakdown** selector with vertical bar charts for status /
-method / country, top hosts/keys, recent errors) · API keys (create shown once,
-revoke, per-key origins/cache policy) · Logs (per-request size) · Host
+method / country, top hosts/keys, recent errors) · API keys (create and edit
+in a modal panel — name, rate limit, per-key origins/cache policy and SSRF
+checks; the raw key is shown once; delete asks you to type the key name) ·
+Logs (per-request size) · Host
 blocklist · Profile · Billing.
 
 Shell: the sidebar collapses to an icon rail on desktop — hovering a nav item
@@ -175,20 +185,21 @@ All `/api/*` need `Authorization: Bearer <ADMIN_TOKEN>`.
 curl -H "Authorization: Bearer $ADMIN_TOKEN" https://corx.<you>.workers.dev/api/stats
 curl -H "Authorization: Bearer $ADMIN_TOKEN" 'https://corx.<you>.workers.dev/api/logs?limit=20'
 
-# create a key (raw key shown once!)
+# create a key (raw key shown once!; "name" is required)
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"name":"my-app","rateLimitPerMin":120,"allowedOrigins":"https://app.example"}' \
   https://corx.<you>.workers.dev/api/keys
 
 # per-key CORS origins: override the global ALLOWED_ORIGINS for callers of that key
 # ("*", comma-separated origins, or "" to inherit the global). Update anytime:
+# ipCheck / dnsCheck turn the SSRF guards off for this key (default true):
 curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"allowedOrigins":"https://app.example, https://admin.example"}' \
+  -d '{"allowedOrigins":"https://app.example","cacheTtl":"300","ipCheck":false}' \
   https://corx.<you>.workers.dev/api/keys/KEY_ID
 # tip: browsers don't send API keys on OPTIONS preflights — pass the key via
 # ?key= if preflights must be evaluated per-key, or keep the global permissive
 
-# revoke / block hosts
+# revoke (kill switch; the console's Delete removes the row for good) / block hosts
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" https://corx.<you>.workers.dev/api/keys/KEY_ID/revoke
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"hostname":"evil.example","reason":"abuse"}' \
@@ -231,7 +242,14 @@ app/              HonoX frontend (entry + console UI + API routes)
                 make checkbox + script the reliable combo).
                 Island hydration is honox-managed: the renderer uses
                 <HasIslands/> so the client script loads only on pages
-                that import an island.
+                that import an island. Console forms that need a panel
+                (API keys) use a state-less island around a native
+                <dialog class="modal">: showModal() puts it in the top
+                layer from anywhere in the table, and with no state the
+                form fields are never re-rendered while typing. A second
+                dialog (delete confirmation) is a sibling of the first,
+                never a descendant — daisyUI's .modal-box is scaled, which
+                would reposition a fixed-position child.
   routes/index.ts     landing page file route (subdomain-aware)
   components/   shared presentational primitives (badges, chart, lucide,
                 table) — console-only chrome lives in routes/console/

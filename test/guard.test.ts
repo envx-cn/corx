@@ -39,4 +39,15 @@ describe("validateTargetUrl", () => {
       expect(() => validateTargetUrl(raw), raw).toThrowError(ProxyError);
     }
   });
+
+  it('ipCheck: false (per-key opt-out) allows internal targets', () => {
+    expect(validateTargetUrl("http://10.0.0.5/x", { ipCheck: false }).hostname).toBe("10.0.0.5");
+    expect(validateTargetUrl("http://localhost:3000/", { ipCheck: false }).port).toBe("3000");
+  });
+
+  it("ipCheck: false still enforces syntax and scheme", () => {
+    for (const raw of ["ftp://example.com", "https://user:pw@example.com/", "not-a-url"]) {
+      expect(() => validateTargetUrl(raw, { ipCheck: false }), raw).toThrowError(ProxyError);
+    }
+  });
 });

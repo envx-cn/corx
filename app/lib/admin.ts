@@ -160,6 +160,8 @@ export interface KeyRow {
   allowed_origins: string | null;
   cache_ttl: number | null;
   no_cache: number;
+  ip_check: number;
+  dns_check: number;
   created_at: string;
   revoked_at: string | null;
 }
@@ -167,34 +169,51 @@ export interface KeyRow {
 export async function queryKeys(db: D1Database): Promise<KeyRow[]> {
   const rows = await db
     .prepare(
-      "SELECT id, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, created_at, revoked_at FROM api_keys ORDER BY created_at DESC",
+      "SELECT id, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, created_at, revoked_at FROM api_keys ORDER BY created_at DESC",
     )
     .all<KeyRow>();
   return rows.results;
 }
 
-export async function createApiKey(
-  db: D1Database,
-  name: string,
-  rateLimitPerMin: number | null,
-  allowedOrigins?: string,
-  cacheTtl?: string,
-  noCache?: boolean,
-): Promise<{ id: string; key: string }> {
+/** Fields shared by key creation and updates (raw form/JSON values). */
+export interface KeyInput {
+  name: string;
+  rateLimitPerMin?: number | null;
+  /** Raw origins input ("" = inherit global). Validated + normalized. */
+  allowedOrigins?: string;
+  /** Raw TTL input ("" = inherit global, "0" = never store). Validated. */
+  cacheTtl?: string;
+  noCache?: boolean;
+  /** Run the literal IP / internal-hostname guard (default true). */
+  ipCheck?: boolean;
+  /** Run the DoH resolve-and-classify check (default true). */
+  dnsCheck?: boolean;
+}
+
+/** API keys need a name — it's the only human handle for the key. */
+function normalizeName(raw: unknown): string {
+  const name = String(raw ?? "").trim();
+  if (!name) throw new ProxyError(400, "Name is required");
+  return name;
+}
+
+export async function createApiKey(db: D1Database, input: KeyInput): Promise<{ id: string; key: string }> {
   const raw = newRawKey();
   const id = crypto.randomUUID();
   await db
     .prepare(
-      "INSERT INTO api_keys (id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO api_keys (id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(
       id,
       await hashKey(raw),
-      name,
-      rateLimitPerMin,
-      normalizeOriginsInput(allowedOrigins ?? ""),
-      normalizeCacheTtlInput(cacheTtl ?? ""),
-      noCache ? 1 : 0,
+      normalizeName(input.name),
+      input.rateLimitPerMin ?? null,
+      normalizeOriginsInput(input.allowedOrigins ?? ""),
+      normalizeCacheTtlInput(input.cacheTtl ?? ""),
+      input.noCache ? 1 : 0,
+      input.ipCheck === false ? 0 : 1,
+      input.dnsCheck === false ? 0 : 1,
     )
     .run();
   return { id, key: raw };
@@ -208,6 +227,8 @@ export interface KeyUpdate {
   /** Raw TTL input ("" = inherit global, "0" = never store). Validated. */
   cacheTtl?: string;
   noCache?: boolean;
+  ipCheck?: boolean;
+  dnsCheck?: boolean;
 }
 
 export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate): Promise<void> {
@@ -215,7 +236,7 @@ export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate
   const values: Array<string | number | null> = [];
   if (update.name !== undefined) {
     sets.push("name = ?");
-    values.push(update.name);
+    values.push(normalizeName(update.name));
   }
   if (update.rateLimitPerMin !== undefined) {
     sets.push("rate_limit_per_min = ?");
@@ -232,6 +253,14 @@ export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate
   if (update.noCache !== undefined) {
     sets.push("no_cache = ?");
     values.push(update.noCache ? 1 : 0);
+  }
+  if (update.ipCheck !== undefined) {
+    sets.push("ip_check = ?");
+    values.push(update.ipCheck ? 1 : 0);
+  }
+  if (update.dnsCheck !== undefined) {
+    sets.push("dns_check = ?");
+    values.push(update.dnsCheck ? 1 : 0);
   }
   if (sets.length === 0) return;
   const res = await db

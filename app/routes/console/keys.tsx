@@ -1,11 +1,11 @@
 import { Hono } from "hono";
-import type { Child } from "hono/jsx";
 import type { Env } from "../../lib/types.js";
 import { ProxyError } from "../../lib/types.js";
 import { createApiKey, queryKeys, updateApiKey } from "../../lib/admin.js";
 import type { KeyRow } from "../../lib/admin.js";
 import { DataTable, EmptyRow } from "../../components/table.js";
 import CopyButton from "../../islands/copy-button.js";
+import KeyPanel, { type KeyFormValues, type KeyPanelI18n } from "../../islands/key-panel.js";
 import { consoleT } from "../../lib/i18n/hono.js";
 import type { TFunc } from "../../lib/i18n/locale.js";
 
@@ -20,66 +20,76 @@ app.get("/", async (c) => {
 
 app.post("/", async (c) => {
   const t = consoleT(c);
-  const form = await c.req.parseBody();
-  const rateRaw = String(form["rateLimitPerMin"] ?? "").trim();
-  const rate = rateRaw === "" ? null : Number(rateRaw);
-  const name = String(form["name"] ?? "");
-  const renderError = async (error: string) =>
-    c.render(<KeysContent keys={await queryKeys(c.env.DB)} newKey={null} error={error} t={t} />, {
+  const values = readKeyForm(await c.req.parseBody());
+  try {
+    const { id, key } = await createApiKey(c.env.DB, {
+      name: values.name,
+      rateLimitPerMin: parseRate(values.rateLimitPerMin),
+      allowedOrigins: values.allowedOrigins,
+      cacheTtl: values.cacheTtl,
+      noCache: values.noCache,
+      ipCheck: values.ipCheck,
+      dnsCheck: values.dnsCheck,
+    });
+    // The raw key is shown once — re-render with it, don't redirect.
+    return c.render(<KeysContent keys={await queryKeys(c.env.DB)} newKey={{ id, key, name: values.name }} t={t} />, {
       title: t("console.title.keys"),
     });
-  try {
-    const { id, key } = await createApiKey(
-      c.env.DB,
-      name,
-      Number.isFinite(rate) ? rate : null,
-      String(form["allowedOrigins"] ?? ""),
-      String(form["cacheTtl"] ?? ""),
-      String(form["noCache"] ?? "") === "on",
+  } catch (err) {
+    const error = err instanceof ProxyError ? err.message : t("console.keys.createFailed");
+    return c.render(
+      <KeysContent keys={await queryKeys(c.env.DB)} newKey={null} error={error} createDraft={values} t={t} />,
+      { title: t("console.title.keys") },
     );
-    return c.render(<KeysContent keys={await queryKeys(c.env.DB)} newKey={{ id, key, name }} t={t} />, {
-      title: t("console.title.keys"),
-    });
-  } catch (err) {
-    return renderError(err instanceof ProxyError ? err.message : t("console.keys.createFailed"));
   }
 });
 
-app.post("/:id/origins", async (c) => {
+app.post("/:id", async (c) => {
   const t = consoleT(c);
-  const form = await c.req.parseBody();
+  const id = c.req.param("id") ?? "";
+  const values = readKeyForm(await c.req.parseBody());
   try {
-    await updateApiKey(c.env.DB, c.req.param("id") ?? "", { allowedOrigins: String(form["allowedOrigins"] ?? "") });
-    return c.redirect("/console/keys", 302);
-  } catch (err) {
-    const error = err instanceof ProxyError ? err.message : t("console.keys.saveOriginsFailed");
-    return c.render(<KeysContent keys={await queryKeys(c.env.DB)} newKey={null} error={error} t={t} />, {
-      title: t("console.title.keys"),
-    });
-  }
-});
-
-app.post("/:id/cache", async (c) => {
-  const t = consoleT(c);
-  const form = await c.req.parseBody();
-  try {
-    await updateApiKey(c.env.DB, c.req.param("id") ?? "", {
-      cacheTtl: String(form["cacheTtl"] ?? ""),
-      noCache: String(form["noCache"] ?? "") === "on",
+    await updateApiKey(c.env.DB, id, {
+      name: values.name,
+      rateLimitPerMin: parseRate(values.rateLimitPerMin),
+      allowedOrigins: values.allowedOrigins,
+      cacheTtl: values.cacheTtl,
+      noCache: values.noCache,
+      ipCheck: values.ipCheck,
+      dnsCheck: values.dnsCheck,
     });
     return c.redirect("/console/keys", 302);
   } catch (err) {
-    const error = err instanceof ProxyError ? err.message : t("console.keys.saveCacheFailed");
-    return c.render(<KeysContent keys={await queryKeys(c.env.DB)} newKey={null} error={error} t={t} />, {
-      title: t("console.title.keys"),
-    });
+    const error = err instanceof ProxyError ? err.message : t("console.keys.saveFailed");
+    return c.render(
+      <KeysContent keys={await queryKeys(c.env.DB)} newKey={null} error={error} editDraft={{ id, values }} t={t} />,
+      { title: t("console.title.keys") },
+    );
   }
 });
 
-app.post("/:id/revoke", async (c) => {
-  await c.env.DB.prepare("UPDATE api_keys SET revoked_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
-    .bind(c.req.param("id") ?? "")
-    .run();
+/** Hard delete — the panel asks the admin to type the key's name first. */
+app.post("/:id/delete", async (c) => {
+  const t = consoleT(c);
+  const id = c.req.param("id") ?? "";
+  const form = await c.req.parseBody();
+  const confirm = String(form["confirmName"] ?? "").trim();
+  const keys = await queryKeys(c.env.DB);
+  const key = keys.find((k) => k.id === id);
+  const fail = (error: string) =>
+    c.render(
+      <KeysContent
+        keys={keys}
+        newKey={null}
+        error={error}
+        editDraft={key ? { id, values: rowValues(key) } : undefined}
+        t={t}
+      />,
+      { title: t("console.title.keys") },
+    );
+  if (!key) return fail(t("console.keys.deleteFailed"));
+  if (confirm !== key.name) return fail(t("console.keys.deleteMismatch", { name: key.name }));
+  await c.env.DB.prepare("DELETE FROM api_keys WHERE id = ?").bind(id).run();
   return c.redirect("/console/keys", 302);
 });
 
@@ -87,55 +97,108 @@ export default app;
 
 // ---------- Page markup (colocated) ----------
 
-function Field(props: { label: string; children: Child }) {
-  return (
-    <label class="form-control">
-      <div class="label pb-1">
-        <span class="label-text">{props.label}</span>
-      </div>
-      {props.children}
-    </label>
-  );
+/** Read the create/edit key form. Values stay raw so the server can echo them back. */
+function readKeyForm(form: Record<string, unknown>): KeyFormValues {
+  const on = (key: string) => String(form[key] ?? "") === "on";
+  // The panel sends a `checks` marker; posts without it (scripts, stale forms)
+  // keep the guards on rather than silently turning them off.
+  const panel = form["checks"] !== undefined;
+  return {
+    name: String(form["name"] ?? ""),
+    rateLimitPerMin: String(form["rateLimitPerMin"] ?? ""),
+    allowedOrigins: String(form["allowedOrigins"] ?? ""),
+    cacheTtl: String(form["cacheTtl"] ?? ""),
+    noCache: on("noCache"),
+    ipCheck: panel ? on("ipCheck") : true,
+    dnsCheck: panel ? on("dnsCheck") : true,
+  };
 }
 
-function CacheCell({ k, t }: { k: KeyRow; t: TFunc }) {
-  if (k.revoked_at) {
-    return (
-      <code class="text-base-content/50">
-        {k.no_cache ? t("console.keys.noCacheValue") : k.cache_ttl != null ? t("console.keys.ttlValue", { ttl: k.cache_ttl }) : t("console.keys.global")}
-      </code>
-    );
-  }
-  return (
-    <form class="inline-flex items-end gap-2" method="post" action={`/console/keys/${k.id}/cache`}>
-      <input
-        name="cacheTtl"
-        value={k.cache_ttl ?? ""}
-        placeholder={t("console.keys.ttlPh")}
-        inputmode="numeric"
-        size={6}
-        class="input input-bordered input-sm w-20"
-        title={t("console.keys.cacheTtlTitle")}
-      />
-      <label class="flex items-center gap-1.5 text-xs text-base-content/60" title={t("console.keys.noCacheTitle")}>
-        {t("console.keys.noCacheValue")}{" "}
-        <input type="checkbox" name="noCache" value="on" class="checkbox checkbox-xs" checked={k.no_cache ? true : undefined} />
-      </label>
-      <button class="btn btn-xs">{t("console.keys.save")}</button>
-    </form>
-  );
+/** "120" → 120; blank or junk → null (inherit the deployment default). */
+function parseRate(raw: string): number | null {
+  if (raw.trim() === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** A key row as panel values (used as the edit panel's initial state). */
+function rowValues(k: KeyRow): KeyFormValues {
+  return {
+    name: k.name,
+    rateLimitPerMin: k.rate_limit_per_min != null ? String(k.rate_limit_per_min) : "",
+    allowedOrigins: k.allowed_origins ?? "",
+    cacheTtl: k.cache_ttl != null ? String(k.cache_ttl) : "",
+    noCache: !!k.no_cache,
+    ipCheck: !!k.ip_check,
+    dnsCheck: !!k.dns_check,
+  };
+}
+
+function cacheText(k: KeyRow, t: TFunc): string {
+  if (k.no_cache) return t("console.keys.noCacheValue");
+  if (k.cache_ttl != null) return t("console.keys.ttlValue", { ttl: k.cache_ttl });
+  return t("console.keys.global");
+}
+
+function panelLabels(t: TFunc): KeyPanelI18n {
+  return {
+    name: t("console.keys.name"),
+    namePh: t("console.keys.namePh"),
+    ratePerMin: t("console.keys.ratePerMin"),
+    ratePh: t("console.keys.ratePh"),
+    allowedOrigins: t("console.keys.allowedOrigins"),
+    originsPh: t("console.keys.originsPh"),
+    cacheTtl: t("console.keys.cacheTtl"),
+    cacheTtlTitle: t("console.keys.cacheTtlTitle"),
+    ttlPh: t("console.keys.ttlPh"),
+    noCache: t("console.keys.noCache"),
+    noCacheShort: t("console.keys.noCacheShort"),
+    noCacheHint: t("console.keys.noCacheTitle"),
+    checks: t("console.keys.checks"),
+    ipCheck: t("console.keys.ipCheck"),
+    ipCheckHint: t("console.keys.ipCheckHint"),
+    dnsCheck: t("console.keys.dnsCheck"),
+    dnsCheckHint: t("console.keys.dnsCheckHint"),
+    danger: t("console.keys.danger"),
+    dangerHint: t("console.keys.dangerHint"),
+    delete: t("console.keys.delete"),
+    deleteTitle: t("console.keys.deleteTitle"),
+    deleteHint: t("console.keys.deleteHint"),
+    deleteConfirm: t("console.keys.deleteConfirm"),
+    cancel: t("console.keys.cancel"),
+    close: t("console.keys.close"),
+  };
 }
 
 function KeysContent(props: {
   keys: KeyRow[];
   newKey: { id: string; key: string; name: string } | null;
   error?: string | null;
+  /** Values to re-open the create panel with (a create failed). */
+  createDraft?: KeyFormValues;
+  /** Key + values to re-open the edit panel with (a save or delete failed). */
+  editDraft?: { id: string; values: KeyFormValues };
   t: TFunc;
 }) {
   const { t } = props;
+  const labels = panelLabels(t);
+  // Revoked keys (API-side kill switch) are dead: not listed, not editable.
+  const keys = props.keys.filter((k) => !k.revoked_at);
   return (
     <>
-      <h1 class="text-3xl font-semibold tracking-tight mb-4">{t("console.title.keys")}</h1>
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+        <h1 class="text-3xl font-semibold tracking-tight">{t("console.title.keys")}</h1>
+        <KeyPanel
+          trigger={t("console.keys.create")}
+          triggerClass="btn btn-primary btn-sm"
+          title={t("console.keys.createTitle")}
+          submit={t("console.keys.create")}
+          action="/console/keys"
+          values={props.createDraft}
+          open={props.createDraft != null}
+          labels={labels}
+        />
+      </div>
 
       {props.error && (
         <div role="alert" class="alert alert-error mb-4">
@@ -158,29 +221,6 @@ function KeysContent(props: {
         </div>
       )}
 
-      <div class="bg-base-100 border border-base-300 rounded-box p-4 mb-4">
-        <form method="post" action="/console/keys">
-          <div class="flex flex-wrap items-end gap-3">
-            <Field label={t("console.keys.name")}>
-              <input name="name" placeholder={t("console.keys.namePh")} class="input input-bordered input-sm" />
-            </Field>
-            <Field label={t("console.keys.ratePerMin")}>
-              <input name="rateLimitPerMin" placeholder={t("console.keys.ratePh")} inputmode="numeric" class="input input-bordered input-sm w-36" />
-            </Field>
-            <Field label={t("console.keys.allowedOrigins")}>
-              <input name="allowedOrigins" placeholder={t("console.keys.originsPh")} size={36} class="input input-bordered input-sm" />
-            </Field>
-            <Field label={t("console.keys.cacheTtl")}>
-              <input name="cacheTtl" placeholder={t("console.keys.ttlPh")} inputmode="numeric" size={10} class="input input-bordered input-sm w-28" />
-            </Field>
-            <Field label={t("console.keys.noCache")}>
-              <input type="checkbox" name="noCache" value="on" class="checkbox checkbox-sm" />
-            </Field>
-            <button class="btn btn-primary">{t("console.keys.create")}</button>
-          </div>
-        </form>
-      </div>
-
       <DataTable
         head={
           <>
@@ -189,51 +229,39 @@ function KeysContent(props: {
             <th>{t("console.keys.headOrigins")}</th>
             <th>{t("console.keys.headCache")}</th>
             <th>{t("console.keys.headCreated")}</th>
-            <th>{t("console.keys.headStatus")}</th>
             <th></th>
           </>
         }
         body={
-          props.keys.length === 0 ? (
-            <EmptyRow cols={7} text={t("console.keys.empty")} />
+          keys.length === 0 ? (
+            <EmptyRow cols={6} text={t("console.keys.empty")} />
           ) : (
-            props.keys.map((k) => (
+            keys.map((k) => (
               <tr>
                 <td>{k.name || <span class="text-base-content/40">—</span>}</td>
                 <td class="tabular-nums">{k.rate_limit_per_min ?? t("console.keys.default")}</td>
                 <td>
-                  {k.revoked_at ? (
-                    <code class="text-base-content/50">{k.allowed_origins || t("console.keys.global")}</code>
-                  ) : (
-                    <form class="inline-flex items-end gap-2" method="post" action={`/console/keys/${k.id}/origins`}>
-                      <input
-                        name="allowedOrigins"
-                        value={k.allowed_origins ?? ""}
-                        placeholder={t("console.keys.originsPhShort")}
-                        size={24}
-                        class="input input-bordered input-xs w-44"
-                      />
-                      <button class="btn btn-xs">{t("console.keys.save")}</button>
-                    </form>
-                  )}
+                  <code class="text-base-content/60">{k.allowed_origins || t("console.keys.global")}</code>
                 </td>
                 <td>
-                  <CacheCell k={k} t={t} />
+                  <code class="text-base-content/60">{cacheText(k, t)}</code>
                 </td>
                 <td class="text-base-content/50">{k.created_at}</td>
                 <td>
-                  {k.revoked_at ? (
-                    <span class="font-medium text-error">{t("console.keys.statusRevoked")}</span>
-                  ) : (
-                    <span class="font-medium text-success">{t("console.keys.statusActive")}</span>
-                  )}
-                </td>
-                <td>
-                  {!k.revoked_at && (
-                    <form method="post" action={`/console/keys/${k.id}/revoke`}>
-                      <button class="btn btn-xs btn-error btn-outline">{t("console.keys.revoke")}</button>
-                    </form>
-                  )}
+                  <div class="flex items-center justify-end">
+                    <KeyPanel
+                      trigger={t("console.keys.edit")}
+                      triggerClass="btn btn-xs"
+                      title={t("console.keys.editTitle")}
+                      submit={t("console.keys.save")}
+                      action={`/console/keys/${k.id}`}
+                      values={props.editDraft?.id === k.id ? props.editDraft.values : rowValues(k)}
+                      open={props.editDraft?.id === k.id}
+                      deleteAction={`/console/keys/${k.id}/delete`}
+                      keyName={k.name}
+                      labels={labels}
+                    />
+                  </div>
                 </td>
               </tr>
             ))
