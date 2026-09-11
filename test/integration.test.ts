@@ -190,7 +190,7 @@ describe("route wiring (integration)", () => {
     const html = await res.text();
     expect(html).toContain("<!DOCTYPE html>");
     // Cloudflare-style 404: outlined digits, subtitle, dual CTAs, shared chrome.
-    expect(html).toContain("nf-404");
+    expect(html).toContain("status-code");
     expect(html).toContain("Take me home");
     expect(html).toContain("Open console");
     expect(html).toContain("We can&#39;t find the page you were looking for");
@@ -374,6 +374,42 @@ describe("upstream injection + keyless access (integration)", () => {
       { ...keyed, REQUIRE_API_KEY: "true" } as Env,
     );
     expect(res.status).toBe(401);
+  });
+});
+
+describe("error pages (integration)", () => {
+  /** D1 that throws on any query — forces a 500 out of a console page. */
+  const brokenDb = {
+    prepare: () => {
+      throw new Error("boom");
+    },
+  } as unknown as D1Database;
+
+  it("renders the branded HTML error page for browser-facing routes", async () => {
+    const res = await call(
+      "/console/keys",
+      { headers: { cookie: `corx_session=${sessionCookie}` } },
+      { ...env, DB: brokenDb } as Env,
+    );
+    expect(res.status).toBe(500);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    const html = await res.text();
+    expect(html).toContain("<!DOCTYPE html>");
+    expect(html).toContain("status-code");
+    expect(html).toContain("Back to console");
+    // The reference line names the failing path (support-friendly, no internals).
+    expect(html).toContain("/console/keys");
+  });
+
+  it("keeps the JSON wire format for the admin API", async () => {
+    const res = await call(
+      "/api/keys",
+      { headers: { authorization: "Bearer test-token" } },
+      { ...env, DB: brokenDb } as Env,
+    );
+    expect(res.status).toBe(500);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.json()).toEqual({ error: "Internal error" });
   });
 });
 

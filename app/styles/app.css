@@ -141,10 +141,11 @@ code:not(pre code) {
 
 /* --- 404 page (Cloudflare-style) -------------------------------------------- */
 
-/* Huge "404": a solid ink→subtle gradient (no -webkit-text-stroke — on an
-   800-weight Inter digit the stroke traces the glyph's inner contours too,
-   so the translucent fill shows a tangle of lines inside each digit). */
-.nf-404 {
+/* Huge status digits (404/500): a solid ink→subtle gradient (no
+   -webkit-text-stroke — on an 800-weight Inter digit the stroke traces the
+   glyph's inner contours too, so the translucent fill shows a tangle of lines
+   inside each digit). */
+.status-code {
   font-size: clamp(6rem, 22vw, 12.5rem);
   font-weight: 800;
   line-height: 1;

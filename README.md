@@ -138,7 +138,7 @@ grid and a dark footer. The demo is a client island (`app/islands/cors-demo.tsx`
 and needs the `HasIslands` client script, which the landing's own full document
 includes. Scroll is plain native scrolling (the page-flip scroller was removed).
 
-The landing (and the 404 page) are **bilingual (English / 中文)**: `/en` and
+The landing (and the 404 / error pages) are **bilingual (English / 中文)**: `/en` and
 `/zh` URL prefixes force a language; without a prefix it's resolved from the
 `corx_lang` cookie, then the `Accept-Language` header. The nav has a zh / EN
 switch. All UI copy lives in `app/lib/i18n/messages.ts` (en + zh dictionaries)
@@ -211,6 +211,13 @@ floats the real menu open without pushing the content, and the pin persists in
 localStorage; on mobile there is no rail, only the topbar hamburger, which
 opens the full menu as a floating drawer overlay. The topbar holds a language
 switch (中文 / EN) and a user menu (Profile / Billing / Log out).
+
+Uncaught errors on browser-facing routes (landing + console) render the same
+branded full-document style as the 404: big status digits, a reference line
+(`status · path · UTC time`) and CTAs back to the console / home. The page is
+self-contained (no session, D1 or island hydration), so it still renders when
+the failure is in exactly those layers. Machine callers keep JSON: `/api/*`,
+`/health` and every proxy route return `{ "error": … }`.
 
 The console is bilingual too: a `?lang=zh|en` query on any console URL sets
 the `corx_lang` cookie (remembered for a year) and redirects back without the

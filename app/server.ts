@@ -1,13 +1,17 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { HTTPException } from "hono/http-exception";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { createApp } from "honox/server";
 import type { Env } from "./lib/types.js";
+import { ProxyError } from "./lib/types.js";
 import type { ProxyVariables } from "./lib/auth.js";
 import { apiKeyMiddleware } from "./lib/auth.js";
 import { cors, withProxyCors } from "./proxy/cors.js";
 import { proxyHandler } from "./proxy/handler.js";
 import { resolveRawTarget } from "./proxy/subdomain.js";
 import { NotFoundPage } from "./routes/_not-found.js";
+import { ErrorPage } from "./routes/_error-page.js";
 import { detectLocale, makeT } from "./lib/i18n/locale.js";
 
 // Base Hono app with the proxy routes mounted manually (file routing can't
@@ -28,11 +32,53 @@ base.all("/proxy/*", proxyHandler);
 // NOTE: /console/* (file route app/routes/console.tsx) and /api/* register
 // at createApp() below — after these manual mounts, before the /* fallback.
 
+/**
+ * True for callers that expect a JSON error body: the admin API, the health
+ * probe, and every proxy request (including malformed subdomains, which the
+ * proxy handler answers with a precise 4xx — same convention as /*).
+ */
+function expectsJson(reqUrl: URL, env: Env): boolean {
+  const p = reqUrl.pathname;
+  if (p === "/health" || p === "/api" || p.startsWith("/api/")) return true;
+  try {
+    return resolveRawTarget(reqUrl, env).target !== null;
+  } catch {
+    return true;
+  }
+}
+
 base.onError((err, c) => {
   console.error("corx error:", err);
-  // Keep the 500 readable from browsers: the normal cors() middleware chain was
-  // cut short when the error was thrown, so stamp the headers here instead.
-  return withProxyCors(c, c.json({ error: "Internal error" }, 500));
+  const reqUrl = new URL(c.req.url);
+  const status = (
+    err instanceof ProxyError ? err.status : err instanceof HTTPException ? err.status : 500
+  ) as ContentfulStatusCode;
+
+  if (expectsJson(reqUrl, c.env)) {
+    // Keep the 500 readable from browsers: the normal cors() middleware chain
+    // was cut short when the error was thrown, so stamp the headers here.
+    return withProxyCors(c, c.json({ error: "Internal error" }, status));
+  }
+
+  // Browser-facing routes (landing, /console/*): a self-contained branded
+  // document that needs no session, D1 or island hydration to render.
+  const locale = detectLocale({
+    pathname: reqUrl.pathname,
+    cookie: c.req.header("cookie"),
+    acceptLanguage: c.req.header("accept-language"),
+  });
+  // c.html() doesn't add a doctype; prepend one so browsers stay in standards mode.
+  return c.html(
+    `<!DOCTYPE html>${ErrorPage({
+      status,
+      locale,
+      origin: reqUrl.origin,
+      path: reqUrl.pathname,
+      message: import.meta.env.DEV ? ((err as Error)?.message ?? String(err)) : undefined,
+      t: makeT(locale),
+    })}`,
+    status,
+  );
 });
 
 // Hand the configured app to HonoX. File routes in app/routes/api/* register
