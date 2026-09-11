@@ -38,6 +38,10 @@ export interface ApiKeyRow {
   cache_ttl: number | null;
   /** 1 = skip the R2 cache entirely for this key. */
   no_cache: number;
+  /** 1 (default) = run the literal IP / internal-hostname guard for this key. */
+  ip_check: number;
+  /** 1 (default) = run the DoH resolve-and-classify check for this key. */
+  dns_check: number;
   created_at: string;
   revoked_at: string | null;
 }

@@ -37,8 +37,22 @@ const ctx = { waitUntil: (p: Promise<unknown>) => p.catch(() => undefined) } as 
 
 const sessionCookie = await signSession("tester@example.com", "test-token");
 
-async function call(path: string, init: RequestInit = {}): Promise<Response> {
-  return worker.fetch(new Request(`https://corx.test${path}`, { ...init, headers: { ...(init.headers ?? {}) } }), env, ctx);
+async function call(path: string, init: RequestInit = {}, e: Env = env): Promise<Response> {
+  return worker.fetch(new Request(`https://corx.test${path}`, { ...init, headers: { ...(init.headers ?? {}) } }), e, ctx);
+}
+
+/** Env whose D1 answers the API-key lookup with one row (everything else empty). */
+function envWithKey(row: Record<string, unknown>): Env {
+  const stmt = (sql: string) => {
+    const s = {
+      bind: () => s,
+      run: async () => ({ meta: { changes: 0 } }),
+      first: async () => (sql.includes("FROM api_keys") ? row : null),
+      all: async () => ({ results: [] }),
+    };
+    return s;
+  };
+  return { ...env, DB: { prepare: stmt } } as unknown as Env;
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -123,6 +137,29 @@ describe("route wiring (integration)", () => {
     expect(html).toContain('type="button"');
   });
 
+  it("requires an API key name on the admin API", async () => {
+    const res = await call("/api/keys", {
+      method: "POST",
+      headers: { authorization: "Bearer test-token", "content-type": "application/json" },
+      body: JSON.stringify({ rateLimitPerMin: 10 }),
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "Name is required" });
+  });
+
+  it("delete route reports an unknown key instead of deleting", async () => {
+    const res = await call("/console/keys/nope/delete", {
+      method: "POST",
+      headers: {
+        cookie: `corx_session=${sessionCookie}`,
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: "confirmName=x",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Failed to delete key");
+  });
+
   it("unknown /console/* paths redirect to the console root", async () => {
     const res = await call("/console/nonexistent", { headers: { cookie: `corx_session=${sessionCookie}` } });
     expect(res.status).toBe(302);
@@ -141,6 +178,53 @@ describe("route wiring (integration)", () => {
     expect(html).toContain("Open console");
     expect(html).toContain("We can&#39;t find the page you were looking for");
     expect(html).toContain("/random/path");
+  });
+});
+
+describe("per-key SSRF guard toggles (integration)", () => {
+  const keyRow = {
+    id: "k1",
+    key_hash: "h",
+    name: "key",
+    rate_limit_per_min: null,
+    allowed_origins: null,
+    cache_ttl: null,
+    no_cache: 0,
+    ip_check: 1,
+    dns_check: 1,
+    created_at: "2026-01-01T00:00:00.000Z",
+    revoked_at: null,
+  };
+  const headers = { "x-api-key": "corx_test-key" };
+
+  it("ip_check=0 lets a private IP literal reach the upstream", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("upstream ok", { status: 200 })));
+    const res = await call("/fetch?url=http://10.0.0.5/x", { headers }, envWithKey({ ...keyRow, ip_check: 0 }));
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("upstream ok");
+  });
+
+  it("ip_check=1 (default) blocks the same literal", async () => {
+    const res = await call("/fetch?url=http://10.0.0.5/x", { headers }, envWithKey(keyRow));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: "Blocked host: 10.0.0.5" });
+  });
+
+  it("dns_check=1 blocks a name that resolves to a private IP", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ Answer: [{ type: 1, data: "127.0.0.1" }] }), { status: 200 })),
+    );
+    const res = await call("/fetch?url=http://localtest.me/", { headers }, envWithKey(keyRow));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining("non-public IP") });
+  });
+
+  it("dns_check=0 skips the resolve check", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("upstream ok", { status: 200 })));
+    const res = await call("/fetch?url=http://localtest.me/", { headers }, envWithKey({ ...keyRow, dns_check: 0 }));
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("upstream ok");
   });
 });
 

@@ -26,8 +26,13 @@ function isBlockedHostname(hostname: string): boolean {
   return false;
 }
 
-/** Validate + normalize the target URL. Throws ProxyError(400/403). */
-export function validateTargetUrl(raw: string | null): URL {
+/** Validate + normalize the target URL. Throws ProxyError(400/403).
+ *
+ * `ipCheck: false` (per-key opt-out, see api_keys.ip_check) skips the
+ * internal-hostname / IP-literal guard — syntax checks always run. The admin
+ * blocklist and platform-level private-IP blocks are unaffected. */
+export function validateTargetUrl(raw: string | null, opts: { ipCheck?: boolean } = {}): URL {
+  const ipCheck = opts.ipCheck !== false;
   if (!raw?.trim()) {
     throw new ProxyError(400, 'Missing target URL. Use /fetch?url=https://example.com or /https://example.com');
   }
@@ -47,7 +52,7 @@ export function validateTargetUrl(raw: string | null): URL {
     throw new ProxyError(400, `Invalid hostname: ${url.hostname}`);
   }
   if (raw.length > 8192) throw new ProxyError(414, "Target URL too long");
-  if (isBlockedHostname(url.hostname)) {
+  if (ipCheck && isBlockedHostname(url.hostname)) {
     throw new ProxyError(403, `Blocked host: ${url.hostname}`);
   }
   return url;
