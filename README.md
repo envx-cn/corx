@@ -131,7 +131,8 @@ break out of the proxy — relative URLs (or subdomain mode) work fine.
 
 ## Landing page
 
-`/` is a Cloudflare-styled marketing page: full-viewport hero, a **live
+`/` is a branded marketing page (COR X palette: brand red #FD0700, slate
+#3E454B ink, paper canvas): full-viewport hero, a **live
 "Try it" demo** (a mockup-browser that rotates example URLs every 10 s and
 fetches them through the real proxy — type any URL to take over), a feature
 grid and a dark footer. The demo is a client island (`app/islands/cors-demo.tsx`)
@@ -358,15 +359,22 @@ app/              HonoX frontend (entry + console UI + API routes)
                 working even when island hydration doesn't.
   routes/index.ts     landing page file route (subdomain-aware)
   components/   shared presentational primitives (badges, chart, lucide,
-                table) — console-only chrome lives in routes/console/
+                table, logo) — console-only chrome lives in routes/console/
                 instead (interactive bits in islands/)
+  assets/       corx-logo.svg (wordmark) + corx-mark.svg (the X), inlined
+                via ?raw by components/logo.tsx. Letters are currentColor
+                so the same file works on light and dark chrome; the X is
+                var(--corx-brand-red).
   styles/       app.css = Tailwind v4 + daisyUI 5 (imported ?inline into
                 <style> by landing + console shell, PostCSS-processed by the
-                build; injected with dangerouslySetInnerHTML)
+                build; injected with dangerouslySetInnerHTML). Themes
+                data-theme="corx" (public pages) and "corx-dash" (console)
+                carry the logo palette: --corx-brand-red/slate/paper plus
+                slate-tinted neutrals.
   client.ts     island hydration entry (builds to /static/client.js)
   islands/      interactive components (CopyButton, CorsDemo — landing
                 demo, StatsTabs — dashboard Breakdown selector)
-  console/      dash-style shell, pages, landing (JSX server components)
+  console/      dashboard shell, pages, landing (JSX server components)
   lib/format.ts esc/humanBytes helpers
   proxy/        proxy feature: handler, guard (SSRF), subdomain mode,
                 CORS, R2 cache, D1 rate limit, inject (variables + rules)

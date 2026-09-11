@@ -6,12 +6,14 @@
  * whose selector contains > or & (see AGENTS.md). Theme comes from
  * data-theme="corx" / data-theme="corx-dash" on the <html> element.
  *
- * The palettes mirror Cloudflare's real design system ("Kumo", extracted from
- * a saved dash.cloudflare.com page): a near-white canvas, hairline #E9E9E9
- * borders, #F5F5F5 nav tints, #18181B text. The landing theme (corx) uses the
- * Cloudflare-orange #F6821F primary like cloudflare.com; the console theme
- * (corx-dash) uses the dashboard's blue #056DFF primary — orange stays
- * brand-only there, exactly like dash.cloudflare.com.
+ * The palette is taken straight from the COR X logo (app/assets/corx-logo.svg,
+ * rendered by app/components/logo.tsx): brand red #FD0700 (the X), slate
+ * #3E454B (the "COR" letters, and the text ink), paper #FDFDFD (the mark's
+ * background, and the page canvas). Neutrals are slate-tinted greys derived
+ * from that ink, so chrome, borders and muted text all sit on the same hue as
+ * the logo. Semantic colours deliberately stay away from the brand red:
+ * error is a deep #B42318 and warning an amber #D97706 — on a red-branded
+ * product a #FD0700 alert would read as a call to action.
  */
 @import "tailwindcss";
 @plugin "daisyui";
@@ -22,40 +24,42 @@
     "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
-/* --- Shared neutral scale (Kumo) ------------------------------------------- */
+/* --- Brand + neutral scale (from the COR X logo) --------------------------- */
 :root {
-  --corx-canvas: #fbfbfb; /* kumo-canvas  */
-  --corx-hairline: #e9e9e9; /* kumo-hairline */
-  --corx-tint: #f5f5f5; /* kumo-tint (nav active / hover) */
-  --corx-ink: #18181b; /* kumo-default text */
-  --corx-strong: #0a0a0a; /* kumo-strong */
-  --corx-subtle: #737373; /* kumo-subtle */
-  --corx-brand-blue: #056dff; /* kumo-brand (dashboard primary) */
-  --corx-brand-orange: #f6821f; /* Cloudflare brand orange */
+  --corx-brand-red: #fd0700; /* the X in the logo, and the UI primary */
+  --corx-brand-ink: #3e454b; /* the "COR" letters: body text ink */
+  --corx-paper: #fdfdfd; /* the logo's paper — page background */
+  --corx-canvas: #f5f6f7; /* recessed canvas: pills, section bands, hovers */
+  --corx-hairline: #e3e6e8; /* slate-tinted hairline borders */
+  --corx-tint: #f2f4f5; /* nav active / hover fill */
+  --corx-ink: var(--corx-brand-ink); /* body text */
+  --corx-strong: #262b2f; /* darkened ink: dark bands, headings, neutral */
+  --corx-subtle: #757b82; /* muted text */
+  --corx-blue: #056dff; /* info / links on data surfaces */
 }
 
-/* --- Landing theme: cloudflare.com (orange primary) ------------------------ */
+/* --- Landing theme: COR X brand (red primary) ------------------------------ */
 [data-theme="corx"] {
   color-scheme: light;
-  --color-base-100: #ffffff;
+  --color-base-100: var(--corx-paper);
   --color-base-200: var(--corx-canvas);
   --color-base-300: var(--corx-hairline);
   --color-base-content: var(--corx-ink);
-  --color-primary: var(--corx-brand-orange);
+  --color-primary: var(--corx-brand-red);
   --color-primary-content: #ffffff;
   --color-secondary: var(--corx-strong);
   --color-secondary-content: #ffffff;
-  --color-accent: #ff9f1c;
+  --color-accent: var(--corx-brand-ink);
   --color-accent-content: #ffffff;
   --color-neutral: var(--corx-strong);
   --color-neutral-content: #ffffff;
-  --color-info: #0051c3;
+  --color-info: var(--corx-blue);
   --color-info-content: #ffffff;
   --color-success: #009966;
   --color-success-content: #ffffff;
-  --color-warning: #fa8900;
-  --color-warning-content: #18181b;
-  --color-error: #fb2c36;
+  --color-warning: #d97706;
+  --color-warning-content: #ffffff;
+  --color-error: #b42318;
   --color-error-content: #ffffff;
   --radius-selector: 0.5rem;
   --radius-field: 0.5rem;
@@ -67,28 +71,33 @@
   --noise: 0;
 }
 
-/* --- Console theme: dash.cloudflare.com (blue primary, orange brand-only) --- */
+/* --- Console theme: same brand, cooler/denser chrome ------------------------
+ * The console shares the COR X palette (red primary, slate ink) but keeps its
+ * own block so the dashboard can drift from the marketing page: today the only
+ * differences are the info blue (data surfaces) and the recessed neutrals,
+ * which are a touch cooler and flatter than the landing's paper.
+ */
 [data-theme="corx-dash"] {
   color-scheme: light;
   --color-base-100: #ffffff;
   --color-base-200: var(--corx-canvas);
   --color-base-300: var(--corx-hairline);
   --color-base-content: var(--corx-ink);
-  --color-primary: var(--corx-brand-blue);
+  --color-primary: var(--corx-brand-red);
   --color-primary-content: #ffffff;
   --color-secondary: var(--corx-strong);
   --color-secondary-content: #ffffff;
-  --color-accent: var(--corx-brand-blue);
+  --color-accent: var(--corx-brand-ink);
   --color-accent-content: #ffffff;
   --color-neutral: var(--corx-strong);
   --color-neutral-content: #ffffff;
-  --color-info: #00a6f4;
-  --color-info-content: #18181b;
+  --color-info: var(--corx-blue);
+  --color-info-content: #ffffff;
   --color-success: #009966;
   --color-success-content: #ffffff;
-  --color-warning: #fa8900;
-  --color-warning-content: #18181b;
-  --color-error: #fb2c36;
+  --color-warning: #d97706;
+  --color-warning-content: #ffffff;
+  --color-error: #b42318;
   --color-error-content: #ffffff;
   --radius-selector: 0.5rem;
   --radius-field: 0.5rem;
@@ -102,9 +111,22 @@
 
 /* --- Shared bits ----------------------------------------------------------- */
 
-/* corx logo mark: Cloudflare-orange gradient tile (brand, both themes) */
-.corx-mark {
-  background: linear-gradient(135deg, #f6821f 0%, #ff9f1c 60%, #ffb703 100%);
+/* corx logo: inline SVG (app/components/logo.tsx). The wrapper carries a
+   height utility (h-7, h-8, …) and the SVG follows it; the letters inherit
+   `color`, the X is painted with var(--corx-brand-red). */
+.corx-logo {
+  display: inline-flex;
+  align-items: center;
+}
+.corx-logo svg {
+  display: block;
+  height: 100%;
+  width: auto;
+}
+
+/* Sidebar rail: the X mark replaces the wordmark when collapsed. */
+.brand-mark {
+  display: none;
 }
 
 /* Inline code gets a subtle pill — except inside <pre> (mockup-code styles those). */
@@ -157,14 +179,14 @@ code:not(pre code) {
   user-select: none;
 }
 
-/* Cloudflare-style marker highlight behind a hero word */
+/* Brand-red marker highlight behind a hero word */
 .marker {
   background-image: linear-gradient(
     104deg,
-    rgba(246, 130, 31, 0) 0.9%,
-    rgba(246, 130, 31, 0.16) 2.4%,
-    rgba(246, 130, 31, 0.16) 97.6%,
-    rgba(246, 130, 31, 0) 98.9%
+    rgba(253, 7, 0, 0) 0.9%,
+    rgba(253, 7, 0, 0.13) 2.4%,
+    rgba(253, 7, 0, 0.13) 97.6%,
+    rgba(253, 7, 0, 0) 98.9%
   );
   border-radius: 0.5em;
   padding: 0 0.15em;
@@ -172,9 +194,9 @@ code:not(pre code) {
   -webkit-box-decoration-break: clone;
 }
 
-/* soft orange glow behind the hero */
+/* soft brand glow behind the hero */
 .hero-glow {
-  background: radial-gradient(58% 52% at 50% 0%, rgba(246, 130, 31, 0.14) 0%, rgba(246, 130, 31, 0) 72%);
+  background: radial-gradient(58% 52% at 50% 0%, rgba(253, 7, 0, 0.10) 0%, rgba(253, 7, 0, 0) 72%);
 }
 
 /* terminal-style code card (dark navy, Cloudflare docs vibe) */
@@ -339,6 +361,10 @@ main honox-island,
   #sidebar-collapse:checked ~ aside[data-sidebar] .nav-label {
     display: none;
   }
+  /* …and the wordmark gives way to the X mark in the rail */
+  #sidebar-collapse:checked ~ aside[data-sidebar] .brand-mark {
+    display: inline-flex;
+  }
   /* icon-only items centered in the rail */
   #sidebar-collapse:checked ~ aside[data-sidebar] .nav-item {
     justify-content: center;
@@ -348,6 +374,9 @@ main honox-island,
   #sidebar-collapse:checked ~ aside[data-sidebar].flyout-open .brand-text,
   #sidebar-collapse:checked ~ aside[data-sidebar].flyout-open .nav-label {
     display: block;
+  }
+  #sidebar-collapse:checked ~ aside[data-sidebar].flyout-open .brand-mark {
+    display: none;
   }
   #sidebar-collapse:checked ~ aside[data-sidebar].flyout-open .nav-item {
     justify-content: flex-start;

@@ -4,6 +4,7 @@ import type { Env } from "../../lib/types.js";
 import { accessDetected, getAdminUser } from "../../lib/access.js";
 import { sessionSecret, signSession } from "../../lib/session.js";
 import { LoginShell } from "./_layout.js";
+import { CorxLogo } from "../../components/logo.js";
 import { consoleT } from "../../lib/i18n/hono.js";
 import type { TFunc } from "../../lib/i18n/locale.js";
 
@@ -73,11 +74,9 @@ function LoginPage(props: { accessDetected: boolean; accessEmail: string | null;
   const { t } = props;
   return (
     <LoginShell title={t("console.title.login")}>
-      <h1 class="card-title flex items-center gap-2.5">
-        <span class="corx-mark size-8 rounded-lg text-white inline-flex items-center justify-center text-xs font-extrabold">
-          cx
-        </span>
-        {t("console.login.consoleTitle")}
+      <h1 class="card-title">
+        <CorxLogo class="h-9" />
+        <span class="sr-only">{t("console.login.consoleTitle")}</span>
       </h1>
       {props.error && (
         <div role="alert" class="alert alert-error">

@@ -9,12 +9,12 @@ import type { Locale, TFunc } from "../lib/i18n/locale.js";
  * when the failing request never reached a route.
  *
  * Styled after Cloudflare's own not-found page: a full-viewport hero with huge
- * digits over a soft glow, hairline dashed rules, a subtitle and two CTAs.
+ * digits over a soft brand glow, hairline dashed rules, a subtitle and two CTAs.
  */
 export function StatusPage(props: {
   /** Huge hero digits ("404", "500", …). */
   code: string;
-  /** Glow tint: brand orange for expected misses, red for failures. */
+  /** Glow tint: brand red for expected misses, error red for failures. */
   tone?: "brand" | "error";
   title: string;
   /** Accessible heading (the digits are decorative). */
@@ -30,10 +30,11 @@ export function StatusPage(props: {
   origin?: string;
   t: TFunc;
 }) {
+  // Glow tint: brand red for expected misses, deep error red for failures.
   const glow =
     props.tone === "error"
-      ? "radial-gradient(ellipse 70% 55% at 50% 45%, rgba(251, 44, 54, 0.10), transparent 65%)"
-      : "radial-gradient(ellipse 70% 55% at 50% 45%, rgba(246, 130, 31, 0.12), transparent 65%)";
+      ? "radial-gradient(ellipse 70% 55% at 50% 45%, rgba(180, 35, 24, 0.10), transparent 65%)"
+      : "radial-gradient(ellipse 70% 55% at 50% 45%, rgba(253, 7, 0, 0.09), transparent 65%)";
   return (
     <html lang={props.locale} data-theme="corx">
       <head>
