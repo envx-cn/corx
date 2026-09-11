@@ -28,9 +28,15 @@ function landing(locale?: Locale): Handler<{ Bindings: Env; Variables: ProxyVari
       cookie: c.req.header("cookie"),
       acceptLanguage: c.req.header("accept-language"),
     });
-    // Plain call (not JSX) so this handler file stays .ts.
+    // Plain call (not JSX) so this handler file stays .ts. c.html() doesn't add
+    // a doctype; prepend one so browsers stay in standards mode.
     return c.html(
-      LandingPage({ host: reqUrl.host, origin: `${reqUrl.protocol}//${reqUrl.host}`, locale: lang, t: makeT(lang) }),
+      `<!DOCTYPE html>${LandingPage({
+        host: reqUrl.host,
+        origin: `${reqUrl.protocol}//${reqUrl.host}`,
+        locale: lang,
+        t: makeT(lang),
+      })}`,
     );
   };
 }

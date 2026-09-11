@@ -80,13 +80,18 @@ describe("route wiring (integration)", () => {
   it("serves the login page (public console path, no auth bounce)", async () => {
     const res = await call("/console/login");
     expect(res.status).toBe(200);
-    expect(await res.text()).toContain("CORX console");
+    const html = await res.text();
+    // Full-document page: it bypasses the console renderer, so it carries its own doctype.
+    expect(html).toContain("<!DOCTYPE html>");
+    expect(html).toContain("CORX console");
   });
 
   it("serves the landing page in Chinese via /zh and Accept-Language", async () => {
     const zh = await call("/zh");
     expect(zh.status).toBe(200);
-    expect(await zh.text()).toContain("告别 CORS");
+    const zhHtml = await zh.text();
+    expect(zhHtml).toContain("<!DOCTYPE html>");
+    expect(zhHtml).toContain("告别 CORS");
 
     const detected = await call("/", { headers: { "accept-language": "zh-CN,zh;q=0.9" } });
     expect(await detected.text()).toContain("告别 CORS");

@@ -5,6 +5,12 @@ import { Topbar } from "./_topbar.js";
 import { NAV_ITEMS } from "./_nav.js";
 import type { Locale, TFunc } from "../../lib/i18n/locale.js";
 
+/**
+ * Full console document. The route renderer (jsxRenderer) prepends
+ * <!DOCTYPE html> for c.render() pages — but pages that return a full document
+ * themselves (login → LoginShell, the error page in app/server.ts) bypass the
+ * renderer and must add the doctype at their call site.
+ */
 function Doc(props: { title: string; children: Child; scripts?: Child }) {
   return (
     <html lang="en" data-theme="corx-dash">
