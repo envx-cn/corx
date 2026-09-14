@@ -15,6 +15,11 @@ export interface KeyFormValues {
   ipCheck: boolean;
   dnsCheck: boolean;
   keyless: boolean;
+  /** Public tier: the shared, limited key for the hosted instance. */
+  tier: boolean;
+  dailyLimitPerOrigin: string;
+  dailyLimitPerHost: string;
+  dailyLimitTotal: string;
   allowedHosts: string;
   /** Editor text; variable values stay blank ("blank = keep existing"). */
   vars: string;
@@ -43,6 +48,13 @@ export interface KeyPanelI18n {
   dnsCheckHint: string;
   keyless: string;
   keylessHint: string;
+  publicTier: string;
+  publicTierHint: string;
+  dailyLimits: string;
+  dailyLimitPerOrigin: string;
+  dailyLimitPerHost: string;
+  dailyLimitTotal: string;
+  dailyLimitPh: string;
   allowedHosts: string;
   allowedHostsPh: string;
   injection: string;
@@ -197,6 +209,46 @@ export default function KeyPanel(props: {
               </Field>
               <div class="sm:col-span-2 rounded-box border border-base-300 p-3">
                 <Check name="keyless" label={labels.keyless} hint={labels.keylessHint} checked={v?.keyless ?? false} />
+              </div>
+              {/* Public tier: the shared key of a hosted instance. It ships with
+                  extra restrictions and daily quotas — see app/proxy/quota.ts. */}
+              <div class="sm:col-span-2 rounded-box border border-base-300 p-3">
+                <Check
+                  name="tier"
+                  label={labels.publicTier}
+                  hint={labels.publicTierHint}
+                  checked={v?.tier ?? false}
+                />
+                <div class="mt-3 grid gap-x-4 gap-y-3 sm:grid-cols-3">
+                  <Field label={labels.dailyLimitPerOrigin}>
+                    <input
+                      name="dailyLimitPerOrigin"
+                      value={v?.dailyLimitPerOrigin ?? ""}
+                      placeholder={labels.dailyLimitPh}
+                      inputmode="numeric"
+                      class="input input-bordered w-full"
+                    />
+                  </Field>
+                  <Field label={labels.dailyLimitPerHost}>
+                    <input
+                      name="dailyLimitPerHost"
+                      value={v?.dailyLimitPerHost ?? ""}
+                      placeholder={labels.dailyLimitPh}
+                      inputmode="numeric"
+                      class="input input-bordered w-full"
+                    />
+                  </Field>
+                  <Field label={labels.dailyLimitTotal}>
+                    <input
+                      name="dailyLimitTotal"
+                      value={v?.dailyLimitTotal ?? ""}
+                      placeholder={labels.dailyLimitPh}
+                      inputmode="numeric"
+                      class="input input-bordered w-full"
+                    />
+                  </Field>
+                </div>
+                <p class="mt-2 text-xs text-base-content/75">{labels.dailyLimits}</p>
               </div>
               <Field label={labels.allowedHosts} class="sm:col-span-2">
                 <input

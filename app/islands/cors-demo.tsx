@@ -97,7 +97,7 @@ function parseJson(text: string): unknown {
  * lib/preview.ts for the classification and components/response-preview.tsx
  * for the viewers.
  */
-export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI18n }) {
+export default function CorsDemo({ base, i18n, apiKey }: { base: string; i18n: CorsDemoI18n; apiKey?: string }) {
   const [url, setUrl] = useState<string>(EXAMPLES[0]!.url);
   const [auto, setAuto] = useState(true);
   const [idx, setIdx] = useState(0);
@@ -124,7 +124,7 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
     setLoading(true);
     setTab("preview");
     const t0 = performance.now();
-    const rawUrl = `${base}/fetch?url=${encodeURIComponent(target)}`;
+    const rawUrl = `${base}/fetch?url=${encodeURIComponent(target)}${apiKey ? `&key=${encodeURIComponent(apiKey)}` : ""}`;
     try {
       const res = await fetch(rawUrl, { headers: { Accept: "*/*" } });
       const latency = Math.round(performance.now() - t0);

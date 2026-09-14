@@ -17,11 +17,41 @@ const en = {
   site: {
     openConsole: "Open console",
     tryIt: "Try it",
+    publicKey: "Public key",
     features: "Features",
     highlights: "Highlights",
     tagline: "CORS proxy, served from the edge",
     console: "Console",
+    terms: "Terms",
     copyright: "© {year} CORX",
+  },
+  terms: {
+    title: "Terms of use",
+    updated: "Last updated 2026-09-14",
+    lead:
+      "This page covers the public corx instance at {origin}: a free, best-effort service maintained as a personal project. By using the public key or the public pages you agree to these terms. If you do not agree, do not use them.",
+    s1Title: "What this service is",
+    s1Body:
+      "A shared CORS proxy run by a single Cloudflare Worker with a small D1 database and an R2 cache. There is no SLA, no support commitment and no uptime target: the service may be slow, rate-limited, changed, suspended or shut down at any time without notice. Anything you depend on deserves its own deployment.",
+    s2Title: "Prohibited uses",
+    s2Body:
+      "Phishing, malware, ransomware, fraud or deceptive content.\nContent that is illegal wherever it can be reached, including child sexual abuse material.\nSpam, credential stuffing, account takeover or automated abuse of a target site.\nDenial-of-service, stress testing third parties, or anything that degrades a service you do not own.\nScraping or bulk extraction that violates the target's own terms or robots directives.\nBypassing paywalls, DRM, authentication or any access control.\nProbing, scanning or reaching private, internal or reserved network addresses.\nCryptomining, large-scale file mirroring, or using the proxy as storage or a CDN.\nSending credentials or personal data: the public key refuses to forward Cookie and Authorization headers, and working around that is a breach of these terms.",
+    s3Title: "Quotas and enforcement",
+    s3Body:
+      "The public key is limited per calling site, per target host and for the instance as a whole, per UTC day, plus a per-minute limit per IP. Limits return 429 with a Retry-After header, and cached responses count too — the quota is about requests, not upstream load. When limits are hit or abuse is detected we may throttle, rotate or disable the public key, or block hosts, origins and IPs, immediately and without notice. The public instance has no whitelist and no exception process; self-host if you need one.",
+    s4Title: "Data and privacy",
+    s4Body:
+      "We log every request: IP, country, method, target URL, status, latency, caller Origin and which key was used. Logs are kept for 30 days and used for abuse handling and capacity planning.\nSuccessful GET responses are stored in a shared cache and may be served to another user. Never route private, personal or authenticated data through the public instance.\nDo not send secrets, tokens, cookies or personal data. Stripping Cookie and Authorization is a safety net, not permission to send them.\nThe public pages set no cookies beyond remembering your language choice.",
+    s5Title: "No warranty, limited liability",
+    s5Body:
+      'The service is provided "as is", without warranty of any kind, express or implied, including merchantability, fitness for a particular purpose, availability, accuracy and non-infringement. To the maximum extent permitted by law, the operator is not liable for any direct, indirect, incidental, special or consequential loss — including lost data, profits or business — arising from the use of, or inability to use, this service.',
+    s6Title: "Changes",
+    s6Body:
+      "These terms, the quotas and the feature set may change at any time; the version on this page is the current one, and continued use after a change means you accept it. corx itself is open source: for guarantees, advanced features and no shared quotas, run your own instance.",
+    s7Title: "Report abuse",
+    s7BodyA: "Report abuse, illegal content or security issues to",
+    s7BodyB: "Include the full request URL when you can.",
+    back: "Back to corx",
   },
   landing: {
     title: "CORX — CORS proxy on Cloudflare",
@@ -34,8 +64,25 @@ const en = {
       h1b: "without CORS.",
       sub: "CORX is an edge CORS proxy. Prefix any URL and fetch it cross-origin — responses are cached at the edge, rate-limited, guarded against SSRF, and upstream secrets never leave the server.",
       prefix: "One prefix:",
+      noDeploy: "No deploy? Use the public key",
       tryLive: "Try it live",
       openConsole: "Open console",
+    },
+    publicKey: {
+      title: "Use it without deploying",
+      sub:
+        "Free to use from your own site with this shared public key: cross-origin GET/HEAD only, daily quotas, best effort. Injection, cache control, subdomain mode and per-key limits need your own deployment.",
+      keyLabel: "Public key",
+      usageLabel: "Usage",
+      copyNoteA: "Using this key means you accept the",
+      copyNoteB: "— no phishing, malware, spam, illegal or abusive traffic, and never send credentials through it.",
+      termsLink: "terms of use",
+      limitsTitle: "Daily limits (UTC)",
+      limitOrigin: "Per calling site",
+      limitHost: "Per target host",
+      limitTotal: "Whole instance",
+      perDay: "{n}/day",
+      unavailable: "This instance has no public key configured.",
     },
     tryit: {
       title: "Try it live",
@@ -201,6 +248,16 @@ const en = {
       dnsCheckHint: "Resolve the host via DoH and block names that point at a non-public IP.",
       keyless: "Keyless access",
       keylessHint: "The allowed origins above can use this key without sending it. Origin is a convenience, not a credential — non-browser clients can forge it.",
+      publicTier: "Public tier",
+      publicTierHint:
+        "The shared key for this hosted instance: GET/HEAD only, no cache control, no subdomain mode, credentials never forwarded, and the daily quotas below. Safe to hand out.",
+      dailyLimits:
+        "Daily quotas in UTC days. Blank = unlimited, except the total, which is required — it is what keeps this instance inside its Cloudflare budget.",
+      dailyLimitPerOrigin: "Per origin / day",
+      dailyLimitPerHost: "Per target host / day",
+      dailyLimitTotal: "Total / day (required)",
+      dailyLimitPh: "e.g. 3000",
+      badgePublic: "public",
       allowedHosts: "Allowed target hosts",
       allowedHostsPh: "api.vendor.com, *.vendor.com (required for injection)",
       injection: "Upstream injection",
@@ -443,11 +500,41 @@ const zh: Messages = {
   site: {
     openConsole: "打开控制台",
     tryIt: "体验一下",
+    publicKey: "公共 key",
     features: "功能特性",
     highlights: "亮点功能",
     tagline: "边缘 CORS 代理",
     console: "控制台",
+    terms: "使用条款",
     copyright: "© {year} CORX",
+  },
+  terms: {
+    title: "使用条款",
+    updated: "最后更新 2026-09-14",
+    lead:
+      "本页适用于 corx 的公共实例 {origin}：一个以个人项目形式免费提供的尽力而为的服务。使用公共 key 或公共页面，即表示你同意本条款；如不同意，请勿使用。",
+    s1Title: "服务说明",
+    s1Body:
+      "共享 CORS 代理，由单个 Cloudflare Worker 配合小型 D1 数据库与 R2 缓存运行。没有 SLA、没有支持承诺、没有可用性目标：服务可能随时变慢、被限流、变更、暂停或停止，且不另行通知。任何你依赖的东西，都应当自行部署。",
+    s2Title: "禁止用途",
+    s2Body:
+      "钓鱼、恶意软件、勒索软件、欺诈或误导性内容。\n在其可访问地区属于违法的内容，包括儿童性虐待材料。\n垃圾信息、撞库、账号盗用，或对目标站点的自动化滥用。\n拒绝服务攻击、对第三方做压力测试，或任何损害非自有服务的行为。\n违反目标站点自身条款或 robots 指令的抓取与批量提取。\n绕过付费墙、DRM、鉴权或任何访问控制。\n探测、扫描或访问私有、内网与保留网段地址。\n挖矿、大规模镜像文件，或把代理当作存储 / CDN 使用。\n传输凭证或个人数据：公共 key 拒绝转发 Cookie 与 Authorization 头，绕过该限制同样违反本条款。",
+    s3Title: "配额与执行",
+    s3Body:
+      "公共 key 按调用方站点、目标站点以及实例总量三重限制，均为 UTC 自然日，另有每 IP 每分钟限流。超限返回 429 与 Retry-After 头；缓存命中同样计数——配额约束的是请求，而不是上游压力。达到上限或检测到滥用时，我们可能立即限流、轮换或停用公共 key，或封禁主机、来源与 IP，且不另行通知。公共实例没有白名单，也没有申诉流程；有需要请自行部署。",
+    s4Title: "数据与隐私",
+    s4Body:
+      "每个请求都会记录：IP、国家、方法、目标 URL、状态码、延迟、调用方 Origin 以及所用的 key。日志保留 30 天，用于滥用处理与容量规划。\n成功的 GET 响应会写入共享缓存，可能被其他用户读取。请勿通过公共实例传输私有、个人或需要鉴权的数据。\n请勿传输密钥、令牌、Cookie 或个人数据。剥离 Cookie 与 Authorization 是安全网，不是发送它们的许可。\n除记住语言选择外，公共页面不设置任何 Cookie。",
+    s5Title: "无担保与责任限制",
+    s5Body:
+      "服务按“现状”提供，不作任何明示或默示担保，包括适销性、特定用途适用性、可用性、准确性与不侵权。在法律允许的最大范围内，运营者不对因使用或无法使用本服务而产生的任何直接、间接、附带、特殊或后果性损失（包括数据、利润或业务损失）承担责任。",
+    s6Title: "变更",
+    s6Body:
+      "本条款、配额与功能范围可能随时变更；本页版本即为当前版本，变更后继续使用即视为接受。corx 本身是开源的：如需担保、高级功能以及不与他人共享的配额，请自行部署。",
+    s7Title: "滥用举报",
+    s7BodyA: "如需举报滥用、违法内容或安全问题，请联系",
+    s7BodyB: "，并尽量附上完整的请求 URL。",
+    back: "返回 corx",
   },
   landing: {
     title: "CORX — Cloudflare 上的 CORS 代理",
@@ -460,8 +547,25 @@ const zh: Messages = {
       h1b: "告别 CORS。",
       sub: "CORX 是一个边缘 CORS 代理。给任意 URL 加个前缀即可跨域抓取——响应缓存在边缘、有限流保护、内置 SSRF 防护，上游密钥永不离开服务端。",
       prefix: "一个前缀：",
+      noDeploy: "不想部署？直接使用公共 key",
       tryLive: "在线体验",
       openConsole: "打开控制台",
+    },
+    publicKey: {
+      title: "无需部署，直接使用",
+      sub:
+        "用这个公共 key 就能在自己的站点上免费使用：仅跨域 GET/HEAD、有每日配额、尽力而为。上游注入、缓存控制、子域模式和按 key 配置需要自行部署。",
+      keyLabel: "公共 key",
+      usageLabel: "用法",
+      copyNoteA: "使用该 key 即表示你接受",
+      copyNoteB: "——禁止钓鱼、恶意软件、垃圾信息、违法或滥用流量，并且绝不要通过它传输凭证。",
+      termsLink: "使用条款",
+      limitsTitle: "每日配额（UTC）",
+      limitOrigin: "每个调用站点",
+      limitHost: "每个目标站点",
+      limitTotal: "整个实例",
+      perDay: "{n}/天",
+      unavailable: "本实例未配置公共 key。",
     },
     tryit: {
       title: "在线体验",
@@ -627,6 +731,16 @@ const zh: Messages = {
       dnsCheckHint: "通过 DoH 解析主机，拦截指向非公网 IP 的域名。",
       keyless: "免密钥访问",
       keylessHint: "上面的允许来源无需携带密钥即可使用该密钥。Origin 只是便利手段，不是凭证——非浏览器客户端可以伪造它。",
+      publicTier: "公共档位",
+      publicTierHint:
+        "面向本站访客的共享 key：仅 GET/HEAD、不支持缓存控制、不支持子域模式、不转发凭证，并受下方每日配额约束。可以放心分发。",
+      dailyLimits:
+        "每日配额（UTC 自然日）。留空 = 不限制；但总量必填——它是把本实例控制在 Cloudflare 额度内的那道闸。",
+      dailyLimitPerOrigin: "每来源站点/天",
+      dailyLimitPerHost: "每目标站点/天",
+      dailyLimitTotal: "总量/天（必填）",
+      dailyLimitPh: "如 3000",
+      badgePublic: "公共",
       allowedHosts: "允许的目标主机",
       allowedHostsPh: "api.vendor.com, *.vendor.com（配置注入时必填）",
       injection: "上游注入",

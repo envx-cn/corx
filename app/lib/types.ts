@@ -25,6 +25,13 @@ export interface Env {
   ACCESS_AUD?: string;
   /** Optional comma-separated email allowlist for console/API access. */
   ADMIN_EMAILS?: string;
+  /**
+   * Raw value of the public-tier key, shown on the landing page (it is public
+   * by design — D1 only stores its hash). Empty = no public key on the site.
+   */
+  PUBLIC_KEY?: string;
+  /** Default R2 TTL for public-tier GETs, in seconds. Public keys ignore ?ttl=. */
+  PUBLIC_CACHE_TTL_SECONDS?: string;
 }
 
 export interface ApiKeyRow {
@@ -52,6 +59,14 @@ export interface ApiKeyRow {
   allowed_hosts: string | null;
   /** 1 = allowed origins can use this key without presenting it (keyless access). */
   keyless: number;
+  /** 'standard' (default) or 'public' — the shared, limited tier of the hosted instance. */
+  tier: string;
+  /** Public tier: daily request cap per caller Origin. NULL = unlimited. */
+  daily_limit_per_origin: number | null;
+  /** Public tier: daily request cap per target host. NULL = unlimited. */
+  daily_limit_per_host: number | null;
+  /** Public tier: daily request cap for the whole key. Required for public keys. */
+  daily_limit_total: number | null;
   created_at: string;
   revoked_at: string | null;
 }
@@ -66,8 +81,11 @@ export interface CachedEntry {
 
 export class ProxyError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** Extra JSON fields merged into the error body (quota scope, reset time, …). */
+  data?: Record<string, unknown>;
+  constructor(status: number, message: string, data?: Record<string, unknown>) {
     super(message);
     this.status = status;
+    this.data = data;
   }
 }

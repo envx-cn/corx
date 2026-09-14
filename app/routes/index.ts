@@ -2,12 +2,51 @@ import { Hono } from "hono";
 import type { Handler } from "hono";
 import type { Env } from "../lib/types.js";
 import type { ProxyVariables } from "../lib/auth.js";
+import { lookupApiKey } from "../lib/auth.js";
 import { proxyHandler } from "../proxy/handler.js";
 import { resolveRawTarget } from "../proxy/subdomain.js";
 import { detectLocale, makeT, type Locale } from "../lib/i18n/locale.js";
 import { LandingPage } from "./_landing.js";
 
 const app = new Hono<{ Bindings: Env; Variables: ProxyVariables }>({ strict: false });
+
+/**
+ * The public key (raw value from `PUBLIC_KEY`) plus its configured daily caps,
+ * for the landing page's no-deploy card. Everything degrades to "no card": a
+ * missing, revoked or non-public key never gets advertised. One D1 read per
+ * landing view only when PUBLIC_KEY is configured.
+ */
+async function publicKeyInfo(
+  env: Env,
+): Promise<{ key: string; perOrigin: number | null; perHost: number | null; total: number | null } | undefined> {
+  const raw = (env.PUBLIC_KEY ?? "").trim();
+  if (!raw) return undefined;
+  try {
+    const row = await lookupApiKey(env.DB, raw);
+    if (!row || row.tier !== "public") {
+      if (import.meta.env.DEV) {
+        // The card needs PUBLIC_KEY *and* a matching public-tier row; a key
+        // that is set but unresolvable is the easy one to get wrong locally.
+        console.warn(
+          "PUBLIC_KEY is set but no public-tier key matches it in the database: the landing page will not show " +
+            "the public-key card. Run `npm run db:seed:public` for local dev, or tick \"Public tier\" on that key " +
+            "in the console when deployed.",
+        );
+      }
+      return undefined;
+    }
+    return {
+      key: raw,
+      perOrigin: row.daily_limit_per_origin,
+      perHost: row.daily_limit_per_host,
+      total: row.daily_limit_total,
+    };
+  } catch {
+    // A D1 hiccup shouldn't hide the documented public path; show it without
+    // the numbers (the terms still spell out that quotas apply).
+    return { key: raw, perOrigin: null, perHost: null, total: null };
+  }
+}
 
 /**
  * GET / (plus /zh and /en URL-prefixed versions) serves the landing page —
@@ -36,6 +75,7 @@ function landing(locale?: Locale): Handler<{ Bindings: Env; Variables: ProxyVari
         origin: `${reqUrl.protocol}//${reqUrl.host}`,
         locale: lang,
         t: makeT(lang),
+        publicKey: await publicKeyInfo(c.env),
       })}`,
     );
   };

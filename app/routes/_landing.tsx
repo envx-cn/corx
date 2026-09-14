@@ -18,6 +18,7 @@ import { SiteFooter, SiteHead, SiteNav } from "../components/site.js";
 import { HeroX } from "../components/hero-x.js";
 import type { Locale, TFunc } from "../lib/i18n/locale.js";
 import CorsDemo, { type CorsDemoI18n } from "../islands/cors-demo.js";
+import CopyButton from "../islands/copy-button.js";
 
 /**
  * Marketing landing page: paper canvas, brand-red (#FD0700) CTAs and marker
@@ -27,7 +28,14 @@ import CorsDemo, { type CorsDemoI18n } from "../islands/cors-demo.js";
  * a dark slate footer. Fully translated via the t() function (en/zh); served
  * at /, /zh, /en by app/routes/index.ts.
  */
-export function LandingPage(props: { host: string; origin: string; locale: Locale; t: TFunc }) {
+export function LandingPage(props: {
+  host: string;
+  origin: string;
+  locale: Locale;
+  t: TFunc;
+  /** The public tier key + its daily caps, when this instance has one. */
+  publicKey?: { key: string; perOrigin: number | null; perHost: number | null; total: number | null };
+}) {
   const { t } = props;
   const demo: CorsDemoI18n = {
     urlAria: t("corsDemo.urlAria"),
@@ -80,6 +88,11 @@ export function LandingPage(props: { host: string; origin: string; locale: Local
               <a href="#try-it" class="px-3 py-2 rounded-lg hover:bg-base-200">
                 {t("site.tryIt")}
               </a>
+              {props.publicKey ? (
+                <a href="#public-key" class="px-3 py-2 rounded-lg hover:bg-base-200">
+                  {t("site.publicKey")}
+                </a>
+              ) : null}
               <a href="#highlights" class="px-3 py-2 rounded-lg hover:bg-base-200">
                 {t("site.highlights")}
               </a>
@@ -126,6 +139,15 @@ export function LandingPage(props: { host: string; origin: string; locale: Local
                       <Lucide svg={arrowUpRightSvg} />
                     </a>
                   </div>
+                  {/* The no-deploy path is the thing most visitors can actually
+                      act on, so it gets a direct link in the hero. */}
+                  {props.publicKey ? (
+                    <p class="mt-4 text-sm">
+                      <a href="#public-key" class="link link-primary no-underline hover:underline">
+                        {t("landing.hero.noDeploy")}
+                      </a>
+                    </p>
+                  ) : null}
                   {/* The calling convention, made concrete and copy-friendly. */}
                   <p class="mt-8 text-sm text-base-content/75">
                     {t("landing.hero.prefix")}{" "}
@@ -145,7 +167,7 @@ export function LandingPage(props: { host: string; origin: string; locale: Local
                 <p class="mt-2 text-base-content/75">{t("landing.tryit.sub")}</p>
               </div>
               <div class="mt-8 lg:max-w-[560px]">
-                <CorsDemo base={props.origin} i18n={demo} />
+                <CorsDemo base={props.origin} i18n={demo} apiKey={props.publicKey?.key} />
                 <p class="mt-4 text-xs text-base-content/75 text-center lg:text-left leading-relaxed">
                   {t("landing.tryit.hint", { origin: props.origin })}
                 </p>
@@ -153,6 +175,10 @@ export function LandingPage(props: { host: string; origin: string; locale: Local
             </div>
           </section>
           </div>
+
+          {/* Public key: the no-deploy path for people who just want to fetch
+              a URL cross-origin, with the limits stated up front. */}
+          {props.publicKey ? <PublicKeyCard origin={props.origin} pub={props.publicKey} t={t} /> : null}
 
           {/* Highlights — the differentiators, each with a real config snippet. */}
           <section id="highlights" class="max-w-6xl mx-auto px-4 sm:px-6 py-20">
@@ -216,6 +242,87 @@ export function LandingPage(props: { host: string; origin: string; locale: Local
         <SiteFooter origin={props.origin} t={t} />
       </body>
     </html>
+  );
+}
+
+/**
+ * The no-deploy path: the shared public key, its usage, and the daily caps it
+ * is subject to. The remind-at-copy step lives here — a link to /terms sits
+ * directly under the copy button, not behind a click-through gate (a gate a
+ * `curl` user never sees would be theatre, not consent).
+ */
+function PublicKeyCard(props: {
+  origin: string;
+  pub: { key: string; perOrigin: number | null; perHost: number | null; total: number | null };
+  t: TFunc;
+}) {
+  const { t, pub } = props;
+  const limits: Array<[string, number | null]> = [
+    [t("landing.publicKey.limitOrigin"), pub.perOrigin],
+    [t("landing.publicKey.limitHost"), pub.perHost],
+    [t("landing.publicKey.limitTotal"), pub.total],
+  ];
+  const usage = `fetch("${props.origin}/fetch?url=" + encodeURIComponent(url) + "&key=" + KEY)`;
+  return (
+    <section id="public-key" class="max-w-6xl mx-auto px-4 sm:px-6 py-20">
+      <div class="text-center">
+        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight">{t("landing.publicKey.title")}</h2>
+        <p class="mx-auto mt-2 max-w-2xl text-base-content/75">{t("landing.publicKey.sub")}</p>
+      </div>
+      <div class="mx-auto mt-8 max-w-3xl rounded-box border border-base-300 bg-base-100 p-5">
+        <div class="text-xs font-medium uppercase tracking-wide text-base-content/75">
+          {t("landing.publicKey.keyLabel")}
+        </div>
+        <div class="mt-2 flex items-center gap-2">
+          {/* Fixed 32px (= `btn-sm`) so the chip lines up with the copy button.
+              A plain <span>, not <code>: the global `code:not(pre code)` pill
+              rule outranks these utilities and would decide the height. */}
+          <span
+            title={pub.key}
+            class="flex h-8 min-w-0 flex-1 items-center rounded-box border border-base-300 bg-base-200 px-3 font-mono text-xs"
+          >
+            <span class="truncate">{pub.key}</span>
+          </span>
+          <CopyButton text={pub.key} labels={{ copy: t("copy.copy"), copied: t("copy.copied") }} />
+        </div>
+        {/* The reminder sits with the copy action on purpose. */}
+        <p class="mt-3 text-xs leading-relaxed text-base-content/75">
+          {t("landing.publicKey.copyNoteA")}{" "}
+          <a href="/terms" class="link link-primary">
+            {t("landing.publicKey.termsLink")}
+          </a>{" "}
+          {t("landing.publicKey.copyNoteB")}
+        </p>
+
+        <div class="mt-6 text-xs font-medium uppercase tracking-wide text-base-content/75">
+          {t("landing.publicKey.usageLabel")}
+        </div>
+        <div class="code-card mt-2">
+          <div class="code-head">
+            <span class="size-2.5 rounded-full bg-error/80"></span>
+            <span class="size-2.5 rounded-full bg-warning/80"></span>
+            <span class="size-2.5 rounded-full bg-success/80"></span>
+          </div>
+          <div class="code-line">{usage}</div>
+        </div>
+
+        <div class="mt-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-t border-base-300 pt-4">
+          <span class="text-xs font-medium uppercase tracking-wide text-base-content/75">
+            {t("landing.publicKey.limitsTitle")}
+          </span>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            {limits.map(([label, n]) =>
+              n != null ? (
+                <span class="text-base-content/75">
+                  {label}{" "}
+                  <b class="text-base-content tabular-nums">{t("landing.publicKey.perDay", { n })}</b>
+                </span>
+              ) : null,
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 

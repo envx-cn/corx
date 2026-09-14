@@ -27,6 +27,7 @@ import {
   CACHE_MAX_BYTES,
 } from "./cache.js";
 import { checkRateLimit } from "./ratelimit.js";
+import { checkPublicQuota, quotaHeaders } from "./quota.js";
 import { logRequest } from "../lib/db.js";
 import { num, clientIp } from "../lib/utils.js";
 
@@ -48,6 +49,10 @@ const STRIP_REQUEST = new Set([
   "x-forwarded-for",
   "x-forwarded-proto",
   "x-real-ip",
+  // The caller's corx credentials belong to this proxy, never to the target:
+  // forwarding them would leak the key to whatever host the caller names.
+  "x-api-key",
+  "x-admin-token",
   // Ask upstreams for identity (uncompressed) bodies: we strip content-encoding
   // on buffered responses, and streaming gzip through the dev server / workers
   // edge is a double-encoding hazard. Media streams unaffected (already
@@ -159,11 +164,37 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     );
   };
 
+  // Headers that must ride on the *response object*: c.header() before a
+  // handler returns writes to Hono's prepared headers, which are dropped when
+  // the handler returns a raw Response — and every proxy path does. Stamping
+  // them here is what actually puts X-RateLimit-* / X-Corx-Quota-* on the wire.
+  const pending = new Headers();
+  const withPending = (res: Response): Response => {
+    pending.forEach((value, name) => res.headers.set(name, value));
+    return res;
+  };
+
   try {
     // Per-key SSRF opt-outs (api_keys.ip_check / dns_check, both default on).
     // Read the row before the guards so a key can skip them.
     const row = c.get("apiKey");
+    // Public tier: the shared key users embed on their own sites. Reduced
+    // feature set (GET/HEAD only, no cache control, no subdomain mode, no
+    // credential forwarding) so the hosted instance stays generic — advanced
+    // use is what self-hosting is for.
+    const isPublic = row?.tier === "public";
     const { target: rawTarget, viaSubdomain } = resolveRawTarget(reqUrl, c.env);
+    if (isPublic) {
+      if (viaSubdomain) {
+        throw new ProxyError(403, "Subdomain mode is not available with the public key — self-host corx to use it");
+      }
+      if (c.req.method !== "GET" && c.req.method !== "HEAD") {
+        throw new ProxyError(403, `The public key only allows GET and HEAD (got ${c.req.method})`);
+      }
+      if (reqUrl.searchParams.has("ttl") || reqUrl.searchParams.has("no-cache")) {
+        throw new ProxyError(403, "The public key does not accept ttl/no-cache — self-host corx to control caching");
+      }
+    }
     const url = validateTargetUrl(rawTarget, { ipCheck: row?.ip_check !== 0 });
     // Log the pre-injection URL: injected params may carry secrets.
     target = url.toString();
@@ -185,6 +216,20 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     // a host that got blocked after the fact.
     if (row?.dns_check !== 0) await assertPublicHost(host);
     await checkDbBlocklist(c.env.DB, host);
+
+    // Public-tier daily quotas (caller origin / target host / whole key). Runs
+    // before the cache so a cache hit still consumes the caller's budget —
+    // otherwise "N requests per day" would be bypassed by any cached URL.
+    if (isPublic && row) {
+      const quota = await checkPublicQuota(c.env.DB, {
+        keyId: row.id,
+        origin: normalizeOrigin(origin),
+        host,
+        ip,
+        row,
+      });
+      for (const [name, value] of Object.entries(quotaHeaders(quota))) pending.set(name, value);
+    }
 
     // Auth: optional unless REQUIRE_API_KEY=true (key resolved by apiKeyMiddleware).
     apiKeyId = row?.id ?? null;
@@ -219,7 +264,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
           const res = cachedResponse(hit);
           res.headers.set("X-Corx-Target", host);
           res.headers.set("X-Corx-Latency-Ms", String(Date.now() - started));
-          return res;
+          return withPending(res);
         }
       } catch {
         // cache errors are non-fatal
@@ -233,10 +278,14 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     const bucket =
       authVia === "origin" && normalizedOrigin
         ? `rl:origin:${normalizedOrigin}:ip:${ip || "unknown"}`
-        : `rl:${apiKeyId ?? `ip:${ip || "unknown"}`}`;
+        : // A public key is shared by every caller, so a per-key bucket would
+          // put all of them in one bucket. Meter per IP instead.
+          isPublic
+          ? `rl:public:ip:${ip || "unknown"}`
+          : `rl:${apiKeyId ?? `ip:${ip || "unknown"}`}`;
     const { limit, remaining } = await checkRateLimit(c.env.DB, c.env, bucket, row?.rate_limit_per_min);
-    c.header("X-RateLimit-Limit", String(limit));
-    c.header("X-RateLimit-Remaining", String(remaining));
+    pending.set("X-RateLimit-Limit", String(limit));
+    pending.set("X-RateLimit-Remaining", String(remaining));
 
     // Build upstream request.
     const timeoutMs = num(c.env.TIMEOUT_MS, 30_000);
@@ -252,6 +301,10 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
           const k = key.toLowerCase();
           if (STRIP_REQUEST.has(k)) return;
           if (dropClientAuth && DROP_ON_CROSS_ORIGIN.has(k)) return;
+          // The public key is shared with the world, so it never forwards the
+          // caller's credentials — "no secrets through the public instance" is
+          // a promise the code keeps, not just a line in the terms.
+          if (isPublic && (k === "cookie" || k === "authorization")) return;
           outHeaders.set(key, value);
         });
         if (injection.headers.length > 0) {
@@ -380,12 +433,14 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         if (!body) {
           resBytes = null;
           finish(upstream.status);
-          return new Response(null, { status: upstream.status, headers: streamHeaders });
+          return withPending(new Response(null, { status: upstream.status, headers: streamHeaders }));
         }
-        return new Response(countStream(body, (bytes) => {
-          resBytes = bytes;
-          finish(upstream.status);
-        }), { status: upstream.status, headers: streamHeaders });
+        return withPending(
+          new Response(countStream(body, (bytes) => {
+            resBytes = bytes;
+            finish(upstream.status);
+          }), { status: upstream.status, headers: streamHeaders }),
+        );
       };
 
       // Non-cacheable responses (Range/206, non-GET, bypassed, no-store/private,
@@ -436,7 +491,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       }
 
       finish(upstream.status);
-      return new Response(resBody, { status: upstream.status, headers: resHeaders });
+      return withPending(new Response(resBody, { status: upstream.status, headers: resHeaders }));
     } finally {
       clearTimeout(timer);
     }
@@ -444,6 +499,10 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     const status = err instanceof ProxyError ? err.status : 500;
     const message = err instanceof Error ? err.message : "Internal error";
     finish(status, message);
-    return c.json({ error: message }, status as 400);
+    if (err instanceof ProxyError && err.data) {
+      if (typeof err.data["retryAfter"] === "number") pending.set("Retry-After", String(err.data["retryAfter"]));
+      return withPending(c.json({ error: message, ...err.data }, status as 400));
+    }
+    return withPending(c.json({ error: message }, status as 400));
   }
 }

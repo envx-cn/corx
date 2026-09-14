@@ -43,7 +43,8 @@ export function SiteHead(props: { title: string; description?: string; origin?: 
  * The language switch links to the /zh or /en URL-prefixed landing (public
  * pages only — the console has its own in-shell switcher).
  */
-export function SiteNav(props: { links?: Child; locale?: Locale; t?: TFunc }) {
+export function SiteNav(props: { links?: Child; locale?: Locale; t?: TFunc; langLinks?: { zh: string; en: string } }) {
+  const langLinks = props.langLinks ?? { zh: "/zh", en: "/en" };
   return (
     <nav class="sticky top-0 z-30 bg-base-100/85 backdrop-blur border-b border-base-300">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
@@ -57,7 +58,7 @@ export function SiteNav(props: { links?: Child; locale?: Locale; t?: TFunc }) {
           {props.t && (
             <div class="flex items-center gap-1 text-xs font-medium text-base-content/75">
               <a
-                href="/zh"
+                href={langLinks.zh}
                 lang="zh"
                 aria-current={props.locale === "zh" ? "true" : undefined}
                 class={`px-2 py-1 rounded-md hover:bg-base-200 transition-colors ${props.locale === "zh" ? "text-primary" : ""}`}
@@ -66,7 +67,7 @@ export function SiteNav(props: { links?: Child; locale?: Locale; t?: TFunc }) {
               </a>
               <span class="text-base-content/25">/</span>
               <a
-                href="/en"
+                href={langLinks.en}
                 lang="en"
                 aria-current={props.locale === "en" ? "true" : undefined}
                 class={`px-2 py-1 rounded-md hover:bg-base-200 transition-colors ${props.locale === "en" ? "text-primary" : ""}`}
@@ -109,6 +110,9 @@ export function SiteFooter(props: { origin?: string; t?: TFunc }) {
           <div class="mt-2 text-xs text-secondary-content/60">{t("site.tagline")}</div>
         </div>
         <div class="flex items-center gap-6 text-sm text-secondary-content/70">
+          <a href="/terms" class="hover:text-secondary-content inline-block py-2">
+            {t("site.terms")}
+          </a>
           <a href="/console/" class="hover:text-secondary-content inline-block py-2">
             {t("site.console")}
           </a>

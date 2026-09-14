@@ -28,18 +28,30 @@ export async function cacheKeyForUrl(target: string): Promise<string> {
   return PREFIX + (await sha256Hex(`GET:${target}`));
 }
 
-export function ttlSeconds(env: Env, reqUrl: URL, keyRow?: { cache_ttl?: number | null } | null): number {
+export function ttlSeconds(
+  env: Env,
+  reqUrl: URL,
+  keyRow?: { cache_ttl?: number | null; tier?: string | null } | null,
+): number {
+  const cap = num(env.CACHE_TTL_SECONDS, 3600);
+  const stored =
+    typeof keyRow?.cache_ttl === "number" &&
+    Number.isFinite(keyRow.cache_ttl) &&
+    keyRow.cache_ttl >= 0 &&
+    keyRow.cache_ttl <= 86400
+      ? keyRow.cache_ttl
+      : null;
+  // Public tier: the instance owns the cache policy (the handler rejects ?ttl),
+  // and entries default to a short TTL so a shared cache turns over quickly.
+  if (keyRow?.tier === "public") return stored ?? num(env.PUBLIC_CACHE_TTL_SECONDS, 300);
   // A per-request ?ttl= can only shorten — never lengthen beyond the global
   // default — so anonymous callers can't pin a public cache entry for 24h.
-  const cap = num(env.CACHE_TTL_SECONDS, 3600);
   const rawTtl = reqUrl.searchParams.get("ttl");
   if (rawTtl !== null) {
     const override = Number(rawTtl);
     if (Number.isFinite(override) && override >= 0 && override <= 86400) return Math.min(override, cap);
   }
-  const keyTtl = keyRow?.cache_ttl;
-  if (typeof keyTtl === "number" && Number.isFinite(keyTtl) && keyTtl >= 0 && keyTtl <= 86400) return keyTtl;
-  return cap;
+  return stored ?? cap;
 }
 
 export type KeyCachePolicy = Pick<

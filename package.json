@@ -13,6 +13,7 @@
     "db:create": "wrangler d1 create corx-db",
     "db:migrate": "wrangler d1 migrations apply corx-db --remote",
     "db:migrate:local": "wrangler d1 migrations apply corx-db --local",
+    "db:seed:public": "node scripts/seed-public-key.mjs",
     "bucket:create": "wrangler r2 bucket create corx-cache",
     "cf-typegen": "wrangler types worker-configuration.d.ts",
     "check": "tsc --noEmit",
