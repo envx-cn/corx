@@ -18,6 +18,7 @@ const en = {
     openConsole: "Open console",
     tryIt: "Try it",
     features: "Features",
+    highlights: "Highlights",
     tagline: "CORS proxy, served from the edge",
     console: "Console",
     copyright: "© {year} CORX",
@@ -27,7 +28,7 @@ const en = {
     hero: {
       h1a: "Fetch any URL,",
       h1b: "without CORS.",
-      sub: "CORX is an edge CORS proxy. Prefix any URL and fetch it cross-origin — responses are cached at the edge, rate-limited, and guarded against SSRF.",
+      sub: "CORX is an edge CORS proxy. Prefix any URL and fetch it cross-origin — responses are cached at the edge, rate-limited, guarded against SSRF, and upstream secrets never leave the server.",
       tryLive: "Try it live",
       openConsole: "Open console",
     },
@@ -35,6 +36,22 @@ const en = {
       title: "Try it live",
       sub: "Examples rotate every 10s and load straight through the proxy. Type any URL to take over.",
       hint: "Same as GET {origin}/fetch?url=…. Every request goes through the edge proxy — watch the status, latency, size and cache HIT/MISS badges update as examples rotate.",
+    },
+    highlights: {
+      title: "Built for real apps, not toy demos",
+      sub: "The details that keep secrets, browser callers and debugging under control.",
+      injection: {
+        title: "Secrets stay on the edge",
+        desc: "Attach variables and header/query rules to a key; corx injects them upstream. The browser never holds the token, and values are masked in the console and logs.",
+      },
+      keyless: {
+        title: "Keyless browser access",
+        desc: "Grant an origin to a key and its visitors call the proxy without shipping a key. Grants are per-origin, metered per visitor IP, and logged for audit.",
+      },
+      playground: {
+        title: "Inspect every hop",
+        desc: "Run any request through the real pipeline from the console playground — auth, SSRF guards, injection, cache — and read the full response plus a masked injection preview.",
+      },
     },
     features: {
       title: "Everything you need at the edge",
@@ -44,15 +61,15 @@ const en = {
       },
       cached: {
         title: "Edge-cached",
-        desc: "Responses are cached in R2 and served from the edge, with TTL control and a no-cache escape hatch.",
+        desc: "Responses are cached in R2 and served from the edge, with TTL control, a no-cache escape hatch and per-key policy.",
       },
       ssrf: {
         title: "SSRF-safe",
-        desc: "Private ranges are blocked by default, and you can blocklist hosts from the console.",
+        desc: "Private ranges, DNS rebinding and a D1 blocklist are stopped at the edge — per-key opt-outs for trusted callers.",
       },
       keys: {
         title: "API keys",
-        desc: "Per-key origins, rate limits and cache policy — revoke any key in one click.",
+        desc: "Per-key origins, rate limits, cache TTL and keyless grants — revoke any key in one click.",
       },
       analytics: {
         title: "Usage analytics",
@@ -61,6 +78,18 @@ const en = {
       subdomain: {
         title: "Subdomain mode",
         desc: "Give every target its own host: example.com becomes example-com.your.host.",
+      },
+      streaming: {
+        title: "Media-ready streaming",
+        desc: "Large files and Range requests stream straight through — seeking in video and audio just works.",
+      },
+      console: {
+        title: "Bilingual console",
+        desc: "Manage keys, watch logs, run requests in English or 中文 — with a playground that mirrors the real pipeline.",
+      },
+      selfHosted: {
+        title: "Yours to self-host",
+        desc: "Deploy on your own Cloudflare account with D1 + R2 — no accounts, seats or bills from us.",
       },
     },
     cta: {
@@ -286,7 +315,7 @@ const en = {
     },
     blocked: {
       title: "Host blocklist",
-      sub: "Extra SSRF blocks on top of the built-in private-range protection.",
+      sub: "Extra SSRF blocks on top of the built-in private-range protection. Blocking a domain also covers its subdomains.",
       hostname: "Hostname",
       reason: "Reason",
       hostnamePh: "evil.example",
@@ -395,6 +424,7 @@ const zh: Messages = {
     openConsole: "打开控制台",
     tryIt: "体验一下",
     features: "功能特性",
+    highlights: "亮点功能",
     tagline: "边缘 CORS 代理",
     console: "控制台",
     copyright: "© {year} CORX",
@@ -404,7 +434,7 @@ const zh: Messages = {
     hero: {
       h1a: "抓取任意 URL，",
       h1b: "告别 CORS。",
-      sub: "CORX 是一个边缘 CORS 代理。给任意 URL 加个前缀即可跨域抓取——响应缓存在边缘、有限流保护、内置 SSRF 防护。",
+      sub: "CORX 是一个边缘 CORS 代理。给任意 URL 加个前缀即可跨域抓取——响应缓存在边缘、有限流保护、内置 SSRF 防护，上游密钥永不离开服务端。",
       tryLive: "在线体验",
       openConsole: "打开控制台",
     },
@@ -412,6 +442,22 @@ const zh: Messages = {
       title: "在线体验",
       sub: "示例每 10 秒轮换，直接通过代理加载。输入任意 URL 即可接管。",
       hint: "等价于 GET {origin}/fetch?url=…。每个请求都经过边缘代理——观察状态码、延迟、体积和缓存 HIT/MISS 徽标随示例实时更新。",
+    },
+    highlights: {
+      title: "为真实应用而建，而非玩具演示",
+      sub: "这些细节让密钥、浏览器调用方与调试都尽在掌控。",
+      injection: {
+        title: "密钥留在边缘",
+        desc: "给密钥绑定变量与请求头/查询参数规则，corx 会在转发时注入——浏览器拿不到 token，变量值在控制台和日志中始终打码。",
+      },
+      keyless: {
+        title: "浏览器免密钥访问",
+        desc: "把一个来源授权给某个密钥，其访客无需携带密钥即可调用代理。授权按来源隔离、按访客 IP 计量，并写入审计日志。",
+      },
+      playground: {
+        title: "每一步都可检视",
+        desc: "在控制台演练场把请求跑过真实链路——鉴权、SSRF 防护、注入、缓存——并查看完整响应与打码后的注入预览。",
+      },
     },
     features: {
       title: "边缘所需，一应俱全",
@@ -421,15 +467,15 @@ const zh: Messages = {
       },
       cached: {
         title: "边缘缓存",
-        desc: "响应缓存在 R2 并从边缘返回，支持 TTL 控制和无缓存逃生通道。",
+        desc: "响应缓存在 R2 并从边缘返回，支持 TTL 控制、无缓存逃生通道和每密钥策略。",
       },
       ssrf: {
         title: "SSRF 防护",
-        desc: "默认拦截私有网段，还可以在控制台添加主机黑名单。",
+        desc: "私有网段、DNS 重绑定和 D1 黑名单都在边缘拦截——可信调用方可按密钥关闭单项检查。",
       },
       keys: {
         title: "API 密钥",
-        desc: "每个密钥独立配置允许来源、频率限制和缓存策略——一键吊销。",
+        desc: "每个密钥独立配置允许来源、频率限制、缓存 TTL 与免密钥授权——一键吊销。",
       },
       analytics: {
         title: "用量分析",
@@ -438,6 +484,18 @@ const zh: Messages = {
       subdomain: {
         title: "子域名模式",
         desc: "让每个目标拥有独立域名：example.com 变成 example-com.your.host。",
+      },
+      streaming: {
+        title: "流式媒体",
+        desc: "大文件与 Range 请求直接流式透传——视频、音频拖动进度条即可播放。",
+      },
+      console: {
+        title: "双控制台",
+        desc: "用中文或英文管理密钥、查看日志、发起请求——演练场完全复刻真实链路。",
+      },
+      selfHosted: {
+        title: "自托管",
+        desc: "部署在你自己的 Cloudflare 账号上，使用 D1 + R2——没有我们的账号、席位或账单。",
       },
     },
     cta: {
@@ -663,7 +721,7 @@ const zh: Messages = {
     },
     blocked: {
       title: "主机黑名单",
-      sub: "在内置私网段防护之上，额外添加的 SSRF 拦截规则。",
+      sub: "在内置私网段防护之上，额外添加的 SSRF 拦截规则。拦截某个域名会同时覆盖其子域名。",
       hostname: "主机名",
       reason: "原因",
       hostnamePh: "evil.example",

@@ -228,6 +228,14 @@ code:not(pre code) {
   @apply bg-transparent border-0 p-0 font-mono text-[13px] text-inherit;
 }
 
+/* landing highlight card: pitch + a real config snippet */
+.highlight-card {
+  @apply bg-base-100 border border-base-300 rounded-box p-6 flex flex-col gap-4 transition hover:border-primary/40 hover:shadow-md;
+}
+.highlight-card .code-line {
+  @apply py-1.5;
+}
+
 /* Landing demo island wrapper: honox renders islands inside a custom element;
    as a flex item under items-center it shrink-to-fits, which would make the
    mockup-browser's w-full circular (and narrower than intended). */

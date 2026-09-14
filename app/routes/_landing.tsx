@@ -6,6 +6,12 @@ import shieldSvg from "lucide-static/icons/shield-check.svg?raw";
 import keySvg from "lucide-static/icons/key-round.svg?raw";
 import chartSvg from "lucide-static/icons/bar-chart-3.svg?raw";
 import globeSvg from "lucide-static/icons/globe.svg?raw";
+import syringeSvg from "lucide-static/icons/syringe.svg?raw";
+import globeLockSvg from "lucide-static/icons/globe-lock.svg?raw";
+import flaskSvg from "lucide-static/icons/flask-conical.svg?raw";
+import clapperboardSvg from "lucide-static/icons/clapperboard.svg?raw";
+import languagesSvg from "lucide-static/icons/languages.svg?raw";
+import serverSvg from "lucide-static/icons/server.svg?raw";
 import arrowUpRightSvg from "lucide-static/icons/arrow-up-right.svg?raw";
 import { Lucide } from "../components/lucide.js";
 import { SiteFooter, SiteHead, SiteNav } from "../components/site.js";
@@ -58,6 +64,9 @@ export function LandingPage(props: { host: string; origin: string; locale: Local
               <a href="#try-it" class="px-3 py-2 rounded-lg hover:bg-base-200">
                 {t("site.tryIt")}
               </a>
+              <a href="#highlights" class="px-3 py-2 rounded-lg hover:bg-base-200">
+                {t("site.highlights")}
+              </a>
               <a href="#features" class="px-3 py-2 rounded-lg hover:bg-base-200">
                 {t("site.features")}
               </a>
@@ -98,6 +107,34 @@ export function LandingPage(props: { host: string; origin: string; locale: Local
             <p class="mt-4 text-xs text-base-content/55 text-center leading-relaxed">{t("landing.tryit.hint", { origin: props.origin })}</p>
           </section>
 
+          {/* Highlights — the differentiators, each with a real config snippet. */}
+          <section id="highlights" class="max-w-6xl mx-auto px-4 sm:px-6 py-20">
+            <div class="text-center mb-10">
+              <h2 class="text-2xl sm:text-3xl font-bold tracking-tight">{t("landing.highlights.title")}</h2>
+              <p class="mt-2 text-base-content/60">{t("landing.highlights.sub")}</p>
+            </div>
+            <div class="grid md:grid-cols-3 gap-4">
+              <Highlight
+                icon={syringeSvg}
+                title={t("landing.highlights.injection.title")}
+                desc={t("landing.highlights.injection.desc")}
+                code={["@api.vendor.com", "Authorization: Bearer ${TOKEN}"]}
+              />
+              <Highlight
+                icon={globeLockSvg}
+                title={t("landing.highlights.keyless.title")}
+                desc={t("landing.highlights.keyless.desc")}
+                code={["Origin: https://app.example", "→ key \u201cweb\u201d \u00b7 no key shipped"]}
+              />
+              <Highlight
+                icon={flaskSvg}
+                title={t("landing.highlights.playground.title")}
+                desc={t("landing.highlights.playground.desc")}
+                code={["200 · MISS · 143 ms", "x-corx-target: api.vendor.com"]}
+              />
+            </div>
+          </section>
+
           {/* Features */}
           <section id="features" class="max-w-6xl mx-auto px-4 sm:px-6 py-20">
             <div class="text-center mb-10">
@@ -110,6 +147,9 @@ export function LandingPage(props: { host: string; origin: string; locale: Local
               <Feature icon={keySvg} title={t("landing.features.keys.title")} desc={t("landing.features.keys.desc")} />
               <Feature icon={chartSvg} title={t("landing.features.analytics.title")} desc={t("landing.features.analytics.desc")} />
               <Feature icon={globeSvg} title={t("landing.features.subdomain.title")} desc={t("landing.features.subdomain.desc")} />
+              <Feature icon={clapperboardSvg} title={t("landing.features.streaming.title")} desc={t("landing.features.streaming.desc")} />
+              <Feature icon={languagesSvg} title={t("landing.features.console.title")} desc={t("landing.features.console.desc")} />
+              <Feature icon={serverSvg} title={t("landing.features.selfHosted.title")} desc={t("landing.features.selfHosted.desc")} />
             </div>
           </section>
 
@@ -140,6 +180,29 @@ function Feature({ icon, title, desc }: { icon: string; title: string; desc: str
       </span>
       <h3 class="font-semibold mb-1.5">{title}</h3>
       <p class="text-sm text-base-content/60 leading-relaxed">{desc}</p>
+    </div>
+  );
+}
+
+/** Highlight card: the pitch plus a real (non-translated) config snippet. */
+function Highlight({ icon, title, desc, code }: { icon: string; title: string; desc: string; code: string[] }) {
+  return (
+    <div class="highlight-card">
+      <span class="feature-icon mb-0">
+        <Lucide svg={icon} />
+      </span>
+      <h3 class="font-semibold">{title}</h3>
+      <p class="text-sm text-base-content/60 leading-relaxed">{desc}</p>
+      <div class="code-card mt-auto">
+        <div class="code-head">
+          <span class="size-2.5 rounded-full bg-error/80"></span>
+          <span class="size-2.5 rounded-full bg-warning/80"></span>
+          <span class="size-2.5 rounded-full bg-success/80"></span>
+        </div>
+        {code.map((line) => (
+          <div class="code-line">{line}</div>
+        ))}
+      </div>
     </div>
   );
 }
