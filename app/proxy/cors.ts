@@ -90,6 +90,10 @@ function varyWithOrigin(headers: Headers): void {
  */
 function isProxyRequest(c: Ctx): boolean {
   const reqUrl = new URL(c.req.url);
+  const p = reqUrl.pathname;
+  // Bare proxy routes (no target yet, e.g. /fetch without ?url=) still count:
+  // their error bodies must be readable from a browser.
+  if (p === "/fetch" || p.startsWith("/fetch/") || p === "/proxy" || p.startsWith("/proxy/")) return true;
   try {
     return resolveRawTarget(reqUrl, c.env).target !== null;
   } catch {

@@ -151,7 +151,16 @@ export async function getAdminUser(c: Ctx | Context<{ Bindings: Env }>): Promise
     const sess = getCookie(c as Context, "corx_session");
     if (sess) {
       const s = await verifySession(sess, secret);
-      if (s) return { email: s.sub, via: "token" };
+      if (s) {
+        // Access-issued sessions re-check the allowlist on every request, so
+        // removing an email from ADMIN_EMAILS invalidates its cookie right
+        // away (token sessions are gated by ADMIN_TOKEN itself).
+        if (s.via === "access" && !emailAllowed(env, s.sub)) {
+          console.warn(`access session denied by allowlist: ${s.sub}`);
+        } else {
+          return { email: s.sub, via: "token" };
+        }
+      }
     }
     const token =
       c.req.header("authorization")?.replace(/^Bearer\s+/i, "") || c.req.header("x-admin-token") || "";

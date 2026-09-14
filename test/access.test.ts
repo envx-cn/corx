@@ -80,4 +80,16 @@ describe("session cookie", () => {
     const expired = await signSession("a@b.c", secret, -10);
     expect(await verifySession(expired, secret)).toBeNull();
   });
+
+  it("preserves the issuing method (access vs token)", async () => {
+    const secret = "s3cret";
+    expect((await verifySession(await signSession("a@b.c", secret, undefined, "access"), secret))?.via).toBe(
+      "access",
+    );
+    expect((await verifySession(await signSession("a@b.c", secret, undefined, "token"), secret))?.via).toBe(
+      "token",
+    );
+    // Legacy cookies without `via` still verify (treated as token-issued).
+    expect((await verifySession(await signSession("a@b.c", secret), secret))?.via).toBeUndefined();
+  });
 });

@@ -517,6 +517,56 @@ describe("proxy wiring (integration)", () => {
     expect(await res.text()).toBe("path-style ok");
   });
 
+  it("/fetch errors keep CORS headers for browser callers", async () => {
+    const res = await call("/fetch", { headers: { origin: "https://app.example" } });
+    expect(res.status).toBe(400);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+  });
+
+  it("rejects an oversized upload before forwarding anything", async () => {
+    const seen: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL) => {
+        const u = new URL(String(url));
+        if (u.hostname === "cloudflare-dns.com") return new Response(JSON.stringify({ Answer: [] }), { status: 200 });
+        seen.push(u.hostname);
+        return new Response("ok", { status: 200 });
+      }),
+    );
+    const res = await call(
+      "/fetch?url=https://example.com/upload",
+      { method: "POST", body: "x".repeat(64) },
+      { ...env, MAX_BODY_BYTES: "16" } as Env,
+    );
+    expect(res.status).toBe(413);
+    expect(seen).toEqual([]);
+  });
+
+  it("a failed body read fails loudly instead of forwarding an empty POST", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL) => {
+        const u = new URL(String(url));
+        if (u.hostname === "cloudflare-dns.com") return new Response(JSON.stringify({ Answer: [] }), { status: 200 });
+        return new Response("ok", { status: 200 });
+      }),
+    );
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error("client aborted"));
+      },
+    });
+    const req = new Request("https://corx.test/fetch?url=https://example.com/upload", {
+      method: "POST",
+      body,
+      duplex: "half",
+    } as RequestInit & { duplex: "half" });
+    const res = await worker.fetch(req, env, ctx);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "Failed to read request body" });
+  });
+
   it("admin API is reachable with a bearer token", async () => {
     const res = await call("/api/blocked-hosts", { headers: { authorization: "Bearer test-token" } });
     expect(res.status).toBe(200);

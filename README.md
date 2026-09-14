@@ -9,6 +9,8 @@
 
 A CORS proxy running on Cloudflare. Stack: **HonoX + D1 + R2**.
 
+See [FEATURES.md](./FEATURES.md) for the complete, code-mapped feature list.
+
 - **Hono** — routing, CORS, upstream fetch
 - **D1** — API keys, rate-limit windows, request logs, host blocklist
 - **R2** — GET response cache
@@ -22,6 +24,7 @@ fetch("https://corx.<you>.workers.dev/fetch?url=" + encodeURIComponent("https://
 
 // Path-style also works:
 //   GET /proxy/https://api.example.com/data
+//   GET /fetch/https://api.example.com/data
 //   GET /https://api.example.com/data
 // Subdomain mode (needs wildcard domain *.your-zone):
 //   GET https://api-example-com.your-zone/data
@@ -33,6 +36,9 @@ Options:
 | --- | --- |
 | `?ttl=300` | R2 cache TTL in seconds for this GET (capped at the global `CACHE_TTL_SECONDS` so anonymous callers can't pin entries for 24h) |
 | `?no-cache=1` | Bypass R2 cache |
+
+Pass an API key with `X-Api-Key`, `Authorization: Bearer …`, or `?key=…`
+(required when `REQUIRE_API_KEY=true`).
 
 **Reserved query params** (`ttl`, `no-cache`, `key`, `corx-scheme`, `corx-port`) are
 consumed by the proxy and stripped from the target in every mode — don't use
@@ -49,7 +55,8 @@ request by default and can each be turned off for a single key — `ipCheck`
 (private/reserved IP literals and internal hostnames) and `dnsCheck` (resolve
 the host via DoH and reject names pointing at a non-public IP; the extra
 round-trip is what trusted internal keys may want to drop). The D1 blocklist
-and Cloudflare's own private-IP rules for Workers are never bypassed. Skipping
+(a blocked domain also covers its subdomains) and Cloudflare's own private-IP
+rules for Workers are never bypassed. Skipping
 a guard widens what that key can reach, so both default to on.
 
 **Upstream injection (per key)**
@@ -109,8 +116,8 @@ proxy without sending the key at all:
 read or write the cache (the key is the URL only, so user-specific responses
 would leak across callers). Upstream responses marked `Cache-Control:
 no-store/private/no-cache` (or varying on `Accept`/`Accept-Language`/… ) are
-never stored either.
-| `X-Api-Key` / `Authorization: Bearer …` / `?key=…` | API key (when `REQUIRE_API_KEY=true`) |
+never stored either. `Vary: Origin` is safe to cache here: the proxy strips the
+caller's `Origin` before forwarding, so upstream can never vary on it.
 
 Responses carry `X-Corx-Cache: HIT/MISS`, `X-Corx-Target`, `X-Corx-Latency-Ms`.
 Preflight `OPTIONS` is answered on every route. Upstream `set-cookie` is stripped.
@@ -119,7 +126,8 @@ Preflight `OPTIONS` is answered on every route. Upstream `set-cookie` is strippe
 (`accept-encoding: identity`), and any `Content-Encoding` header is stripped on
 streamed responses too — the Workers runtime already decompresses `fetch()`
 bodies, so pairing an encoding header with decoded bytes breaks browsers. One
-immediate retry (300 ms) is made on transient upstream `fetch` failures; the
+immediate retry (300 ms) is made on transient upstream `fetch` failures for
+GET/HEAD — a re-sent POST body could double-apply side effects upstream. The
 shared AbortController still caps the total time at `TIMEOUT_MS`.
 
 **Media (video / audio)**
@@ -182,12 +190,13 @@ appended to proxied HTML pages — dev-only artifact, production is untouched.
 
 | Var | Default | Meaning |
 | --- | --- | --- |
+| `PROXY_ZONE` | `""` | Suffix for subdomain mode (`example.corx.com` → `example.com`); empty = auto-detect from the request Host |
 | `ALLOWED_ORIGINS` | `*` | `*` or comma-separated origins allowed to use the **proxy routes only** (console/API never get CORS headers) |
 | `REQUIRE_API_KEY` | `false` | `"true"` to require an API key |
 | `CACHE_TTL_SECONDS` | `3600` | Default R2 TTL for GET 200s; also caps per-request `?ttl=` |
 | `TIMEOUT_MS` | `30000` | Upstream timeout |
 | `RATE_LIMIT_PER_MIN` | `60` | Per key (or per IP) per minute — cache hits are free |
-| `MAX_BODY_BYTES` | `10485760` | Max forwarded request body |
+| `MAX_BODY_BYTES` | `10485760` | Max forwarded request body (early Content-Length check, then a buffered cap; an unreadable body is rejected, never forwarded empty) |
 | `ADMIN_TOKEN` (secret) | — | Bearer token for `/api/*`; legacy HMAC key for console sessions |
 | `SESSION_SECRET` (secret) | — | HMAC key for console session cookies (falls back to `ADMIN_TOKEN`) |
 | `ACCESS_TEAM_DOMAIN` | `""` | Cloudflare Access team domain (enables Access login) |
@@ -211,11 +220,12 @@ full response: status, every header, body (pretty JSON, base64 for binary),
 latency, size, cache HIT/MISS and an injection preview with secrets masked.
 Runs execute in-process through the real pipeline, so auth, SSRF guards, rate
 limiting, caching and `request_logs` all apply, while stored keys never expose
-their raw value; one-click presets cover cache, SSRF blocks, CORS preflight,
-Range and POST echo, and recent runs stay in localStorage) ·
+their raw value; one-click presets cover cache, SSRF blocks, the metadata
+host, CORS preflight, Range and POST echo, and recent runs stay in
+localStorage) ·
 Logs (per-request size, with a 1h–7d lookback **Window** slider that re-filters
 on release) · Host
-blocklist (add inline, remove behind a confirm dialog; logout confirms too) ·
+blocklist (add inline — blocking a domain also covers its subdomains — remove behind a confirm dialog; logout confirms too) ·
 Profile · Billing.
 
 Timestamps are rendered relative ("5m ago") with the exact UTC value on hover,
@@ -331,7 +341,7 @@ browser ──► corx (Worker)
 
 ```
 wrangler.jsonc          bindings (D1, R2), vars, cron
-migrations/0001_init.sql  D1 schema
+migrations/       numbered D1 migrations (0001…0007)
 app/              HonoX frontend (entry + console UI + API routes)
   server.ts     worker entry: createApp + manual mounts (proxy only).
                 File routes register at createApp time, so the manual /*
@@ -384,28 +394,17 @@ app/              HonoX frontend (entry + console UI + API routes)
                 slate-tinted neutrals.
   client.ts     island hydration entry (builds to /static/client.js)
   islands/      interactive components (CopyButton, CorsDemo — landing
-                demo, StatsTabs — dashboard Breakdown selector)
-  console/      dashboard shell, pages, landing (JSX server components)
-  lib/format.ts esc/humanBytes helpers
-  proxy/        proxy feature: handler, guard (SSRF), subdomain mode,
-                CORS, R2 cache, D1 rate limit, inject (variables + rules)
+                demo, KeyPanel, LogsRange, Playground, StatsTabs)
+  proxy/        proxy feature: handler, guard (SSRF), dns-check, ip
+                classification, subdomain mode, CORS, R2 cache,
+                D1 rate limit, inject (variables + rules)
   lib/          shared kernel (no HTTP wiring): types, utils, API-key
                 auth, Access identity, sessions, request logging,
-                D1 query helpers, formatting
-  proxy.ts    main proxy handler
-  cors.ts     origin allowlist + preflight middleware
-  guard.ts    URL extraction + SSRF protection
-  cache.ts    R2 GET cache
-  inject.ts   variables + header/query injection (parse at save, evaluate per request)
-  ratelimit.ts  D1 fixed-window rate limit
-  auth.ts     API key helpers
-  db.ts       request logging
-  admin.ts    D1 query helpers (no routes — HTTP lives in app/routes/api/)
-  access.ts   Cloudflare Access JWT verify + admin identity
-  session.ts  signed session cookie for the console
-  console/    SSR admin console (/console/): views + routes
-  landing.ts  / docs page
-test/guard.test.ts
+                D1 query helpers, admin key/log queries, playground
+                spec, formatting, i18n dictionaries
+test/           vitest suites (guard, ip, dns-check, cache, inject,
+                admin, origins, subdomain, media, playground, stats,
+                i18n, nav, access, error pages, integration)
 ```
 
 ## Scripts

@@ -55,7 +55,7 @@ app.post("/", async (c) => {
     // request (getAdminUser checks cf-access-jwt-assertion first), so the
     // cookie is just an optimization. Set it only when a signing secret exists.
     const secret = sessionSecret(c.env);
-    if (secret) setCookie(c, COOKIE, await signSession(user.email, secret), cookieOptions(c));
+    if (secret) setCookie(c, COOKIE, await signSession(user.email, secret, undefined, "access"), cookieOptions(c));
     return c.redirect("/console/", 302);
   }
 
@@ -63,7 +63,7 @@ app.post("/", async (c) => {
   if (!c.env.ADMIN_TOKEN || token !== c.env.ADMIN_TOKEN) return fail(t("console.login.errToken"));
   const secret = sessionSecret(c.env);
   if (!secret) return fail(t("console.login.errMisconfig"));
-  setCookie(c, COOKIE, await signSession("local-admin (token)", secret), cookieOptions(c));
+  setCookie(c, COOKIE, await signSession("local-admin (token)", secret, undefined, "token"), cookieOptions(c));
   return c.redirect("/console/", 302);
 });
 
