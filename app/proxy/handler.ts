@@ -269,12 +269,23 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
 
       let body: BodyInit | undefined;
       if (c.req.method !== "GET" && c.req.method !== "HEAD") {
-        const buf = await c.req.raw.arrayBuffer().catch(() => null);
-        if (buf && buf.byteLength > maxBody) {
+        // Reject declared-oversized uploads before buffering anything.
+        const declared = Number(c.req.header("content-length") ?? NaN);
+        if (Number.isFinite(declared) && declared > maxBody) {
           throw new ProxyError(413, `Request body too large (>${maxBody} bytes)`);
         }
-        reqBytes = buf?.byteLength ?? 0;
-        body = buf ?? undefined;
+        let buf: ArrayBuffer;
+        try {
+          buf = await c.req.raw.arrayBuffer();
+        } catch {
+          // A failed read must never become a silently-empty forwarded body.
+          throw new ProxyError(400, "Failed to read request body");
+        }
+        if (buf.byteLength > maxBody) {
+          throw new ProxyError(413, `Request body too large (>${maxBody} bytes)`);
+        }
+        reqBytes = buf.byteLength;
+        body = buf;
       }
 
       let upstream: Response | null = null;
@@ -300,13 +311,15 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
             redirect: manualRedirects ? "manual" : "follow",
           });
         try {
-          // One retry on transient network errors (fetch failed). The shared
-          // AbortController keeps the total time bounded by timeoutMs, and the
-          // body buffer is reusable, so a re-sent POST is safe.
+          // One retry on transient network errors (fetch failed), for
+          // idempotent methods only: a re-sent POST body could double-apply
+          // side effects upstream. The shared AbortController keeps the total
+          // time bounded by timeoutMs.
           try {
             upstream = await attempt();
           } catch (err) {
             if ((err as Error)?.name === "AbortError") throw err;
+            if (method !== "GET" && method !== "HEAD") throw err;
             await new Promise((r) => setTimeout(r, 300));
             upstream = await attempt();
           }

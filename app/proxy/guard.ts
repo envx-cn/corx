@@ -58,12 +58,33 @@ export function validateTargetUrl(raw: string | null, opts: { ipCheck?: boolean 
   return url;
 }
 
-/** Extra blocklist from D1 (admin-managed). Fail-open on DB errors. */
+/**
+ * Host candidates for the D1 blocklist: the host itself plus its parent
+ * domains. Blocking `evil.example` therefore also covers
+ * `api.evil.example`, while a bare TLD entry (`com`) never matches — the
+ * suffix has to keep at least two labels to count as a domain.
+ */
+export function blocklistCandidates(hostname: string): string[] {
+  const h = hostname.toLowerCase().replace(/\.+$/, "");
+  const parts = h.split(".").filter(Boolean);
+  const out: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const candidate = parts.slice(i).join(".");
+    if (i === 0 || candidate.includes(".")) out.push(candidate);
+  }
+  return out;
+}
+
+/** Extra blocklist from D1 (admin-managed). A parent-domain entry covers its
+ * subdomains. Fail-open on DB errors. */
 export async function checkDbBlocklist(db: D1Database, hostname: string): Promise<void> {
+  const candidates = blocklistCandidates(hostname);
+  if (candidates.length === 0) return;
   try {
+    const placeholders = candidates.map(() => "?").join(", ");
     const row = await db
-      .prepare("SELECT hostname FROM blocked_hosts WHERE hostname = ?")
-      .bind(hostname.toLowerCase())
+      .prepare(`SELECT hostname FROM blocked_hosts WHERE hostname IN (${placeholders}) LIMIT 1`)
+      .bind(...candidates)
       .first();
     if (row) throw new ProxyError(403, `Blocked host: ${hostname}`);
   } catch (err) {

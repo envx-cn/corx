@@ -2,6 +2,8 @@
 export interface Session {
   sub: string;
   exp: number;
+  /** How the session was originally issued (Access login vs ADMIN_TOKEN). */
+  via?: "access" | "token";
 }
 
 import type { Env } from "./types.js";
@@ -40,8 +42,15 @@ function hmacKey(secret: string): Promise<CryptoKey> {
   ]);
 }
 
-export async function signSession(sub: string, secret: string, ttlSec = 12 * 3600): Promise<string> {
-  const payload = b64uEncode(enc.encode(JSON.stringify({ sub, exp: Math.floor(Date.now() / 1000) + ttlSec })));
+export async function signSession(
+  sub: string,
+  secret: string,
+  ttlSec = 12 * 3600,
+  via?: "access" | "token",
+): Promise<string> {
+  const payload = b64uEncode(
+    enc.encode(JSON.stringify({ sub, exp: Math.floor(Date.now() / 1000) + ttlSec, ...(via ? { via } : {}) })),
+  );
   const key = await hmacKey(secret);
   const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(payload)));
   return `${payload}.${b64uEncode(sig)}`;
@@ -61,8 +70,9 @@ export async function verifySession(token: string, secret: string): Promise<Sess
     if (!ok) return null;
     const data = JSON.parse(dec.decode(b64uDecode(payload))) as Session;
     if (typeof data.sub !== "string" || typeof data.exp !== "number") return null;
+    if (data.via !== undefined && data.via !== "access" && data.via !== "token") return null;
     if (Date.now() / 1000 > data.exp) return null;
-    return data;
+    return { sub: data.sub, exp: data.exp, ...(data.via ? { via: data.via } : {}) };
   } catch {
     return null;
   }
