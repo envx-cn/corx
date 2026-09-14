@@ -219,31 +219,22 @@ code:not(pre code) {
   user-select: none;
 }
 
-/* Brand-red marker highlight behind a hero word */
-.marker {
-  background-image: linear-gradient(
-    104deg,
-    rgba(253, 7, 0, 0) 0.9%,
-    rgba(253, 7, 0, 0.13) 2.4%,
-    rgba(253, 7, 0, 0.13) 97.6%,
-    rgba(253, 7, 0, 0) 98.9%
-  );
-  border-radius: 0.5em;
-  padding: 0 0.15em;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-}
-
 /* soft brand glow behind the hero */
 .hero-glow {
   background: radial-gradient(58% 52% at 50% 0%, rgba(253, 7, 0, 0.10) 0%, rgba(253, 7, 0, 0) 72%);
 }
 
-/* --- Hero X motion (prototype) ----------------------------------------------
- * Layered backdrop: a ghost X (7% brand red) with light sweeping *through*
- * its silhouette (a data-URI mask clips the streaks to the mark). All layers
- * are decorative, absolute (no CLS) and end on the static frame so the global
- * prefers-reduced-motion rule leaves a clean background.
+/* --- Hero X panel ------------------------------------------------------------
+ * The landing's right-hand visual: a ghost X (10% brand red) with a light that
+ * sweeps *through* its silhouette (a data-URI mask clips the streaks to the
+ * mark). Two interactions, both driven by components/hero-x.tsx:
+ *   - the pointer crossing the mark's own geometry fires one cross-pulse that
+ *     starts at the pointer's position along the diagonal and runs to the far
+ *     end (the invisible .hero-x-hit copy provides the hit shape);
+ *   - a successful proxied request from the try-it demo (`corx:request`) sparks
+ *     from the centre, alternating halves.
+ * All layers are decorative, absolute (no CLS) and every animation ends on the
+ * static frame, so prefers-reduced-motion leaves a clean background.
  */
 .hero-x {
   position: absolute;
@@ -251,136 +242,32 @@ code:not(pre code) {
   overflow: hidden;
   pointer-events: none;
   user-select: none;
-  --hero-x-alpha: 0.07;
-  --hero-x-streak: 0.7;
+  --hero-x-alpha: 0.1;
+  --hero-x-streak: 0.6;
   /* geometry shared with the hover script (degrees / fraction of layer width) */
   --hero-x-angle: 52;
   --hero-x-beam-w: 0.7;
   --hero-x-travel: 110;
 }
-.hero-x--faint {
-  --hero-x-alpha: 0.04;
-  --hero-x-streak: 0.35;
-}
-.hero-x--watermark {
-  --hero-x-alpha: 0.025;
-  --hero-x-streak: 0.22;
-}
-
-/* One transformed box holds the glyph and the masked light, so they share a
-   coordinate space and stay aligned at every viewport size. Placement sets
-   where that box sits and how it is rotated. */
 .hero-x-layer {
   position: absolute;
-  aspect-ratio: 664 / 848;
-}
-.hero-x--pos-right .hero-x-layer {
-  top: -10%;
-  right: -12%;
-  height: 128%;
-  transform: rotate(7deg);
-}
-/* Pushed further out: only the inner half of the X shows. */
-.hero-x--pos-right-far .hero-x-layer {
-  top: -6%;
-  right: -26%;
-  height: 118%;
-  transform: rotate(7deg);
-}
-/* Anchored to the bottom-right corner instead of the vertical middle. */
-.hero-x--pos-corner-br .hero-x-layer {
-  bottom: -18%;
-  right: -16%;
-  height: 108%;
-  transform: rotate(7deg);
-}
-.hero-x--pos-center .hero-x-layer {
-  top: 50%;
-  left: 50%;
-  height: 112%;
-  transform: translate(-50%, -50%) rotate(3deg);
-}
-.hero-x--pos-low .hero-x-layer {
-  top: 60%;
-  left: 50%;
-  height: 118%;
-  transform: translate(-50%, -50%) rotate(3deg);
-}
-.hero-x--pos-bottom .hero-x-layer {
-  bottom: -26%;
-  left: 50%;
-  height: 118%;
-  transform: translateX(-50%) rotate(3deg);
-}
-.hero-x--pos-watermark .hero-x-layer {
-  top: 50%;
-  left: 50%;
-  height: 138%;
-  transform: translate(-50%, -50%);
-}
-/* Fills a sized container (the hero's right column) — the X is the visual. */
-.hero-x--pos-panel {
-  --hero-x-alpha: 0.1;
-  --hero-x-streak: 0.75;
-}
-.hero-x--pos-panel .hero-x-layer {
   inset: 0;
   width: 100%;
   height: 100%;
-  aspect-ratio: auto;
-  transform: none;
 }
-@media (max-width: 767px) {
-  .hero-x--pos-right .hero-x-layer {
-    top: -4%;
-    right: -34%;
-    height: 104%;
-  }
-  .hero-x--pos-right-far .hero-x-layer {
-    top: -2%;
-    right: -48%;
-    height: 96%;
-  }
-  .hero-x--pos-corner-br .hero-x-layer {
-    bottom: -10%;
-    right: -40%;
-    height: 88%;
-  }
-  .hero-x--pos-center .hero-x-layer,
-  .hero-x--pos-low .hero-x-layer {
-    height: 110%;
-  }
-  .hero-x--pos-bottom .hero-x-layer {
-    height: 92%;
-  }
-}
-
 .hero-x-glyph {
   position: absolute;
   inset: 0;
   opacity: var(--hero-x-alpha);
+  transition: opacity 0.5s ease;
 }
 .hero-x-glyph svg {
   display: block;
   width: 100%;
   height: 100%;
 }
-.hero-x--draw .hero-x-light {
-  display: none;
-}
-.hero-x--draw .hero-x-glyph,
-.hero-x--combo .hero-x-glyph {
-  animation: hero-x-reveal 1.2s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-@keyframes hero-x-reveal {
-  from {
-    opacity: 0;
-    transform: scale(1.06);
-  }
-  to {
-    opacity: var(--hero-x-alpha);
-    transform: scale(1);
-  }
+.hero-x.is-hot .hero-x-glyph {
+  opacity: calc(var(--hero-x-alpha) * 2.2);
 }
 
 /* The light: anything inside this box is visible only where the X is. */
@@ -394,8 +281,6 @@ code:not(pre code) {
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
 }
-
-/* Two elongated streaks run the crossing diagonals in opposite directions. */
 .hero-x-beam {
   position: absolute;
   left: 50%;
@@ -412,77 +297,15 @@ code:not(pre code) {
   opacity: 0;
   will-change: transform, opacity;
 }
-.hero-x--pulse .hero-x-beam,
-.hero-x--combo .hero-x-beam {
-  animation: hero-x-travel-a 11s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+.hero-x.is-firing .hero-x-beam--a {
+  animation: hero-x-pulse-a 1.7s cubic-bezier(0.3, 0, 0.4, 1) 1;
 }
-.hero-x--pulse .hero-x-beam--b,
-.hero-x--combo .hero-x-beam--b {
-  animation-name: hero-x-travel-b;
-  animation-delay: 2.4s;
+.hero-x.is-firing .hero-x-beam--b {
+  animation: hero-x-pulse-b 1.7s cubic-bezier(0.3, 0, 0.4, 1) 0.16s 1;
 }
-/* translate(-50%,-50%) centers, rotate() aligns the streak with the diagonal,
-   translateX(±115%) runs it end to end along its own axis. */
-@keyframes hero-x-travel-a {
-  0% {
-    transform: translate(-50%, -50%) rotate(52deg) translateX(-115%);
-    opacity: 0;
-  }
-  8% {
-    opacity: 0.9;
-  }
-  42% {
-    transform: translate(-50%, -50%) rotate(52deg) translateX(115%);
-    opacity: 0.9;
-  }
-  50%,
-  100% {
-    transform: translate(-50%, -50%) rotate(52deg) translateX(115%);
-    opacity: 0;
-  }
-}
-@keyframes hero-x-travel-b {
-  0% {
-    transform: translate(-50%, -50%) rotate(-52deg) translateX(-115%);
-    opacity: 0;
-  }
-  8% {
-    opacity: 0.9;
-  }
-  42% {
-    transform: translate(-50%, -50%) rotate(-52deg) translateX(115%);
-    opacity: 0.9;
-  }
-  50%,
-  100% {
-    transform: translate(-50%, -50%) rotate(-52deg) translateX(115%);
-    opacity: 0;
-  }
-}
-
-/* Hover variant: a quiet watermark that fires one cross-pulse when the pointer
-   crosses the X itself. The light starts at the pointer's position along the
-   diagonal and runs toward the far end (both vars are set by the inline
-   script); the glyph brightens a little while the pointer is inside. */
-.hero-x--hover {
-  --hero-x-streak: 0.6;
-}
-.hero-x--hover .hero-x-beam {
-  opacity: 0;
-}
-.hero-x--hover .hero-x-glyph {
-  transition: opacity 0.5s ease;
-}
-.hero-x--hover.is-hot .hero-x-glyph {
-  opacity: calc(var(--hero-x-alpha) * 2.2);
-}
-.hero-x--hover.is-firing .hero-x-beam--a {
-  animation: hero-x-hover-a 1.7s cubic-bezier(0.3, 0, 0.4, 1) 1;
-}
-.hero-x--hover.is-firing .hero-x-beam--b {
-  animation: hero-x-hover-b 1.7s cubic-bezier(0.3, 0, 0.4, 1) 0.16s 1;
-}
-@keyframes hero-x-hover-a {
+/* translate(-50%,-50%) centres, rotate() aligns the streak with the diagonal,
+   translateX() runs it along its own axis; the from/to vars are set per fire. */
+@keyframes hero-x-pulse-a {
   0% {
     transform: translate(-50%, -50%) rotate(52deg) translateX(var(--hero-x-from-a, -110%));
     opacity: 0;
@@ -499,7 +322,7 @@ code:not(pre code) {
     opacity: 0;
   }
 }
-@keyframes hero-x-hover-b {
+@keyframes hero-x-pulse-b {
   0% {
     transform: translate(-50%, -50%) rotate(-52deg) translateX(var(--hero-x-from-b, -110%));
     opacity: 0;
@@ -518,8 +341,8 @@ code:not(pre code) {
 }
 
 /* Invisible hit geometry: a transparent copy of the mark. The wide transparent
-   stroke makes the hoverable halo forgiving; nothing here receives pointer
-   events (the script hit-tests the geometry itself). */
+   stroke makes the halo forgiving; nothing here receives pointer events (the
+   script hit-tests the geometry itself). */
 .hero-x-hit {
   position: absolute;
   inset: 0;

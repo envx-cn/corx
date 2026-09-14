@@ -88,7 +88,7 @@ export function LandingPage(props: { host: string; origin: string; locale: Local
             <div class="hidden lg:block pointer-events-none absolute inset-0 z-0">
               <div class="sticky top-24 h-[calc(100svh-8rem)] max-w-6xl mx-auto px-4 sm:px-6 flex items-center justify-end">
                 <div class="relative w-[46%] max-w-[560px] aspect-[664/848] translate-x-[4%]">
-                  <HeroX variant="hover" placement="panel" />
+                  <HeroX />
                 </div>
               </div>
             </div>
@@ -120,10 +120,6 @@ export function LandingPage(props: { host: string; origin: string; locale: Local
                     {t("landing.hero.prefix")}{" "}
                     <code class="break-all">{props.origin}/fetch?url=https://api.example.com</code>
                   </p>
-                </div>
-                {/* Mobile/tablet: the panel sits under the copy in flow. */}
-                <div class="lg:hidden relative mx-auto mt-10 w-full max-w-[260px] sm:max-w-[320px] aspect-[664/848]">
-                  <HeroX variant="hover" placement="panel" />
                 </div>
               </div>
             </section>

@@ -199,17 +199,21 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
 
 ## 9. Landing page, errors, branding & i18n
 
-- Branded landing at `/` (plus `/zh`, `/en`): a ~85svh hero with a "One
-  prefix" URL snippet, the live "Try it" mockup-browser demo (rotates every
-  10 s, type-to-take-over; pauses off-screen, on hidden tabs and for
-  reduced-motion users), a **Highlights band** (upstream secret injection,
-  keyless browser access, playground introspection — each with a real config
-  snippet), a compact nine-item feature list and a dark footer.
+- Branded landing at `/` (plus `/zh`, `/en`): two-column hero — copy on the
+  left, the animated **X panel** on the right (sticky through the try-it
+  screen, desktop only, 10% brand red). Hovering the mark's geometry fires a
+  cross-pulse from the pointer's position; a successful proxied request from
+  the demo sparks one from the centre. Then the live "Try it" mockup-browser
+  demo (10 s in view / 30 s ambient off-screen, type-to-take-over, paused on
+  hidden tabs and for reduced motion), a **Highlights band** (upstream secret
+  injection, keyless browser access, playground introspection — each with a
+  real config snippet), a compact nine-item feature list and a dark footer.
 - Accessibility: WCAG AA theme tokens (UI red `#E10600` vs. the logo's
   #FD0700, darkened success/warning/info, muted text at `/75`), a visible
   focus ring on the demo URL bar, `aria-live` demo results, `aria-hidden`
-  decorative icons, and a `prefers-reduced-motion` block. Mobile section
-  navigation, `scroll-margin-top` anchors and `og:`/`description` meta tags.
+  decorative icons, and a `prefers-reduced-motion` block (the X panel's script
+  bails out entirely). Mobile section navigation, `scroll-margin-top` anchors
+  and `og:`/`description` meta tags.
 - Bilingual resolution: URL prefix → `corx_lang` cookie → `Accept-Language`;
   landing, 404 and error pages translated; API errors are not.
 - 404 strategy: fallback `/*` decides proxy vs. non-proxy → branded 404 page;
