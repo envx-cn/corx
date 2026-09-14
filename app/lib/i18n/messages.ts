@@ -25,10 +25,15 @@ const en = {
   },
   landing: {
     title: "CORX — CORS proxy on Cloudflare",
+    meta: {
+      description:
+        "CORX is an edge CORS proxy on Cloudflare: fetch any URL cross-origin with R2 caching, upstream secret injection, keyless browser access and SSRF guards.",
+    },
     hero: {
       h1a: "Fetch any URL,",
       h1b: "without CORS.",
       sub: "CORX is an edge CORS proxy. Prefix any URL and fetch it cross-origin — responses are cached at the edge, rate-limited, guarded against SSRF, and upstream secrets never leave the server.",
+      prefix: "One prefix:",
       tryLive: "Try it live",
       openConsole: "Open console",
     },
@@ -431,10 +436,15 @@ const zh: Messages = {
   },
   landing: {
     title: "CORX — Cloudflare 上的 CORS 代理",
+    meta: {
+      description:
+        "CORX 是运行在 Cloudflare 上的边缘 CORS 代理：给任意 URL 加前缀即可跨域抓取，支持 R2 缓存、上游密钥注入、浏览器免密钥访问与 SSRF 防护。",
+    },
     hero: {
       h1a: "抓取任意 URL，",
       h1b: "告别 CORS。",
       sub: "CORX 是一个边缘 CORS 代理。给任意 URL 加个前缀即可跨域抓取——响应缓存在边缘、有限流保护、内置 SSRF 防护，上游密钥永不离开服务端。",
+      prefix: "一个前缀：",
       tryLive: "在线体验",
       openConsole: "打开控制台",
     },

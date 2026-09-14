@@ -12,12 +12,18 @@ import type { Locale, TFunc } from "../lib/i18n/locale.js";
 /** Document <head>: fonts + injected app CSS. Inject it with
     dangerouslySetInnerHTML — hono/jsx would otherwise HTML-escape the CSS and
     silently drop any rule whose selector contains > or & (see AGENTS.md). */
-export function SiteHead(props: { title: string }) {
+export function SiteHead(props: { title: string; description?: string; origin?: string }) {
   return (
     <>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <title>{props.title}</title>
+      {props.description && <meta name="description" content={props.description} />}
+      <meta property="og:type" content="website" />
+      <meta property="og:title" content={props.title} />
+      {props.description && <meta property="og:description" content={props.description} />}
+      {props.origin && <meta property="og:url" content={props.origin} />}
+      <meta name="twitter:card" content="summary" />
       <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" />
@@ -45,11 +51,11 @@ export function SiteNav(props: { links?: Child; locale?: Locale; t?: TFunc }) {
           <CorxLogo class="h-8" />
         </a>
         {props.links && (
-          <div class="hidden md:flex items-center gap-1 text-sm text-base-content/70">{props.links}</div>
+          <div class="hidden md:flex items-center gap-1 text-sm text-base-content/75">{props.links}</div>
         )}
         <div class="flex items-center gap-3">
           {props.t && (
-            <div class="flex items-center gap-1 text-xs font-medium text-base-content/60">
+            <div class="flex items-center gap-1 text-xs font-medium text-base-content/75">
               <a
                 href="/zh"
                 lang="zh"
@@ -76,6 +82,16 @@ export function SiteNav(props: { links?: Child; locale?: Locale; t?: TFunc }) {
           </div>
         </div>
       </div>
+      {/* Mobile: the same section links as a scrollable chip row (the desktop
+          row is hidden below md, which used to leave phones without section
+          navigation entirely). */}
+      {props.links && (
+        <div class="md:hidden border-t border-base-300 overflow-x-auto">
+          <div class="max-w-6xl mx-auto px-4 py-1.5 flex items-center gap-1 text-sm text-base-content/75 whitespace-nowrap">
+            {props.links}
+          </div>
+        </div>
+      )}
     </nav>
   );
 }
@@ -93,7 +109,7 @@ export function SiteFooter(props: { origin?: string; t?: TFunc }) {
           <div class="mt-2 text-xs text-secondary-content/60">{t("site.tagline")}</div>
         </div>
         <div class="flex items-center gap-6 text-sm text-secondary-content/70">
-          <a href="/console/" class="hover:text-secondary-content">
+          <a href="/console/" class="hover:text-secondary-content inline-block py-2">
             {t("site.console")}
           </a>
         </div>

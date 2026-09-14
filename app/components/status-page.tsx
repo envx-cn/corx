@@ -54,7 +54,7 @@ export function StatusPage(props: {
               {props.code}
             </div>
             <h1 class="sr-only">{props.h1}</h1>
-            <p class="mx-auto mt-6 max-w-md text-balance text-base-content/70">{props.sub}</p>
+            <p class="mx-auto mt-6 max-w-md text-balance text-base-content/75">{props.sub}</p>
             <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
               <a href={props.primary.href} class="btn btn-primary btn-lg rounded-full! px-8">
                 {props.primary.label}
@@ -63,7 +63,7 @@ export function StatusPage(props: {
                 {props.secondary.label}
               </a>
             </div>
-            {props.note && <p class="mt-10 text-xs text-base-content/45">{props.note}</p>}
+            {props.note && <p class="mt-10 text-xs text-base-content/75">{props.note}</p>}
             {props.devDetail && (
               <pre class="mx-auto mt-4 max-w-xl overflow-x-auto rounded-box border border-error/30 bg-error/5 p-3 text-left text-xs text-error">
                 {props.devDetail}

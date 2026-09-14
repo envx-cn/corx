@@ -97,7 +97,12 @@ describe("route wiring (integration)", () => {
     expect(await detected.text()).toContain("告别 CORS");
 
     const en = await call("/en");
-    expect(await en.text()).toContain("without CORS.");
+    const enHtml = await en.text();
+    expect(enHtml).toContain("without CORS.");
+    // Social/search previews: description + Open Graph tags on the landing.
+    expect(enHtml).toContain('<meta name="description"');
+    expect(enHtml).toContain('property="og:title"');
+    expect(enHtml).toContain('property="og:url" content="https://corx.test"');
   });
 
   it("?lang= switches the console language via cookie + redirect", async () => {

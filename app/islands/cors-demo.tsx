@@ -55,6 +55,10 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
   const [idx, setIdx] = useState(0);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DemoResult | null>(null);
+  // Pause the rotation when the demo is off-screen or the tab is hidden.
+  const [inView, setInView] = useState(true);
+  const [visible, setVisible] = useState(true);
+  const rootRef = useRef<HTMLDivElement>(null);
   // Bumped on every example switch; used as an input key so the URL bar
   // replays its slide-up animation on rotation.
   const [flipKey, setFlipKey] = useState(0);
@@ -105,22 +109,46 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
     }
   }
 
-  // Rotating timer: advance the example index every 10s while auto is on.
+  // Rotating timer: advance the example index every 10s while auto is on and
+  // the demo is actually on screen in a visible tab.
+  const rotating = auto && inView && visible;
   useEffect(() => {
-    if (!auto) return;
+    if (!rotating) return;
     const t = setInterval(() => setIdx((i) => (i + 1) % EXAMPLES.length), 10_000);
     return () => clearInterval(t);
-  }, [auto]);
+  }, [rotating]);
+
+  // Accessibility + data hygiene: honor prefers-reduced-motion (start paused)
+  // and stop rotating while scrolled out of view or on a hidden tab.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) setAuto(false);
+    const onVisibility = () => setVisible(!document.hidden);
+    document.addEventListener("visibilitychange", onVisibility);
+    onVisibility();
+    const el = rootRef.current;
+    let observer: IntersectionObserver | undefined;
+    if (el && typeof IntersectionObserver !== "undefined") {
+      observer = new IntersectionObserver((entries) => setInView(entries.some((e) => e.isIntersecting)), {
+        threshold: 0.2,
+      });
+      observer.observe(el);
+    }
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      observer?.disconnect();
+    };
+  }, []);
 
   // Load the current example whenever the index changes (and on mount).
   useEffect(() => {
-    if (!auto) return;
+    if (!rotating) return;
     const example = EXAMPLES[idx]!;
     setUrl(example.url);
     setFlipKey((k) => k + 1); // replay the URL bar slide-up
     void load(example.url);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idx, auto]);
+  }, [idx, rotating]);
 
   function go() {
     setAuto(false);
@@ -129,16 +157,16 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
 
   const statusCls =
     result == null
-      ? "text-base-content/40"
+      ? "text-base-content/75"
       : result.ok
         ? "text-success"
         : "text-error";
 
   return (
-    <div class="mockup-browser w-full max-w-[760px] mx-auto bg-base-100 border border-base-300 shadow-xl">
+    <div ref={rootRef} class="mockup-browser w-full max-w-[760px] mx-auto bg-base-100 border border-base-300 shadow-xl">
       <div class="mockup-browser-toolbar">
-        <div class="flex w-full items-center gap-2 mr-[1.4em] bg-base-200 border border-base-300 rounded-full! py-1 pl-3 pr-1">
-          <span class="lucide text-base-content/40 shrink-0">
+        <div class="flex w-full items-center gap-2 mr-[1.4em] bg-base-200 border border-base-300 rounded-full! py-1 pl-3 pr-1 focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/25">
+          <span class="lucide text-base-content/60 shrink-0">
             <Lucide svg={searchSvg} />
           </span>
           <input
@@ -164,8 +192,14 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
       </div>
 
       {/* Fixed height AND width: the browser's shape never follows the loaded
-          content; the result pane scrolls internally. */}
-      <div data-inner-scroll class="h-[38vh] min-h-[300px] max-h-[480px] overflow-auto bg-base-200/60 border-t border-base-300">
+          content; the result pane scrolls internally. role=status announces
+          fresh results to screen readers. */}
+      <div
+        data-inner-scroll
+        role="status"
+        aria-live="polite"
+        class="h-[38vh] min-h-[300px] max-h-[480px] overflow-auto bg-base-200/60 border-t border-base-300"
+      >
         {loading ? (
           <div key="skeleton" class="demo-skeleton" aria-busy="true">
             <div class="flex flex-wrap gap-2 mb-4">
@@ -183,7 +217,7 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
           </div>
         ) : result ? (
           <div key="result" class="demo-fade-in p-4">
-            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3 font-sans text-xs text-base-content/50">
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3 font-sans text-xs text-base-content/75">
               <span class={`font-medium ${statusCls}`}>
                 {result.status === 0 ? i18n.error : `HTTP ${result.status}`}
               </span>
@@ -195,10 +229,10 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
             <pre class="font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-all">{result.snippet}</pre>
           </div>
         ) : (
-          <div class="py-20 text-center text-sm text-base-content/50">{i18n.waiting}</div>
+          <div class="py-20 text-center text-sm text-base-content/75">{i18n.waiting}</div>
         )}
       </div>
-      <div class="flex items-center justify-between px-4 py-2 border-t border-base-300 text-xs text-base-content/55 bg-base-100">
+      <div class="flex items-center justify-between px-4 py-2 border-t border-base-300 text-xs text-base-content/75 bg-base-100">
         <span>
           {auto ? (
             <>
