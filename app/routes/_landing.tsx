@@ -84,13 +84,12 @@ export function LandingPage(props: { host: string; origin: string; locale: Local
               slightly under a full viewport so the live demo peeks in above
               the fold. */}
           <section class="relative overflow-hidden min-h-[calc(85svh-4rem)] flex items-center">
-            <div class="hero-glow absolute inset-x-0 top-0 h-[65%] pointer-events-none"></div>
             <div class="relative max-w-6xl w-full mx-auto px-4 sm:px-6 py-16 grid gap-10 sm:gap-12 lg:grid-cols-[1.05fr_0.95fr] items-center">
               <div class="text-center lg:text-left">
                 <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.08] text-base-content">
                   {t("landing.hero.h1a")}
                   <br />
-                  <span class="marker">{t("landing.hero.h1b")}</span>
+                  {t("landing.hero.h1b")}
                 </h1>
                 <p class="mx-auto lg:mx-0 mt-6 max-w-2xl text-base sm:text-lg text-base-content/75">
                   {t("landing.hero.sub")}
