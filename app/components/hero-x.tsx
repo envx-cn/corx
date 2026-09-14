@@ -10,8 +10,10 @@ const HOVER_SCRIPT = `(() => {
     const hit = root.querySelector(".hero-x-hit path");
     const layer = root.querySelector(".hero-x-layer");
     const beams = [root.querySelector(".hero-x-beam--a"), root.querySelector(".hero-x-beam--b")];
-    const section = root.parentElement;
-    if (!hit || !layer || !section || beams.some((b) => !b)) continue;
+    // Pointer tracking spans the whole scope (the hero + demo wrapper), not just
+    // the panel box, so the halo is catchable wherever the X reaches.
+    const scope = root.closest("[data-hero-x-scope]") || root.parentElement;
+    if (!hit || !layer || !scope || beams.some((b) => !b)) continue;
 
     const cs = getComputedStyle(root);
     const angle = ((parseFloat(cs.getPropertyValue("--hero-x-angle")) || 52) * Math.PI) / 180;
@@ -72,12 +74,12 @@ const HOVER_SCRIPT = `(() => {
       fire(a, b);
     };
 
-    section.addEventListener("pointermove", (e) => {
+    scope.addEventListener("pointermove", (e) => {
       if (queued) return;
       queued = true;
       requestAnimationFrame(() => update(e));
     });
-    section.addEventListener("pointerleave", () => {
+    scope.addEventListener("pointerleave", () => {
       hot = false;
       root.classList.remove("is-hot");
     });

@@ -80,42 +80,53 @@ export function LandingPage(props: { host: string; origin: string; locale: Local
         />
 
         <main class="flex-1">
-          {/* Hero — copy on the left, the animated X as the right-hand panel;
-              slightly under a full viewport so the live demo peeks in above
-              the fold. */}
-          <section class="relative overflow-hidden min-h-[calc(85svh-4rem)] flex items-center">
-            <div class="relative max-w-6xl w-full mx-auto px-4 sm:px-6 py-16 grid gap-10 sm:gap-12 lg:grid-cols-[1.05fr_0.95fr] items-center">
-              <div class="text-center lg:text-left">
-                <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.08] text-base-content">
-                  {t("landing.hero.h1a")}
-                  <br />
-                  {t("landing.hero.h1b")}
-                </h1>
-                <p class="mx-auto lg:mx-0 mt-6 max-w-2xl text-base sm:text-lg text-base-content/75">
-                  {t("landing.hero.sub")}
-                </p>
-                <div class="mt-8 flex flex-wrap items-center justify-center lg:justify-start gap-3">
-                  <a href="#try-it" class="btn btn-primary btn-lg rounded-full! px-8">
-                    {t("landing.hero.tryLive")}
-                  </a>
-                  <a href="/console/" class="btn btn-lg btn-outline rounded-full! px-8">
-                    {t("landing.hero.openConsole")}
-                    <Lucide svg={arrowUpRightSvg} />
-                  </a>
+          {/* Hero + live demo share one wrapper: the X panel is sticky inside it,
+              so it stays on screen while you read the hero and try the demo,
+              and only scrolls away when the Highlights section arrives. */}
+          <div class="relative" data-hero-x-scope>
+            {/* Desktop: sticky right-hand panel (bleeds a little past the grid). */}
+            <div class="hidden lg:block pointer-events-none absolute inset-0 z-0">
+              <div class="sticky top-24 h-[calc(100svh-8rem)] max-w-6xl mx-auto px-4 sm:px-6 flex items-center justify-end">
+                <div class="relative w-[46%] max-w-[560px] aspect-[664/848] translate-x-[4%]">
+                  <HeroX variant="hover" placement="panel" />
                 </div>
-              {/* The calling convention, made concrete and copy-friendly. */}
-              <p class="mt-8 text-sm text-base-content/75">
-                {t("landing.hero.prefix")}{" "}
-                <code class="break-all">{props.origin}/fetch?url=https://api.example.com</code>
-              </p>
-              </div>
-              {/* Animated right panel: pulses on hover, and on every successful
-                  proxied request from the demo below. */}
-              <div class="relative mx-auto w-full max-w-[260px] sm:max-w-[320px] lg:max-w-none aspect-[664/848]">
-                <HeroX variant="hover" placement="panel" />
               </div>
             </div>
-          </section>
+
+            {/* Hero — copy on the left; slightly under a full viewport so the
+                live demo peeks in above the fold. */}
+            <section class="relative min-h-[calc(85svh-4rem)] flex items-center">
+              <div class="relative max-w-6xl w-full mx-auto px-4 sm:px-6 py-16">
+                <div class="text-center lg:text-left lg:max-w-[560px]">
+                  <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.08] text-base-content">
+                    {t("landing.hero.h1a")}
+                    <br />
+                    {t("landing.hero.h1b")}
+                  </h1>
+                  <p class="mx-auto lg:mx-0 mt-6 max-w-2xl text-base sm:text-lg text-base-content/75">
+                    {t("landing.hero.sub")}
+                  </p>
+                  <div class="mt-8 flex flex-wrap items-center justify-center lg:justify-start gap-3">
+                    <a href="#try-it" class="btn btn-primary btn-lg rounded-full! px-8">
+                      {t("landing.hero.tryLive")}
+                    </a>
+                    <a href="/console/" class="btn btn-lg btn-outline rounded-full! px-8">
+                      {t("landing.hero.openConsole")}
+                      <Lucide svg={arrowUpRightSvg} />
+                    </a>
+                  </div>
+                  {/* The calling convention, made concrete and copy-friendly. */}
+                  <p class="mt-8 text-sm text-base-content/75">
+                    {t("landing.hero.prefix")}{" "}
+                    <code class="break-all">{props.origin}/fetch?url=https://api.example.com</code>
+                  </p>
+                </div>
+                {/* Mobile/tablet: the panel sits under the copy in flow. */}
+                <div class="lg:hidden relative mx-auto mt-10 w-full max-w-[260px] sm:max-w-[320px] aspect-[664/848]">
+                  <HeroX variant="hover" placement="panel" />
+                </div>
+              </div>
+            </section>
 
           {/* Live demo — full-viewport section so nothing below leaks. */}
           <section id="try-it" class="min-h-[calc(100svh-4rem)] flex flex-col items-center justify-center max-w-4xl mx-auto px-4 sm:px-6 py-16">
@@ -126,6 +137,7 @@ export function LandingPage(props: { host: string; origin: string; locale: Local
             <CorsDemo base={props.origin} i18n={demo} />
             <p class="mt-4 text-xs text-base-content/75 text-center leading-relaxed">{t("landing.tryit.hint", { origin: props.origin })}</p>
           </section>
+          </div>
 
           {/* Highlights — the differentiators, each with a real config snippet. */}
           <section id="highlights" class="max-w-6xl mx-auto px-4 sm:px-6 py-20">
