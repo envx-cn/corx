@@ -15,6 +15,7 @@ import serverSvg from "lucide-static/icons/server.svg?raw";
 import arrowUpRightSvg from "lucide-static/icons/arrow-up-right.svg?raw";
 import { Lucide } from "../components/lucide.js";
 import { SiteFooter, SiteHead, SiteNav } from "../components/site.js";
+import { HeroX } from "../components/hero-x.js";
 import type { Locale, TFunc } from "../lib/i18n/locale.js";
 import CorsDemo, { type CorsDemoI18n } from "../islands/cors-demo.js";
 
@@ -79,31 +80,41 @@ export function LandingPage(props: { host: string; origin: string; locale: Local
         />
 
         <main class="flex-1">
-          {/* Hero — slightly under a full viewport so the live demo peeks in
-              above the fold; the section below finishes it. */}
-          <section class="relative overflow-hidden min-h-[calc(85svh-4rem)] flex items-center justify-center">
+          {/* Hero — copy on the left, the animated X as the right-hand panel;
+              slightly under a full viewport so the live demo peeks in above
+              the fold. */}
+          <section class="relative overflow-hidden min-h-[calc(85svh-4rem)] flex items-center">
             <div class="hero-glow absolute inset-x-0 top-0 h-[65%] pointer-events-none"></div>
-            <div class="relative max-w-4xl w-full mx-auto px-4 sm:px-6 py-16 text-center">
-              <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.08] text-base-content">
-                {t("landing.hero.h1a")}
-                <br />
-                <span class="marker">{t("landing.hero.h1b")}</span>
-              </h1>
-              <p class="mx-auto mt-6 max-w-2xl text-base sm:text-lg text-base-content/75">{t("landing.hero.sub")}</p>
-              <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
-                <a href="#try-it" class="btn btn-primary btn-lg rounded-full! px-8">
-                  {t("landing.hero.tryLive")}
-                </a>
-                <a href="/console/" class="btn btn-lg btn-outline rounded-full! px-8">
-                  {t("landing.hero.openConsole")}
-                  <Lucide svg={arrowUpRightSvg} />
-                </a>
-              </div>
+            <div class="relative max-w-6xl w-full mx-auto px-4 sm:px-6 py-16 grid gap-10 sm:gap-12 lg:grid-cols-[1.05fr_0.95fr] items-center">
+              <div class="text-center lg:text-left">
+                <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.08] text-base-content">
+                  {t("landing.hero.h1a")}
+                  <br />
+                  <span class="marker">{t("landing.hero.h1b")}</span>
+                </h1>
+                <p class="mx-auto lg:mx-0 mt-6 max-w-2xl text-base sm:text-lg text-base-content/75">
+                  {t("landing.hero.sub")}
+                </p>
+                <div class="mt-8 flex flex-wrap items-center justify-center lg:justify-start gap-3">
+                  <a href="#try-it" class="btn btn-primary btn-lg rounded-full! px-8">
+                    {t("landing.hero.tryLive")}
+                  </a>
+                  <a href="/console/" class="btn btn-lg btn-outline rounded-full! px-8">
+                    {t("landing.hero.openConsole")}
+                    <Lucide svg={arrowUpRightSvg} />
+                  </a>
+                </div>
               {/* The calling convention, made concrete and copy-friendly. */}
               <p class="mt-8 text-sm text-base-content/75">
                 {t("landing.hero.prefix")}{" "}
                 <code class="break-all">{props.origin}/fetch?url=https://api.example.com</code>
               </p>
+              </div>
+              {/* Animated right panel: pulses on hover, and on every successful
+                  proxied request from the demo below. */}
+              <div class="relative mx-auto w-full max-w-[260px] sm:max-w-[320px] lg:max-w-none aspect-[664/848]">
+                <HeroX variant="hover" placement="panel" />
+              </div>
             </div>
           </section>
 

@@ -94,6 +94,8 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
         type: res.headers.get("content-type") ?? "",
         snippet,
       });
+      // Let the hero's X panel spark on a successful proxied request.
+      if (res.ok) window.dispatchEvent(new CustomEvent("corx:request", { detail: { ok: true, status: res.status } }));
     } catch (err) {
       setResult({
         status: 0,
@@ -109,17 +111,20 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
     }
   }
 
-  // Rotating timer: advance the example index every 10s while auto is on and
-  // the demo is actually on screen in a visible tab.
-  const rotating = auto && inView && visible;
+  // Rotating timer: advance the example index every 10s while the demo is on
+  // screen, and at a slower ambient cadence while it is scrolled out of view
+  // (the hero's X panel sparks on each successful request, so the page keeps a
+  // subtle sign of life). Hidden tabs stay paused.
+  const rotating = auto && visible;
   useEffect(() => {
     if (!rotating) return;
-    const t = setInterval(() => setIdx((i) => (i + 1) % EXAMPLES.length), 10_000);
+    const every = inView ? 10_000 : 30_000;
+    const t = setInterval(() => setIdx((i) => (i + 1) % EXAMPLES.length), every);
     return () => clearInterval(t);
-  }, [rotating]);
+  }, [rotating, inView]);
 
   // Accessibility + data hygiene: honor prefers-reduced-motion (start paused)
-  // and stop rotating while scrolled out of view or on a hidden tab.
+  // and stop rotating on hidden tabs; off-screen rotation just slows down.
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) setAuto(false);
