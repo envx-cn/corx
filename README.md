@@ -159,6 +159,32 @@ any URL to take over), a **Highlights** band with real config snippets (upstream
 secret injection, keyless browser access, playground introspection), a compact
 nine-item feature list and a dark footer.
 
+The demo renders the response **by content type** instead of dumping every
+body into a `<pre>` (`app/lib/preview.ts` classifies, `app/islands/cors-demo.tsx`
+drives it, `app/components/response-preview.tsx` renders): JSON becomes a
+collapsible tree, `text/html` a sandboxed page preview, `image/*` an image on a
+transparency checkerboard, `video/*`/`audio/*` a player streamed through the
+proxy (`preload="none"` — nothing loads until you press play), PDFs the
+browser's own viewer, text/XML a monospace body, and anything else a type +
+size card with an *Open raw* link. **Preview / Raw / Headers** tabs sit under a
+status line that keeps showing status, latency, size, cache HIT/MISS and
+`content-type`; text bodies are read through a 128 KB cap (`readTextPrefix`
+cancels the stream, so a 10 MB page is never buffered), media bodies are never
+read at all (the element points at the proxy URL, which is why a repeated image
+request shows `X-Corx-Cache: HIT`).
+
+**Sandboxing:** proxied HTML only ever runs inside `<iframe sandbox="">` — no
+`allow-same-origin` (the document is served from corx's origin, so that would
+hand upstream scripts our cookies, storage and admin API), no scripts, forms,
+popups or top-navigation — plus `referrerpolicy="no-referrer"`. Because the
+framed document's address *is* corx, the target's own `X-Frame-Options:
+SAMEORIGIN` / `frame-ancestors 'self'` pass, while `DENY` and foreign
+`frame-ancestors` lists still block; those are detected from the response
+headers up front (`frameBlock`) and replaced with an explanation card + *Open
+raw* instead of a blank box. Relative subresources inside a framed page resolve
+against the proxy host (not the target), so they 404 — subdomain mode is the
+fix for that, not this preview.
+
 The X panel (`app/components/hero-x.tsx`) is decorative (`aria-hidden`, no
 pointer events): a 10% brand-red ghost mark with light that sweeps through its
 silhouette. Hovering the mark's own geometry — hit-tested with
@@ -407,8 +433,10 @@ app/              HonoX frontend (entry + console UI + API routes)
                 working even when island hydration doesn't.
   routes/index.ts     landing page file route (subdomain-aware)
   components/   shared presentational primitives (badges, chart, lucide,
-                table, logo) — console-only chrome lives in routes/console/
-                instead (interactive bits in islands/)
+                table, logo) plus the response viewers (response-preview,
+                json-tree) used by both the landing demo and the playground —
+                console-only chrome lives in routes/console/ instead
+                (interactive bits in islands/)
   assets/       corx-logo.svg + corx-logo-dark.svg (wordmark, light/dark
                 variants — the README header uses the pair via <picture>) and
                 corx-mark.svg (the X, for the collapsed sidebar rail). The
@@ -432,10 +460,11 @@ app/              HonoX frontend (entry + console UI + API routes)
   lib/          shared kernel (no HTTP wiring): types, utils, API-key
                 auth, Access identity, sessions, request logging,
                 D1 query helpers, admin key/log queries, playground
-                spec, formatting, i18n dictionaries
+                spec, response-preview classification (preview),
+                formatting, i18n dictionaries
 test/           vitest suites (guard, ip, dns-check, cache, inject,
-                admin, origins, subdomain, media, playground, stats,
-                i18n, nav, access, error pages, integration)
+                admin, origins, subdomain, media, playground, preview,
+                stats, i18n, nav, access, error pages, integration)
 ```
 
 ## Scripts

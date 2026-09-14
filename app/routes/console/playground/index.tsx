@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../../../lib/types.js";
 import { queryKeys } from "../../../lib/admin.js";
 import Playground, { type PlaygroundI18n, type PlaygroundKeyOption } from "../../../islands/playground.js";
+import type { ResponsePreviewI18n } from "../../../components/response-preview.js";
 import { consoleT } from "../../../lib/i18n/hono.js";
 import type { TFunc } from "../../../lib/i18n/locale.js";
 
@@ -17,7 +18,7 @@ app.get("/", async (c) => {
     <>
       <h1 class="text-3xl font-semibold tracking-tight mb-1">{t("console.title.playground")}</h1>
       <p class="text-sm text-base-content/75 mb-4">{t("console.playground.sub")}</p>
-      <Playground keys={keys} i18n={playgroundI18n(t)} />
+      <Playground keys={keys} i18n={playgroundI18n(t)} preview={previewI18n(t)} />
     </>,
     { title: t("console.title.playground") },
   );
@@ -63,6 +64,7 @@ function playgroundI18n(t: TFunc): PlaygroundI18n {
     noCache: t("console.playground.noCache"),
     presetsHint: t("console.playground.presetsHint"),
     empty: t("console.playground.empty"),
+    tabPreview: t("console.playground.tabPreview"),
     tabBody: t("console.playground.tabBody"),
     tabHeaders: t("console.playground.tabHeaders"),
     tabRequest: t("console.playground.tabRequest"),
@@ -87,5 +89,19 @@ function playgroundI18n(t: TFunc): PlaygroundI18n {
     presetPreflight: t("console.playground.presetPreflight"),
     presetRange: t("console.playground.presetRange"),
     presetEcho: t("console.playground.presetEcho"),
+  };
+}
+
+/** The shared response-viewer copy (also used by the landing demo). */
+function previewI18n(t: TFunc): ResponsePreviewI18n {
+  return {
+    openRaw: t("preview.openRaw"),
+    imageAlt: t("preview.imageAlt"),
+    mediaHint: t("preview.mediaHint"),
+    frameHint: t("preview.frameHint"),
+    frameBlocked: t("preview.frameBlocked"),
+    binary: t("preview.binary"),
+    array: t("preview.array"),
+    object: t("preview.object"),
   };
 }

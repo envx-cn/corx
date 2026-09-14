@@ -175,8 +175,13 @@ Files: `app/routes/api/**`, `app/lib/admin.ts`, `app/lib/access.ts`.
   `no-cache`, Origin, simulated client IP, anonymous / stored / pasted key)
   and runs it **in-process through the real pipeline** — auth, keyless grants,
   injection, SSRF guards, rate limiting, cache and `request_logs` all apply.
-  Inspects status, every header, body (pretty JSON / base64 for binary),
-  latency, size, cache HIT/MISS and a masked injection preview. Six presets
+  Inspects status, every header, latency, size, cache HIT/MISS and a masked
+  injection preview across **Preview / Body / Headers / Request** tabs. Preview
+  uses the same viewer as the landing demo (`components/response-preview.tsx`):
+  JSON tree, sandboxed page preview, image/video/audio/PDF rendered straight
+  from the replayable proxy URL (GET/HEAD only), monospace text, or a type +
+  size card with *Open raw* — Body stays the raw inspector (pretty JSON, text,
+  or a base64 excerpt). Six presets
   (cache, SSRF block, metadata host, CORS preflight, Range, POST echo) and
   localStorage run history.
 - **Logs**: per-request rows with bytes, status, key, cache/auth-via badges,
@@ -208,9 +213,20 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
   hidden tabs and for reduced motion), a **Highlights band** (upstream secret
   injection, keyless browser access, playground introspection — each with a
   real config snippet), a compact nine-item feature list and a dark footer.
+- The demo **renders by content type** (`lib/preview.ts` +
+  `components/response-preview.tsx`): JSON tree, sandboxed HTML preview,
+  image on a checkerboard, streaming `<video>`/`<audio>` behind a play button,
+  PDF viewer, monospace text, or a binary card with *Open raw* — under
+  Preview / Raw / Headers tabs. Text bodies are read through a 128 KB cap that
+  cancels the stream; media bodies are never read (the element points at the
+  proxy URL, so a replay hits the R2 cache). Proxied HTML is always
+  `<iframe sandbox="">` (never `allow-same-origin`), and documents that refuse
+  framing (`X-Frame-Options: DENY`, foreign `frame-ancestors`) are detected from
+  the response headers and shown as an explanation card instead of a blank box.
 - Accessibility: WCAG AA theme tokens (UI red `#E10600` vs. the logo's
   #FD0700, darkened success/warning/info, muted text at `/75`), a visible
-  focus ring on the demo URL bar, `aria-live` demo results, `aria-hidden`
+  focus ring on the demo URL bar, `aria-live` on the status line only (so a
+  framed page or player is never announced), labelled JSON-tree toggles, `aria-hidden`
   decorative icons, and a `prefers-reduced-motion` block (the X panel's script
   bails out entirely). Mobile section navigation, `scroll-margin-top` anchors
   and `og:`/`description` meta tags.

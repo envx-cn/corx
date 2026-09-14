@@ -1,17 +1,32 @@
 import { useEffect, useRef, useState } from "hono/jsx/dom";
 import { Lucide } from "../components/lucide.js";
+import { ResponsePreview } from "../components/response-preview.js";
+import { humanBytes } from "../lib/format.js";
+import {
+  MAX_PREVIEW_IMAGE_BYTES,
+  MAX_PREVIEW_TEXT_BYTES,
+  frameBlock,
+  isMediaKind,
+  isTextKind,
+  previewKind,
+  readTextPrefix,
+  type FrameBlock,
+  type PreviewKind,
+} from "../lib/preview.js";
 import searchSvg from "lucide-static/icons/search.svg?raw";
-import refreshCwSvg from "lucide-static/icons/refresh-cw.svg?raw";
 import pauseSvg from "lucide-static/icons/pause.svg?raw";
 import playSvg from "lucide-static/icons/play.svg?raw";
+import arrowUpRightSvg from "lucide-static/icons/arrow-up-right.svg?raw";
 
 /** Demo sites shown in the rotating examples (CORS-friendly public APIs, no keys). */
 const EXAMPLES = [
   { name: "JSONPlaceholder · a todo", url: "https://jsonplaceholder.typicode.com/todos/1" },
   { name: "ipify · your IP", url: "https://api.ipify.org?format=json" },
-  { name: "dog.ceo · a random dog", url: "https://dog.ceo/api/breeds/image/random" },
   { name: "Cat Facts", url: "https://catfact.ninja/fact" },
-  { name: "Zippopotam · Beverly Hills zip", url: "https://api.zippopotam.us/us/90210" },
+  { name: "Picsum · a random photo", url: "https://picsum.photos/seed/corx/720/405" },
+  { name: "example.com · a web page", url: "https://example.com/" },
+  { name: "MDN · a short video", url: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4" },
+  { name: "httpbin · robots.txt", url: "https://httpbin.org/robots.txt" },
 ] as const;
 
 export interface CorsDemoI18n {
@@ -27,27 +42,60 @@ export interface CorsDemoI18n {
   manualMode: string;
   pause: string;
   resume: string;
+  tabPreview: string;
+  tabRaw: string;
+  tabHeaders: string;
+  openRaw: string;
+  imageAlt: string;
+  mediaHint: string;
+  frameHint: string;
+  frameBlocked: string;
+  binary: string;
+  array: string;
+  object: string;
 }
+
+type ResultTab = "preview" | "raw" | "headers";
 
 interface DemoResult {
   status: number;
   ok: boolean;
   latency: number;
-  bytes: number;
+  /** Declared content-length, or the bytes actually read for a text body. */
+  bytes: number | null;
   cache: string;
   type: string;
-  snippet: string;
+  kind: PreviewKind;
+  headers: Array<[string, string]>;
+  /** Decoded text body for text kinds (bounded); empty otherwise. */
+  text: string;
+  truncated: boolean;
+  /** Parsed JSON when kind === "json"; undefined when it didn't parse. */
+  json?: unknown;
+  /** Proxy URL the viewer can render directly (media/html), or null. */
+  mediaUrl: string | null;
+  rawUrl: string;
+  /** Non-empty when the upstream refuses to be framed (html only). */
+  frameBlock: FrameBlock;
 }
 
-function humanBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+/** JSON.parse that keeps "not JSON" distinct from a literal `null` payload. */
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
  * Live "try it" browser mockup: examples rotate every 10s and auto-load
  * through the proxy; typing in the URL bar pauses rotation and takes over.
+ *
+ * The response is rendered by content type (JSON tree, sandboxed page, image,
+ * video, audio, PDF, text, binary card) instead of always as text: see
+ * lib/preview.ts for the classification and components/response-preview.tsx
+ * for the viewers.
  */
 export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI18n }) {
   const [url, setUrl] = useState<string>(EXAMPLES[0]!.url);
@@ -55,6 +103,7 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
   const [idx, setIdx] = useState(0);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DemoResult | null>(null);
+  const [tab, setTab] = useState<ResultTab>("preview");
   // Pause the rotation when the demo is off-screen or the tab is hidden.
   const [inView, setInView] = useState(true);
   const [visible, setVisible] = useState(true);
@@ -73,26 +122,53 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
     }
     lastLoad.current = { url: target, at: now };
     setLoading(true);
+    setTab("preview");
     const t0 = performance.now();
+    const rawUrl = `${base}/fetch?url=${encodeURIComponent(target)}`;
     try {
-      const res = await fetch(`${base}/fetch?url=${encodeURIComponent(target)}`, { headers: { Accept: "*/*" } });
+      const res = await fetch(rawUrl, { headers: { Accept: "*/*" } });
       const latency = Math.round(performance.now() - t0);
-      const text = await res.text();
-      let snippet = text;
-      try {
-        snippet = JSON.stringify(JSON.parse(text), null, 2);
-      } catch {
-        /* not JSON — show raw text */
+      const type = res.headers.get("content-type") ?? "";
+      const headers: Array<[string, string]> = [];
+      res.headers.forEach((value, name) => headers.push([name, value]));
+      const declared = Number(res.headers.get("content-length") ?? NaN);
+      const declaredBytes = Number.isFinite(declared) && declared >= 0 ? declared : null;
+
+      // Error pages read better as source than as a framed document — and a
+      // framed 500 could still be huge. JSON errors keep their tree.
+      const resolved = !res.ok && previewKind(type) === "html" ? "text" : previewKind(type);
+
+      let text = "";
+      let truncated = false;
+      let bytes = declaredBytes;
+      if (isTextKind(resolved)) {
+        // Bounded read: never buffer a multi-MB document to show a snippet.
+        const read = await readTextPrefix(res, MAX_PREVIEW_TEXT_BYTES);
+        text = read.text;
+        truncated = read.truncated;
+        bytes = declaredBytes ?? read.bytes;
+      } else {
+        // Media renders straight from the proxy URL (streaming, Range-friendly,
+        // and a cache hit on the second request); drop the probe's body.
+        await res.body?.cancel().catch(() => undefined);
       }
-      if (snippet.length > 4000) snippet = `${snippet.slice(0, 4000)}\n${i18n.truncated}`;
+
+      const oversizedImage = resolved === "image" && declaredBytes !== null && declaredBytes > MAX_PREVIEW_IMAGE_BYTES;
       setResult({
         status: res.status,
         ok: res.ok,
         latency,
-        bytes: text.length,
+        bytes,
         cache: res.headers.get("x-corx-cache") ?? "",
-        type: res.headers.get("content-type") ?? "",
-        snippet,
+        type,
+        kind: resolved,
+        headers,
+        text,
+        truncated,
+        json: resolved === "json" ? parseJson(text) : undefined,
+        mediaUrl: isMediaKind(resolved) && !oversizedImage ? rawUrl : null,
+        rawUrl,
+        frameBlock: resolved === "html" ? frameBlock(headers) : "",
       });
       // Let the hero's X panel spark on a successful proxied request.
       if (res.ok) window.dispatchEvent(new CustomEvent("corx:request", { detail: { ok: true, status: res.status } }));
@@ -101,10 +177,16 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
         status: 0,
         ok: false,
         latency: Math.round(performance.now() - t0),
-        bytes: 0,
+        bytes: null,
         cache: "",
         type: "",
-        snippet: `Request failed: ${String(err)}`,
+        kind: "text",
+        headers: [],
+        text: i18n.requestFailed.replace("{err}", String(err)),
+        truncated: false,
+        mediaUrl: null,
+        rawUrl,
+        frameBlock: "",
       });
     } finally {
       setLoading(false);
@@ -160,12 +242,8 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
     void load(url);
   }
 
-  const statusCls =
-    result == null
-      ? "text-base-content/75"
-      : result.ok
-        ? "text-success"
-        : "text-error";
+  const statusCls = result == null ? "text-base-content/75" : result.ok ? "text-success" : "text-error";
+  const showRawTab = result != null && isTextKind(result.kind);
 
   return (
     <div ref={rootRef} class="mockup-browser w-full max-w-[760px] mx-auto bg-base-100 border border-base-300 shadow-xl">
@@ -197,14 +275,8 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
       </div>
 
       {/* Fixed height AND width: the browser's shape never follows the loaded
-          content; the result pane scrolls internally. role=status announces
-          fresh results to screen readers. */}
-      <div
-        data-inner-scroll
-        role="status"
-        aria-live="polite"
-        class="h-[38vh] min-h-[300px] max-h-[480px] overflow-auto bg-base-200/60 border-t border-base-300"
-      >
+          content; the result pane scrolls internally. */}
+      <div class="demo-pane">
         {loading ? (
           <div key="skeleton" class="demo-skeleton" aria-busy="true">
             <div class="flex flex-wrap gap-2 mb-4">
@@ -221,18 +293,88 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
             <div class="bar w-1/2"></div>
           </div>
         ) : result ? (
-          <div key="result" class="demo-fade-in p-4">
-            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3 font-sans text-xs text-base-content/75">
+          <>
+            {/* Live region on the status line only — the viewer below may hold
+                an iframe/video whose content must not be announced. */}
+            <div role="status" aria-live="polite" class="demo-meta">
               <span class={`font-medium ${statusCls}`}>
                 {result.status === 0 ? i18n.error : `HTTP ${result.status}`}
               </span>
               <span>{result.latency} ms</span>
               <span>{humanBytes(result.bytes)}</span>
               {result.cache && <span>{i18n.cache.replace("{value}", result.cache)}</span>}
-              <span class="truncate max-w-[50%]">{result.type || "—"}</span>
+              <span class="truncate max-w-[45%]">{result.type || "—"}</span>
+              {result.truncated && <span class="text-warning">{i18n.truncated}</span>}
             </div>
-            <pre class="font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-all">{result.snippet}</pre>
-          </div>
+
+            <div class="demo-tabs">
+              <button
+                type="button"
+                class={tab === "preview" ? "demo-tab demo-tab-active" : "demo-tab"}
+                onClick={() => setTab("preview")}
+              >
+                {i18n.tabPreview}
+              </button>
+              {showRawTab && (
+                <button
+                  type="button"
+                  class={tab === "raw" ? "demo-tab demo-tab-active" : "demo-tab"}
+                  onClick={() => setTab("raw")}
+                >
+                  {i18n.tabRaw}
+                </button>
+              )}
+              <button
+                type="button"
+                class={tab === "headers" ? "demo-tab demo-tab-active" : "demo-tab"}
+                onClick={() => setTab("headers")}
+              >
+                {i18n.tabHeaders} ({result.headers.length})
+              </button>
+              <a
+                href={result.rawUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="ml-auto inline-flex items-center gap-1 pr-1 text-xs text-base-content/75 hover:text-base-content"
+              >
+                {i18n.openRaw}
+                <span class="lucide">
+                  <Lucide svg={arrowUpRightSvg} />
+                </span>
+              </a>
+            </div>
+
+            <div class="demo-view demo-fade-in">
+              {tab === "preview" ? (
+                <ResponsePreview
+                  kind={result.kind}
+                  contentType={result.type}
+                  text={result.text}
+                  json={result.json}
+                  mediaUrl={result.mediaUrl}
+                  rawUrl={result.rawUrl}
+                  bytes={result.bytes}
+                  frameBlock={result.frameBlock}
+                  i18n={i18n}
+                />
+              ) : tab === "raw" ? (
+                <pre class="preview-text">{result.text}</pre>
+              ) : (
+                <div class="p-4">
+                  <table class="table table-xs">
+                    <tbody>
+                      {result.headers.map(([name, value]) => (
+                        <tr>
+                          <td class="w-56 align-top font-mono text-xs text-base-content/75">{name}</td>
+                          <td class="break-all font-mono text-xs">{value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
         ) : (
           <div class="py-20 text-center text-sm text-base-content/75">{i18n.waiting}</div>
         )}

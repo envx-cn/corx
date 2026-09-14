@@ -461,6 +461,117 @@ code:not(pre code) {
   }
 }
 
+/* Result pane: fixed height, internal scroll, status line + tabs pinned.
+   The viewer below gets a definite height so an iframe/<>video can fill it. */
+.demo-pane {
+  @apply h-[38vh] min-h-[300px] max-h-[480px] flex flex-col overflow-hidden
+    bg-base-200/60 border-t border-base-300;
+}
+.demo-meta {
+  @apply shrink-0 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5
+    font-sans text-xs text-base-content/75;
+}
+.demo-tabs {
+  @apply shrink-0 flex items-center gap-1 border-b border-base-300 bg-base-100 px-2;
+}
+.demo-tab {
+  @apply rounded-t px-3 py-1.5 text-xs font-medium text-base-content/75 hover:text-base-content;
+}
+.demo-tab-active {
+  @apply border-b-2 border-primary text-base-content;
+}
+.demo-view {
+  @apply flex-1 min-h-0 overflow-auto bg-base-200/60;
+}
+
+/* --- Response preview (landing demo + console playground) ------------------ */
+
+/* Monospace body (text/plain, XML, raw JSON, HTML source). */
+.preview-text {
+  @apply p-4 font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-all;
+}
+
+/* Viewer column: content fills, a one-line hint sticks to the bottom. */
+.preview-stack {
+  @apply flex h-full min-h-0 flex-col;
+}
+.preview-hint {
+  @apply shrink-0 border-t border-base-300 bg-base-100 px-4 py-2 text-xs text-base-content/75;
+}
+.preview-frame {
+  @apply w-full flex-1 min-h-0 border-0 bg-white;
+}
+.preview-media {
+  @apply flex h-full min-h-0 flex-1 items-center justify-center;
+}
+.preview-image {
+  @apply max-h-full max-w-full object-contain p-2;
+}
+.preview-video {
+  @apply max-h-full max-w-full bg-black;
+}
+/* Transparency checkerboard behind images (white logos stay visible). */
+.preview-checker {
+  background-color: #fff;
+  background-image: linear-gradient(45deg, #e5e7eb 25%, transparent 25%),
+    linear-gradient(-45deg, #e5e7eb 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e5e7eb 75%),
+    linear-gradient(-45deg, transparent 75%, #e5e7eb 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+/* "can't preview this" card: blocked frame, binary body, oversized image. */
+.preview-notice {
+  @apply p-6 text-sm;
+}
+.preview-raw-link {
+  @apply inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline;
+}
+
+/* JSON tree ---------------------------------------------------------------- */
+.json-tree {
+  @apply p-4 font-mono text-[12px] leading-5 break-all;
+}
+.json-toggle {
+  @apply inline-flex items-center gap-1 text-left;
+}
+.json-caret {
+  @apply inline-block text-[9px] text-base-content/75 transition-transform duration-150;
+}
+.json-caret-open {
+  transform: rotate(90deg);
+}
+.json-children {
+  @apply ml-[5px] border-l border-base-300 pl-3;
+}
+.json-close {
+  @apply ml-[5px] border-l border-transparent pl-3;
+}
+.json-row {
+  @apply flex flex-wrap items-baseline gap-x-1.5;
+}
+.json-key {
+  @apply text-secondary;
+}
+.json-string {
+  @apply text-success;
+}
+.json-number {
+  @apply text-info;
+}
+.json-boolean {
+  @apply text-error;
+}
+.json-null {
+  @apply italic text-base-content/75;
+}
+.json-punct {
+  @apply text-base-content/75;
+}
+.json-count {
+  @apply rounded bg-base-300 px-1 text-[10px] text-base-content/75;
+}
+
 /* --- Console (dash.cloudflare.com / Kumo) ----------------------------------- */
 
 /* honox renders every island inside a <honox-island> custom element, which is
