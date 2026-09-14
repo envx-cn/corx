@@ -44,7 +44,7 @@ function LogsContent(props: { logs: LogRow[]; hours: number; t: TFunc }) {
         </form>
       </div>
       {props.logs.length >= ROW_LIMIT && (
-        <p class="text-xs text-base-content/50 mb-3">{t("console.logs.truncated", { n: ROW_LIMIT })}</p>
+        <p class="text-xs text-base-content/75 mb-3">{t("console.logs.truncated", { n: ROW_LIMIT })}</p>
       )}
       <DataTable
         head={
@@ -66,7 +66,7 @@ function LogsContent(props: { logs: LogRow[]; hours: number; t: TFunc }) {
           ) : (
             props.logs.map((l) => (
               <tr>
-                <td class="text-base-content/50">
+                <td class="text-base-content/75">
                   <RelTime value={l.created_at} t={t} />
                 </td>
                 <td>
@@ -89,7 +89,7 @@ function LogsContent(props: { logs: LogRow[]; hours: number; t: TFunc }) {
                   {l.cached ? (
                     <span class="font-medium text-success">{t("console.logs.hit")}</span>
                   ) : (
-                    <span class="text-base-content/50">{t("console.logs.miss")}</span>
+                    <span class="text-base-content/75">{t("console.logs.miss")}</span>
                   )}
                 </td>
                 <td class="hidden text-right tabular-nums sm:table-cell">{humanBytes(l.res_bytes)}</td>

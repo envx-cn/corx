@@ -16,7 +16,7 @@ export function DataTable(props: { head: Child; body: Child }) {
 export function EmptyRow({ cols, text }: { cols: number; text: string }) {
   return (
     <tr>
-      <td colspan={cols} class="text-center text-base-content/50 py-4">
+      <td colspan={cols} class="text-center text-base-content/75 py-4">
         {text}
       </td>
     </tr>

@@ -1,19 +1,27 @@
 #!/usr/bin/env node
 /**
- * WCAG AA contrast guard for the theme tokens in app/styles/app.css.
+ * WCAG AA contrast guard for the corx UI.
  *
- * The brand red (#FD0700) is only ~4.03:1 against white, which fails AA for
- * button labels and small red text — so the UI uses a slightly darker
- * `--corx-primary` while the logo keeps the pure brand mark. This script keeps
- * that honest: it parses the two daisyUI theme blocks, resolves `var()`
- * chains, and fails if any text/background pair drops below its threshold.
+ * Two layers:
+ *  1. Theme tokens — parses the daisyUI blocks in app/styles/app.css, resolves
+ *     `var()` chains and fails if any text/background pair drops below its
+ *     threshold. The brand red (#FD0700) is only ~4.03:1 against white, which
+ *     is why the UI uses a slightly darker `--corx-primary` while the logo
+ *     keeps the pure brand mark.
+ *  2. Source usage — fails on `text-base-content/40…/70` utilities in app/,
+ *     because even `/70` computes to ~4.17:1 (the AA floor here is `/75`).
+ *     Decorative icon spans (marked `lucide`/`aria-hidden`) and the `/30`
+ *     separators/digits are exempt.
  *
- * Run with `npm run check:contrast` (also worth running after any theme edit).
+ * Run with `npm run check:contrast` (also worth running after any theme or
+ * text-color edit).
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const css = readFileSync(fileURLToPath(new URL("../app/styles/app.css", import.meta.url)), "utf8");
+const rootDir = fileURLToPath(new URL("..", import.meta.url));
+const css = readFileSync(join(rootDir, "app/styles/app.css"), "utf8");
 
 /** Text of the `{...}` block for a selector (first match, no nesting). */
 function blockFor(selector) {
@@ -110,9 +118,42 @@ for (const r of rows) {
   );
 }
 const failed = rows.filter((r) => !r.pass);
+
+// ---------------------------------------------------------------------------
+// Source usage: banned low-opacity text utilities (icons/separators exempt).
+// ---------------------------------------------------------------------------
+
+const BANNED = /text-base-content\/(40|45|50|55|60|70)\b/;
+const EXEMPT = /lucide|aria-hidden/;
+
+function* walk(dir) {
+  for (const entry of readdirSync(dir)) {
+    const path = join(dir, entry);
+    if (entry === "node_modules" || entry.startsWith(".")) continue;
+    if (statSync(path).isDirectory()) yield* walk(path);
+    else if (/\.(tsx?|css)$/.test(entry)) yield path;
+  }
+}
+
+const usage = [];
+for (const file of walk(join(rootDir, "app"))) {
+  const lines = readFileSync(file, "utf8").split("\n");
+  lines.forEach((line, i) => {
+    if (!BANNED.test(line) || EXEMPT.test(line)) return;
+    usage.push(`${file.slice(rootDir.length)}:${i + 1}: ${line.trim().slice(0, 90)}`);
+  });
+}
+
+if (usage.length > 0) {
+  console.error(`\n${usage.length} low-opacity text usage(s) — use /75 or higher:\n`);
+  for (const u of usage) console.error(`  ${u}`);
+}
+
 if (failed.length > 0) {
   console.error(`\n${failed.length} contrast check(s) below WCAG AA — adjust the theme tokens.`);
+}
+if (failed.length > 0 || usage.length > 0) {
   process.exitCode = 1;
 } else {
-  console.log(`\nAll ${rows.length} contrast checks pass.`);
+  console.log(`\nAll ${rows.length} contrast checks and ${usage.length} usage checks pass.`);
 }

@@ -46,7 +46,7 @@ export function ConsoleErrorPanel(props: { status: number; path: string; message
         <div class="card-body items-center gap-2 py-10 text-center">
           <div class="text-5xl font-extrabold tabular-nums tracking-tight text-base-content/20">{props.status}</div>
           <h1 class="text-xl font-semibold">{t("errorpage.h1", { code: props.status })}</h1>
-          <p class="max-w-md text-sm text-base-content/70">{t("errorpage.sub")}</p>
+          <p class="max-w-md text-sm text-base-content/75">{t("errorpage.sub")}</p>
           <div class="mt-4 flex flex-wrap items-center justify-center gap-3">
             <a href="/console/" class="btn btn-primary">
               {t("errorpage.backConsole")}
@@ -55,7 +55,7 @@ export function ConsoleErrorPanel(props: { status: number; path: string; message
               {t("notfound.takeHome")}
             </a>
           </div>
-          <p class="mt-6 text-xs text-base-content/45">
+          <p class="mt-6 text-xs text-base-content/75">
             {t("errorpage.ref", { code: props.status, path: props.path, time })}
           </p>
           {props.message && (

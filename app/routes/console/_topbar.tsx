@@ -29,13 +29,13 @@ export function Topbar(props: { title: string; user: string; locale: Locale; t: 
         </label>
       </div>
       <div class="flex-1 flex items-center gap-1.5 text-sm min-w-0">
-        <span class="text-base-content/55">CORX</span>
+        <span class="text-base-content/75">CORX</span>
         <span class="text-base-content/30">/</span>
         <b class="font-semibold truncate">{props.title}</b>
       </div>
 
       {/* Language switch: zh / EN, current one highlighted. */}
-      <div class="flex-none flex items-center gap-1 text-xs font-medium text-base-content/60">
+      <div class="flex-none flex items-center gap-1 text-xs font-medium text-base-content/75">
         <a
           href={langLink("zh")}
           lang="zh"
@@ -63,7 +63,7 @@ export function Topbar(props: { title: string; user: string; locale: Locale; t: 
             aria-label={t("console.topbar.account")}
             class="size-8.5 rounded-lg inline-flex items-center justify-center hover:bg-black/[0.045] cursor-pointer"
           >
-            <span class="size-7 rounded-full bg-black/10 text-base-content/60 inline-flex items-center justify-center">
+            <span class="size-7 rounded-full bg-black/10 text-base-content/75 inline-flex items-center justify-center">
               <Lucide svg={userSvg} />
             </span>
           </div>
@@ -71,7 +71,7 @@ export function Topbar(props: { title: string; user: string; locale: Locale; t: 
             tabindex={0}
             class="dropdown-content menu menu-sm bg-base-100 rounded-lg border border-base-300 shadow-lg w-60 p-1.5 z-50 mt-1"
           >
-            <li class="px-3 pt-2 pb-1 text-xs text-base-content/55 truncate" title={props.user}>
+            <li class="px-3 pt-2 pb-1 text-xs text-base-content/75 truncate" title={props.user}>
               {props.user}
             </li>
             <li class="menu-title px-3 pt-3 pb-0.5">{t("console.topbar.account")}</li>

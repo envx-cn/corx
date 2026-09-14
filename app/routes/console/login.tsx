@@ -85,7 +85,7 @@ function LoginPage(props: { accessDetected: boolean; accessEmail: string | null;
       )}
       {props.accessDetected ? (
         <>
-          <p class="text-sm text-base-content/60">
+          <p class="text-sm text-base-content/75">
             {t("console.login.detected")} <b>{props.accessEmail ?? t("console.login.unknown")}</b>
           </p>
           <form method="post" action="/console/login">
@@ -95,14 +95,14 @@ function LoginPage(props: { accessDetected: boolean; accessEmail: string | null;
         </>
       ) : (
         <>
-          <p class="text-sm text-base-content/60">{t("console.login.noAccess")}</p>
+          <p class="text-sm text-base-content/75">{t("console.login.noAccess")}</p>
           <button class="btn btn-primary w-full" disabled title={t("console.login.accessTitle")}>
             {t("console.login.continueAccess")}
           </button>
         </>
       )}
       <div class="divider">{t("console.login.or")}</div>
-      <p class="text-sm text-base-content/60">{t("console.login.tokenHint", { code: "ADMIN_TOKEN" })}</p>
+      <p class="text-sm text-base-content/75">{t("console.login.tokenHint", { code: "ADMIN_TOKEN" })}</p>
       <form method="post" action="/console/login">
         <input type="hidden" name="mode" value="token" />
         <div class="form-control mb-4">

@@ -189,6 +189,9 @@ also covers its subdomains.
   dev; logout confirms.
 - Bilingual (en/zh) cookie-based language switching; relative timestamps with
   exact UTC on hover; copy buttons.
+- WCAG AA contrast floor (`text-base-content/75`, plus overrides for daisyUI's
+  own `/55–60` table-head and `.label-text` defaults), ≥24px form controls in
+  the playground/logs filters.
 - Errors keep the shell for authenticated console requests; the login page and
   unauthenticated paths get the standalone branded document.
 
@@ -250,7 +253,7 @@ Files: `app/lib/access.ts`, `app/lib/session.ts`,
 - Scripts: `dev`, `dev:worker`, `build` (client islands + worker),
   `deploy`, `db:create` / `db:migrate` / `db:migrate:local`,
   `bucket:create`, `cf-typegen`, `check` (tsc), `test` (vitest),
-  `check:contrast` (WCAG AA guard for the theme tokens in `app/styles/app.css`).
+  `check:contrast` (WCAG AA guard: theme tokens + a low-opacity text scan).
 - 217 tests across 16 suites covering the guard/IP/DNS layers, cache policy,
   injection grammar, key admin + keyless grants, CORS origins, subdomain
   encoding, media/Range, playground, stats bucketing, i18n and the assembled

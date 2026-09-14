@@ -46,7 +46,7 @@ export function ConfirmButton(props: {
           <h3 id={titleId} class="text-lg font-semibold">
             {props.i18n.title}
           </h3>
-          <p class="mt-2 text-sm text-base-content/70">{props.i18n.body}</p>
+          <p class="mt-2 text-sm text-base-content/75">{props.i18n.body}</p>
           <div class="modal-action">
             {/* method="dialog" closes the modal without any JS. */}
             <form method="dialog" class="contents">

@@ -19,7 +19,7 @@ function BillingContent(props: { t: TFunc }) {
     <>
       <h1 class="text-3xl font-semibold tracking-tight mb-4">{t("console.title.billing")}</h1>
       <div class="bg-base-100 border border-base-300 rounded-box p-6">
-        <div class="text-sm text-base-content/60 leading-relaxed">{t("console.billing.body")}</div>
+        <div class="text-sm text-base-content/75 leading-relaxed">{t("console.billing.body")}</div>
         <div class="mt-5 text-sm">
           <span class="badge badge-success badge-sm mr-2">{t("console.billing.active")}</span>
           {t("console.billing.noBill")}
