@@ -1,3 +1,4 @@
 export function Lucide({ svg }: { svg: string }) {
-  return <span class="lucide" dangerouslySetInnerHTML={{ __html: svg }} />;
+  // Icons are always decorative here — the adjacent text carries the meaning.
+  return <span class="lucide" aria-hidden="true" dangerouslySetInnerHTML={{ __html: svg }} />;
 }

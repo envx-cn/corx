@@ -26,7 +26,8 @@
 
 /* --- Brand + neutral scale (from the COR X logo) --------------------------- */
 :root {
-  --corx-brand-red: #fd0700; /* the X in the logo, and the UI primary */
+  --corx-brand-red: #fd0700; /* the X in the logo — decorative brand mark only */
+  --corx-primary: #e10600; /* UI red: ≥ 4.5:1 with white text (WCAG AA) */
   --corx-brand-ink: #3e454b; /* the "COR" letters: body text ink */
   --corx-paper: #fdfdfd; /* the logo's paper — page background */
   --corx-canvas: #f5f6f7; /* recessed canvas: pills, section bands, hovers */
@@ -35,7 +36,7 @@
   --corx-ink: var(--corx-brand-ink); /* body text */
   --corx-strong: #262b2f; /* darkened ink: dark bands, headings, neutral */
   --corx-subtle: #757b82; /* muted text */
-  --corx-blue: #056dff; /* info / links on data surfaces */
+  --corx-blue: #0059d6; /* info / links on data surfaces */
 }
 
 /* --- Landing theme: COR X brand (red primary) ------------------------------ */
@@ -45,7 +46,7 @@
   --color-base-200: var(--corx-canvas);
   --color-base-300: var(--corx-hairline);
   --color-base-content: var(--corx-ink);
-  --color-primary: var(--corx-brand-red);
+  --color-primary: var(--corx-primary);
   --color-primary-content: #ffffff;
   --color-secondary: var(--corx-strong);
   --color-secondary-content: #ffffff;
@@ -55,9 +56,9 @@
   --color-neutral-content: #ffffff;
   --color-info: var(--corx-blue);
   --color-info-content: #ffffff;
-  --color-success: #009966;
+  --color-success: #007a4d;
   --color-success-content: #ffffff;
-  --color-warning: #d97706;
+  --color-warning: #b45309;
   --color-warning-content: #ffffff;
   --color-error: #b42318;
   --color-error-content: #ffffff;
@@ -83,7 +84,7 @@
   --color-base-200: var(--corx-canvas);
   --color-base-300: var(--corx-hairline);
   --color-base-content: var(--corx-ink);
-  --color-primary: var(--corx-brand-red);
+  --color-primary: var(--corx-primary);
   --color-primary-content: #ffffff;
   --color-secondary: var(--corx-strong);
   --color-secondary-content: #ffffff;
@@ -93,9 +94,9 @@
   --color-neutral-content: #ffffff;
   --color-info: var(--corx-blue);
   --color-info-content: #ffffff;
-  --color-success: #009966;
+  --color-success: #007a4d;
   --color-success-content: #ffffff;
-  --color-warning: #d97706;
+  --color-warning: #b45309;
   --color-warning-content: #ffffff;
   --color-error: #b42318;
   --color-error-content: #ffffff;
@@ -107,6 +108,36 @@
   --border: 1px;
   --depth: 1;
   --noise: 0;
+}
+
+/* --- Accessibility ---------------------------------------------------------- */
+
+/* Smooth in-page scrolling, offset by the sticky nav (plus the mobile chip row). */
+html {
+  scroll-behavior: smooth;
+}
+section[id] {
+  scroll-margin-top: 5rem;
+}
+@media (max-width: 767px) {
+  section[id] {
+    scroll-margin-top: 7.25rem;
+  }
+}
+
+/* Respect the OS "reduce motion" setting: no rotating demo, no slide/shimmer
+   entrances, no smooth scrolling. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* --- Shared bits ----------------------------------------------------------- */
@@ -244,12 +275,20 @@ code:not(pre code) {
   width: 100%;
 }
 
-/* feature card */
-.feature-card {
-  @apply bg-base-100 border border-base-300 rounded-box p-6 transition hover:border-primary/40 hover:shadow-md;
+/* compact feature list (landing) */
+.feature-item {
+  @apply flex items-start gap-3;
 }
-.feature-card .feature-icon {
-  @apply size-10 rounded-lg bg-primary/10 text-primary inline-flex items-center justify-center mb-4;
+.feature-item .feature-icon-sm {
+  @apply size-9 shrink-0 rounded-lg bg-primary/10 text-primary inline-flex items-center justify-center;
+}
+
+/* highlight card icon (landing) */
+.feature-icon {
+  @apply size-10 rounded-lg bg-primary/10 text-primary inline-flex items-center justify-center;
+}
+.highlight-card .feature-icon {
+  @apply mb-0;
 }
 
 /* --- Landing demo (mockup-browser) ------------------------------------------- */

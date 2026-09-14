@@ -16,6 +16,7 @@
     "bucket:create": "wrangler r2 bucket create corx-cache",
     "cf-typegen": "wrangler types worker-configuration.d.ts",
     "check": "tsc --noEmit",
+    "check:contrast": "node scripts/contrast-check.mjs",
     "test": "vitest run"
   },
   "dependencies": {
