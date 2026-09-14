@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "hono/jsx/dom";
 import { Lucide } from "../components/lucide.js";
+import { ResponsePreview, type ResponsePreviewI18n } from "../components/response-preview.js";
+import { frameBlock, prettyJson, previewKind } from "../lib/preview.js";
 import playSvg from "lucide-static/icons/play.svg?raw";
 import plusSvg from "lucide-static/icons/plus.svg?raw";
 import trashSvg from "lucide-static/icons/trash-2.svg?raw";
@@ -53,10 +55,12 @@ export interface PlaygroundI18n {
   presetsHint: string;
   empty: string;
   tabBody: string;
+  tabPreview: string;
   tabHeaders: string;
   tabRequest: string;
   pretty: string;
   truncated: string;
+  /** "binary body (base64 preview)" */
   binary: string;
   copyBody: string;
   copyCurl: string;
@@ -157,14 +161,24 @@ function statusClass(status: number): string {
 }
 
 /** Pretty-print only when the text is JSON; otherwise return it as-is. */
-function prettyJson(text: string): string | null {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
+function parseJson(text: string): unknown {
   try {
-    return JSON.stringify(JSON.parse(trimmed), null, 2);
+    return JSON.parse(text) as unknown;
   } catch {
-    return null;
+    return undefined;
   }
+}
+
+/**
+ * The replayable public URL of the response the proxy produced (same path +
+ * query on the same host), when a plain GET/HEAD would reproduce it. Empty for
+ * non-idempotent requests and during SSR.
+ */
+function replayUrlOf(result: PlaygroundResult | null): string {
+  if (!result || typeof window === "undefined") return "";
+  const method = result.request.method;
+  if (method !== "GET" && method !== "HEAD") return "";
+  return `${window.location.protocol}//${result.request.proxyHost}${result.request.path}`;
 }
 
 /**
@@ -173,14 +187,14 @@ function prettyJson(text: string): string | null {
  * controls) and inspect the raw response the proxy produced. Runs server-side
  * so stored keys never expose their value and every guard applies for real.
  */
-export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: PlaygroundI18n }) {
-  const { i18n } = props;
+export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: PlaygroundI18n; preview: ResponsePreviewI18n }) {
+  const { i18n, preview } = props;
   const [spec, setSpec] = useState<Spec>(emptySpec());
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<PlaygroundResult | null>(null);
   const [lastSpec, setLastSpec] = useState<Spec | null>(null);
   const [error, setError] = useState("");
-  const [tab, setTab] = useState<"body" | "headers" | "request">("body");
+  const [tab, setTab] = useState<"preview" | "body" | "headers" | "request">("preview");
   const [pretty, setPretty] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -242,7 +256,7 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
       }
       setResult(data);
       setLastSpec(at);
-      setTab("body");
+      setTab("preview");
       const entry: HistoryEntry = {
         at: Date.now(),
         // Never persist a pasted raw key — history lives in localStorage.
@@ -352,9 +366,16 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
   }
 
   const responseHeaders = result ? new Map(result.headers) : new Map<string, string>();
-  const prettyBody = result?.bodyEncoding === "text" && pretty ? prettyJson(result.body) : null;
-  const shownBody = result == null ? "" : result.bodyEncoding === "base64" ? result.body.slice(0, 4096) : (prettyBody ?? result.body);
+  // Preview tab renders by content type; the Body tab stays the raw inspector
+  // (pretty-printed JSON, plain text, or a base64 excerpt for binaries).
+  const responseKind = result ? previewKind(result.contentType) : "binary";
+  const previewJson = result != null && result.bodyEncoding === "text" ? parseJson(result.body) : undefined;
+  const isJsonBody = result != null && result.bodyEncoding === "text" && parseJson(result.body) !== undefined;
+  const shownBody = result == null || result.bodyEncoding === "base64" ? "" : result.body;
+  const prettyBody = isJsonBody && pretty ? (prettyJson(result!.body) ?? shownBody) : shownBody;
   const hasBody = result != null && result.body !== "";
+  const replayUrl = replayUrlOf(result);
+  const frame = result && responseKind === "html" ? frameBlock(result.headers) : "";
 
   return (
     <div class="grid gap-4 xl:grid-cols-2">
@@ -648,6 +669,7 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
             <div class="mt-3 flex items-center gap-1 border-b border-base-300">
               {(
                 [
+                  ["preview", i18n.tabPreview],
                   ["body", i18n.tabBody],
                   ["headers", i18n.tabHeaders],
                   ["request", i18n.tabRequest],
@@ -666,7 +688,7 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
               ))}
               {tab === "body" ? (
                 <div class="ml-auto flex items-center gap-2">
-                  {result.bodyEncoding === "text" && prettyJson(result.body) ? (
+                  {isJsonBody ? (
                     <label class="flex cursor-pointer items-center gap-1 text-xs text-base-content/75">
                       <input
                         type="checkbox"
@@ -692,15 +714,29 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
               ) : null}
             </div>
 
-            <div class="mt-2 max-h-[52vh] overflow-auto">
-              {tab === "body" ? (
+            {/* A preview gets a definite height so a framed page, image or
+                player fills it; the inspector tabs stay content-sized. */}
+            <div class={tab === "preview" ? "mt-2 h-[52vh] overflow-auto" : "mt-2 max-h-[52vh] overflow-auto"}>
+              {tab === "preview" ? (
+                <ResponsePreview
+                  kind={responseKind}
+                  contentType={result.contentType}
+                  text={shownBody}
+                  json={previewJson}
+                  mediaUrl={replayUrl || null}
+                  rawUrl={replayUrl}
+                  bytes={result.bytes}
+                  frameBlock={frame}
+                  i18n={preview}
+                />
+              ) : tab === "body" ? (
                 result.bodyEncoding === "base64" ? (
                   <div>
                     <p class="mb-1 text-xs text-base-content/75">{i18n.binary}</p>
-                    <pre class="whitespace-pre-wrap break-all bg-base-200 rounded-box p-3 font-mono text-[12px] leading-5">{shownBody}</pre>
+                    <pre class="whitespace-pre-wrap break-all bg-base-200 rounded-box p-3 font-mono text-[12px] leading-5">{result.body.slice(0, 4096)}</pre>
                   </div>
                 ) : hasBody ? (
-                  <pre class="whitespace-pre-wrap break-all bg-base-200 rounded-box p-3 font-mono text-[12px] leading-5">{shownBody}</pre>
+                  <pre class="whitespace-pre-wrap break-all bg-base-200 rounded-box p-3 font-mono text-[12px] leading-5">{prettyBody}</pre>
                 ) : (
                   <p class="py-6 text-center text-xs text-base-content/75">—</p>
                 )

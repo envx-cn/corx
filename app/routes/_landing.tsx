@@ -42,6 +42,17 @@ export function LandingPage(props: { host: string; origin: string; locale: Local
     manualMode: t("corsDemo.manualMode"),
     pause: t("corsDemo.pause"),
     resume: t("corsDemo.resume"),
+    tabPreview: t("corsDemo.tabPreview"),
+    tabRaw: t("corsDemo.tabRaw"),
+    tabHeaders: t("corsDemo.tabHeaders"),
+    openRaw: t("preview.openRaw"),
+    imageAlt: t("preview.imageAlt"),
+    mediaHint: t("preview.mediaHint"),
+    frameHint: t("preview.frameHint"),
+    frameBlocked: t("preview.frameBlocked"),
+    binary: t("preview.binary"),
+    array: t("preview.array"),
+    object: t("preview.object"),
   };
   return (
     <html lang={props.locale} data-theme="corx">
