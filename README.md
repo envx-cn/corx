@@ -165,8 +165,11 @@ white-on-red buttons and small red text clear WCAG AA (the brand mark keeps the
 pure red via `--corx-brand-red`); muted copy uses `text-base-content/75` as the
 lightest allowed shade, the demo URL bar has a visible `focus-within` ring, and
 `prefers-reduced-motion` disables the slide/shimmer animations and starts the
-demo paused. `npm run check:contrast` guards the theme tokens against
-regressions.
+demo paused. The console follows the same floor — including daisyUI's own
+table-head and form-label defaults, which sit at ~55–60% and are overridden in
+`app/styles/app.css`. `npm run check:contrast` guards the theme tokens *and*
+scans `app/` for sub-`/75` text utilities (decorative icons and separators are
+exempt).
 
 The landing (and the 404 / error pages) are **bilingual (English / 中文)**: `/en` and
 `/zh` URL prefixes force a language; without a prefix it's resolved from the
@@ -430,5 +433,5 @@ test/           vitest suites (guard, ip, dns-check, cache, inject,
 | `npm run build` | client (islands) + worker bundles into `./dist` |
 | `npm run deploy` | build + deploy to Cloudflare |
 | `npm run check` / `npm test` | typecheck / vitest |
-| `npm run check:contrast` | WCAG AA contrast guard for the theme tokens in `app/styles/app.css` |
+| `npm run check:contrast` | WCAG AA guard: theme tokens in `app/styles/app.css` + a scan for sub-`/75` text utilities in `app/` |
 | `npm run tail` | live logs |
