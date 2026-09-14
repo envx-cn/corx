@@ -129,13 +129,21 @@ export function LandingPage(props: { host: string; origin: string; locale: Local
             </section>
 
           {/* Live demo — full-viewport section so nothing below leaks. */}
-          <section id="try-it" class="min-h-[calc(100svh-4rem)] flex flex-col items-center justify-center max-w-4xl mx-auto px-4 sm:px-6 py-16">
-            <div class="text-center mb-8">
-              <h2 class="text-2xl sm:text-3xl font-bold tracking-tight">{t("landing.tryit.title")}</h2>
-              <p class="mt-2 text-base-content/75">{t("landing.tryit.sub")}</p>
+          <section id="try-it" class="relative min-h-[calc(100svh-4rem)] flex items-center">
+            <div class="relative max-w-6xl w-full mx-auto px-4 sm:px-6 py-16">
+              {/* Same left column as the hero copy, so both screens share one
+                  vertical alignment and the sticky X owns the right side. */}
+              <div class="lg:max-w-[560px] text-center lg:text-left">
+                <h2 class="text-2xl sm:text-3xl font-bold tracking-tight">{t("landing.tryit.title")}</h2>
+                <p class="mt-2 text-base-content/75">{t("landing.tryit.sub")}</p>
+              </div>
+              <div class="mt-8 lg:max-w-[560px]">
+                <CorsDemo base={props.origin} i18n={demo} />
+                <p class="mt-4 text-xs text-base-content/75 text-center lg:text-left leading-relaxed">
+                  {t("landing.tryit.hint", { origin: props.origin })}
+                </p>
+              </div>
             </div>
-            <CorsDemo base={props.origin} i18n={demo} />
-            <p class="mt-4 text-xs text-base-content/75 text-center leading-relaxed">{t("landing.tryit.hint", { origin: props.origin })}</p>
           </section>
           </div>
 
