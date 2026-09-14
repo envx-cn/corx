@@ -196,12 +196,17 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
 
 ## 9. Landing page, errors, branding & i18n
 
-- Branded landing at `/` (plus `/zh`, `/en`): hero, live "Try it"
-  mockup-browser demo that rotates example URLs every 10 s and can be typed
-  into (a client island hitting the real proxy), a **Highlights band**
-  (upstream secret injection, keyless browser access, playground introspection
-  — each with a real config snippet), a nine-card feature grid and a dark
-  footer.
+- Branded landing at `/` (plus `/zh`, `/en`): a ~85svh hero with a "One
+  prefix" URL snippet, the live "Try it" mockup-browser demo (rotates every
+  10 s, type-to-take-over; pauses off-screen, on hidden tabs and for
+  reduced-motion users), a **Highlights band** (upstream secret injection,
+  keyless browser access, playground introspection — each with a real config
+  snippet), a compact nine-item feature list and a dark footer.
+- Accessibility: WCAG AA theme tokens (UI red `#E10600` vs. the logo's
+  #FD0700, darkened success/warning/info, muted text at `/75`), a visible
+  focus ring on the demo URL bar, `aria-live` demo results, `aria-hidden`
+  decorative icons, and a `prefers-reduced-motion` block. Mobile section
+  navigation, `scroll-margin-top` anchors and `og:`/`description` meta tags.
 - Bilingual resolution: URL prefix → `corx_lang` cookie → `Accept-Language`;
   landing, 404 and error pages translated; API errors are not.
 - 404 strategy: fallback `/*` decides proxy vs. non-proxy → branded 404 page;
@@ -244,7 +249,8 @@ Files: `app/lib/access.ts`, `app/lib/session.ts`,
 - Observability enabled in `wrangler.jsonc`; `npm run tail` for live logs.
 - Scripts: `dev`, `dev:worker`, `build` (client islands + worker),
   `deploy`, `db:create` / `db:migrate` / `db:migrate:local`,
-  `bucket:create`, `cf-typegen`, `check` (tsc), `test` (vitest).
+  `bucket:create`, `cf-typegen`, `check` (tsc), `test` (vitest),
+  `check:contrast` (WCAG AA guard for the theme tokens in `app/styles/app.css`).
 - 217 tests across 16 suites covering the guard/IP/DNS layers, cache policy,
   injection grammar, key admin + keyless grants, CORS origins, subdomain
   encoding, media/Range, playground, stats bucketing, i18n and the assembled

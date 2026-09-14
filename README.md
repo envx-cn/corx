@@ -146,13 +146,27 @@ break out of the proxy — relative URLs (or subdomain mode) work fine.
 
 ## Landing page
 
-`/` is a branded marketing page (COR X palette: brand red #FD0700, slate
-#3E454B ink, paper canvas): full-viewport hero, a **live
-"Try it" demo** (a mockup-browser that rotates example URLs every 10 s and
-fetches them through the real proxy — type any URL to take over), a feature
-grid and a dark footer. The demo is a client island (`app/islands/cors-demo.tsx`)
-and needs the `HasIslands` client script, which the landing's own full document
-includes. Scroll is plain native scrolling (the page-flip scroller was removed).
+`/` is a branded marketing page (COR X palette: brand red #FD0700 for the
+logo, slate #3E454B ink, paper canvas): a hero sized at ~85svh so the demo
+peeks in above the fold (with a "One prefix" URL snippet), a **live "Try it"
+demo** (a mockup-browser that rotates example URLs every 10 s and fetches them
+through the real proxy — type any URL to take over, and rotation pauses when
+the demo is off-screen, the tab is hidden, or the OS asks for reduced motion),
+a **Highlights** band with real config snippets (upstream secret injection,
+keyless browser access, playground introspection), a compact nine-item feature
+list and a dark footer. The demo is a client island
+(`app/islands/cors-demo.tsx`) and needs the `HasIslands` client script, which
+the landing's own full document includes. Scroll is plain native scrolling
+(the page-flip scroller was removed); anchors use `scroll-margin-top` so the
+sticky nav (plus the mobile section-chip row) never covers a heading.
+
+**Accessibility:** UI red is `#E10600` rather than the logo's #FD0700, so
+white-on-red buttons and small red text clear WCAG AA (the brand mark keeps the
+pure red via `--corx-brand-red`); muted copy uses `text-base-content/75` as the
+lightest allowed shade, the demo URL bar has a visible `focus-within` ring, and
+`prefers-reduced-motion` disables the slide/shimmer animations and starts the
+demo paused. `npm run check:contrast` guards the theme tokens against
+regressions.
 
 The landing (and the 404 / error pages) are **bilingual (English / 中文)**: `/en` and
 `/zh` URL prefixes force a language; without a prefix it's resolved from the
@@ -416,4 +430,5 @@ test/           vitest suites (guard, ip, dns-check, cache, inject,
 | `npm run build` | client (islands) + worker bundles into `./dist` |
 | `npm run deploy` | build + deploy to Cloudflare |
 | `npm run check` / `npm test` | typecheck / vitest |
+| `npm run check:contrast` | WCAG AA contrast guard for the theme tokens in `app/styles/app.css` |
 | `npm run tail` | live logs |
