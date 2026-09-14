@@ -219,24 +219,140 @@ code:not(pre code) {
   user-select: none;
 }
 
-/* Brand-red marker highlight behind a hero word */
-.marker {
-  background-image: linear-gradient(
-    104deg,
-    rgba(253, 7, 0, 0) 0.9%,
-    rgba(253, 7, 0, 0.13) 2.4%,
-    rgba(253, 7, 0, 0.13) 97.6%,
-    rgba(253, 7, 0, 0) 98.9%
-  );
-  border-radius: 0.5em;
-  padding: 0 0.15em;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-}
-
 /* soft brand glow behind the hero */
 .hero-glow {
   background: radial-gradient(58% 52% at 50% 0%, rgba(253, 7, 0, 0.10) 0%, rgba(253, 7, 0, 0) 72%);
+}
+
+/* --- Hero X panel ------------------------------------------------------------
+ * The landing's right-hand visual: a ghost X (10% brand red) with a light that
+ * sweeps *through* its silhouette (a data-URI mask clips the streaks to the
+ * mark). Two interactions, both driven by components/hero-x.tsx:
+ *   - the pointer crossing the mark's own geometry fires one cross-pulse that
+ *     starts at the pointer's position along the diagonal and runs to the far
+ *     end (the invisible .hero-x-hit copy provides the hit shape);
+ *   - a successful proxied request from the try-it demo (`corx:request`) sparks
+ *     from the centre, alternating halves.
+ * All layers are decorative, absolute (no CLS) and every animation ends on the
+ * static frame, so prefers-reduced-motion leaves a clean background.
+ */
+.hero-x {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  --hero-x-alpha: 0.1;
+  --hero-x-streak: 0.6;
+  /* geometry shared with the hover script (degrees / fraction of layer width) */
+  --hero-x-angle: 52;
+  --hero-x-beam-w: 0.7;
+  --hero-x-travel: 110;
+}
+.hero-x-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.hero-x-glyph {
+  position: absolute;
+  inset: 0;
+  opacity: var(--hero-x-alpha);
+  transition: opacity 0.5s ease;
+}
+.hero-x-glyph svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.hero-x.is-hot .hero-x-glyph {
+  opacity: calc(var(--hero-x-alpha) * 2.2);
+}
+
+/* The light: anything inside this box is visible only where the X is. */
+.hero-x-light {
+  position: absolute;
+  inset: 0;
+  -webkit-mask-image: var(--hero-x-mask);
+  mask-image: var(--hero-x-mask);
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+.hero-x-beam {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 70%;
+  height: 24%;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(253, 7, 0, var(--hero-x-streak)) 0%,
+    rgba(253, 7, 0, 0.22) 45%,
+    rgba(253, 7, 0, 0) 78%
+  );
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.hero-x.is-firing .hero-x-beam--a {
+  animation: hero-x-pulse-a 1.7s cubic-bezier(0.3, 0, 0.4, 1) 1;
+}
+.hero-x.is-firing .hero-x-beam--b {
+  animation: hero-x-pulse-b 1.7s cubic-bezier(0.3, 0, 0.4, 1) 0.16s 1;
+}
+/* translate(-50%,-50%) centres, rotate() aligns the streak with the diagonal,
+   translateX() runs it along its own axis; the from/to vars are set per fire. */
+@keyframes hero-x-pulse-a {
+  0% {
+    transform: translate(-50%, -50%) rotate(52deg) translateX(var(--hero-x-from-a, -110%));
+    opacity: 0;
+  }
+  14% {
+    opacity: 0.95;
+  }
+  78% {
+    transform: translate(-50%, -50%) rotate(52deg) translateX(var(--hero-x-to-a, 110%));
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(52deg) translateX(var(--hero-x-to-a, 110%));
+    opacity: 0;
+  }
+}
+@keyframes hero-x-pulse-b {
+  0% {
+    transform: translate(-50%, -50%) rotate(-52deg) translateX(var(--hero-x-from-b, -110%));
+    opacity: 0;
+  }
+  14% {
+    opacity: 0.95;
+  }
+  78% {
+    transform: translate(-50%, -50%) rotate(-52deg) translateX(var(--hero-x-to-b, 110%));
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(-52deg) translateX(var(--hero-x-to-b, 110%));
+    opacity: 0;
+  }
+}
+
+/* Invisible hit geometry: a transparent copy of the mark. The wide transparent
+   stroke makes the halo forgiving; nothing here receives pointer events (the
+   script hit-tests the geometry itself). */
+.hero-x-hit {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.hero-x-hit path {
+  fill: rgba(0, 0, 0, 0);
+  stroke: rgba(0, 0, 0, 0);
+  stroke-width: 140;
+  stroke-linejoin: round;
 }
 
 /* terminal-style code card (dark navy, Cloudflare docs vibe) */

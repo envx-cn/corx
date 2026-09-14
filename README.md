@@ -147,18 +147,32 @@ break out of the proxy — relative URLs (or subdomain mode) work fine.
 ## Landing page
 
 `/` is a branded marketing page (COR X palette: brand red #FD0700 for the
-logo, slate #3E454B ink, paper canvas): a hero sized at ~85svh so the demo
-peeks in above the fold (with a "One prefix" URL snippet), a **live "Try it"
-demo** (a mockup-browser that rotates example URLs every 10 s and fetches them
-through the real proxy — type any URL to take over, and rotation pauses when
-the demo is off-screen, the tab is hidden, or the OS asks for reduced motion),
-a **Highlights** band with real config snippets (upstream secret injection,
-keyless browser access, playground introspection), a compact nine-item feature
-list and a dark footer. The demo is a client island
-(`app/islands/cors-demo.tsx`) and needs the `HasIslands` client script, which
-the landing's own full document includes. Scroll is plain native scrolling
-(the page-flip scroller was removed); anchors use `scroll-margin-top` so the
-sticky nav (plus the mobile section-chip row) never covers a heading.
+logo, slate #3E454B ink, paper canvas): a two-column hero (~85svh so the demo
+peeks in above the fold) — copy on the left, the animated **X panel** on the
+right, where it stays `sticky` through the next screen and only scrolls away
+when the Highlights band arrives. The try-it screen's heading, demo and hint
+share the same left column (identical 168px left edge at 1440px). Below:
+a **live "Try it" demo** (a mockup-browser that rotates example URLs — every
+10 s in view, every 30 s as an off-screen ambient tick so the X keeps
+generating the odd spark, paused on a hidden tab or for reduced motion; type
+any URL to take over), a **Highlights** band with real config snippets (upstream
+secret injection, keyless browser access, playground introspection), a compact
+nine-item feature list and a dark footer.
+
+The X panel (`app/components/hero-x.tsx`) is decorative (`aria-hidden`, no
+pointer events): a 10% brand-red ghost mark with light that sweeps through its
+silhouette. Hovering the mark's own geometry — hit-tested with
+`isPointInFill`/`isPointInStroke` through `getScreenCTM`, plus a wide
+transparent stroke as a halo — fires one cross-pulse whose streaks start at the
+pointer's position along the diagonal and run to the far end. Every successful
+proxied request from the demo dispatches `corx:request`, which sparks one from
+the centre (alternating halves). Nothing overlays the copy, so clicks and text
+selection are untouched, and the whole thing is desktop-only — phones keep a
+clean hero. The demo is a client island (`app/islands/cors-demo.tsx`) and needs
+the `HasIslands` client script, which the landing's own full document includes.
+Scroll is plain native scrolling (the page-flip scroller was removed); anchors
+use `scroll-margin-top` so the sticky nav (plus the mobile section-chip row)
+never covers a heading.
 
 **Accessibility:** UI red is `#E10600` rather than the logo's #FD0700, so
 white-on-red buttons and small red text clear WCAG AA (the brand mark keeps the

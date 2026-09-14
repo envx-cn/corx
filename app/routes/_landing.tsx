@@ -15,6 +15,7 @@ import serverSvg from "lucide-static/icons/server.svg?raw";
 import arrowUpRightSvg from "lucide-static/icons/arrow-up-right.svg?raw";
 import { Lucide } from "../components/lucide.js";
 import { SiteFooter, SiteHead, SiteNav } from "../components/site.js";
+import { HeroX } from "../components/hero-x.js";
 import type { Locale, TFunc } from "../lib/i18n/locale.js";
 import CorsDemo, { type CorsDemoI18n } from "../islands/cors-demo.js";
 
@@ -79,43 +80,68 @@ export function LandingPage(props: { host: string; origin: string; locale: Local
         />
 
         <main class="flex-1">
-          {/* Hero — slightly under a full viewport so the live demo peeks in
-              above the fold; the section below finishes it. */}
-          <section class="relative overflow-hidden min-h-[calc(85svh-4rem)] flex items-center justify-center">
-            <div class="hero-glow absolute inset-x-0 top-0 h-[65%] pointer-events-none"></div>
-            <div class="relative max-w-4xl w-full mx-auto px-4 sm:px-6 py-16 text-center">
-              <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.08] text-base-content">
-                {t("landing.hero.h1a")}
-                <br />
-                <span class="marker">{t("landing.hero.h1b")}</span>
-              </h1>
-              <p class="mx-auto mt-6 max-w-2xl text-base sm:text-lg text-base-content/75">{t("landing.hero.sub")}</p>
-              <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
-                <a href="#try-it" class="btn btn-primary btn-lg rounded-full! px-8">
-                  {t("landing.hero.tryLive")}
-                </a>
-                <a href="/console/" class="btn btn-lg btn-outline rounded-full! px-8">
-                  {t("landing.hero.openConsole")}
-                  <Lucide svg={arrowUpRightSvg} />
-                </a>
+          {/* Hero + live demo share one wrapper: the X panel is sticky inside it,
+              so it stays on screen while you read the hero and try the demo,
+              and only scrolls away when the Highlights section arrives. */}
+          <div class="relative" data-hero-x-scope>
+            {/* Desktop: sticky right-hand panel (bleeds a little past the grid). */}
+            <div class="hidden lg:block pointer-events-none absolute inset-0 z-0">
+              <div class="sticky top-24 h-[calc(100svh-8rem)] max-w-6xl mx-auto px-4 sm:px-6 flex items-center justify-end">
+                <div class="relative w-[46%] max-w-[560px] aspect-[664/848] translate-x-[4%]">
+                  <HeroX />
+                </div>
               </div>
-              {/* The calling convention, made concrete and copy-friendly. */}
-              <p class="mt-8 text-sm text-base-content/75">
-                {t("landing.hero.prefix")}{" "}
-                <code class="break-all">{props.origin}/fetch?url=https://api.example.com</code>
-              </p>
             </div>
-          </section>
+
+            {/* Hero — copy on the left; slightly under a full viewport so the
+                live demo peeks in above the fold. */}
+            <section class="relative min-h-[calc(85svh-4rem)] flex items-center">
+              <div class="relative max-w-6xl w-full mx-auto px-4 sm:px-6 py-16">
+                <div class="text-center lg:text-left lg:max-w-[560px]">
+                  <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.08] text-base-content">
+                    {t("landing.hero.h1a")}
+                    <br />
+                    {t("landing.hero.h1b")}
+                  </h1>
+                  <p class="mx-auto lg:mx-0 mt-6 max-w-2xl text-base sm:text-lg text-base-content/75">
+                    {t("landing.hero.sub")}
+                  </p>
+                  <div class="mt-8 flex flex-wrap items-center justify-center lg:justify-start gap-3">
+                    <a href="#try-it" class="btn btn-primary btn-lg rounded-full! px-8">
+                      {t("landing.hero.tryLive")}
+                    </a>
+                    <a href="/console/" class="btn btn-lg btn-outline rounded-full! px-8">
+                      {t("landing.hero.openConsole")}
+                      <Lucide svg={arrowUpRightSvg} />
+                    </a>
+                  </div>
+                  {/* The calling convention, made concrete and copy-friendly. */}
+                  <p class="mt-8 text-sm text-base-content/75">
+                    {t("landing.hero.prefix")}{" "}
+                    <code class="break-all">{props.origin}/fetch?url=https://api.example.com</code>
+                  </p>
+                </div>
+              </div>
+            </section>
 
           {/* Live demo — full-viewport section so nothing below leaks. */}
-          <section id="try-it" class="min-h-[calc(100svh-4rem)] flex flex-col items-center justify-center max-w-4xl mx-auto px-4 sm:px-6 py-16">
-            <div class="text-center mb-8">
-              <h2 class="text-2xl sm:text-3xl font-bold tracking-tight">{t("landing.tryit.title")}</h2>
-              <p class="mt-2 text-base-content/75">{t("landing.tryit.sub")}</p>
+          <section id="try-it" class="relative min-h-[calc(100svh-4rem)] flex items-center">
+            <div class="relative max-w-6xl w-full mx-auto px-4 sm:px-6 py-16">
+              {/* Same left column as the hero copy, so both screens share one
+                  vertical alignment and the sticky X owns the right side. */}
+              <div class="lg:max-w-[560px] text-center lg:text-left">
+                <h2 class="text-2xl sm:text-3xl font-bold tracking-tight">{t("landing.tryit.title")}</h2>
+                <p class="mt-2 text-base-content/75">{t("landing.tryit.sub")}</p>
+              </div>
+              <div class="mt-8 lg:max-w-[560px]">
+                <CorsDemo base={props.origin} i18n={demo} />
+                <p class="mt-4 text-xs text-base-content/75 text-center lg:text-left leading-relaxed">
+                  {t("landing.tryit.hint", { origin: props.origin })}
+                </p>
+              </div>
             </div>
-            <CorsDemo base={props.origin} i18n={demo} />
-            <p class="mt-4 text-xs text-base-content/75 text-center leading-relaxed">{t("landing.tryit.hint", { origin: props.origin })}</p>
           </section>
+          </div>
 
           {/* Highlights — the differentiators, each with a real config snippet. */}
           <section id="highlights" class="max-w-6xl mx-auto px-4 sm:px-6 py-20">
