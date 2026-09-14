@@ -42,7 +42,7 @@ function BlockedContent(props: { hosts: Array<{ hostname: string; reason: string
   return (
     <>
       <h1 class="text-3xl font-semibold tracking-tight mb-1">{t("console.blocked.title")}</h1>
-      <p class="text-sm text-base-content/60 mb-4">{t("console.blocked.sub")}</p>
+      <p class="text-sm text-base-content/75 mb-4">{t("console.blocked.sub")}</p>
       <div class="bg-base-100 border border-base-300 rounded-box p-4 mb-4">
         <form method="post" action="/console/blocked" class="flex flex-wrap items-center gap-3">
           <input
@@ -79,7 +79,7 @@ function BlockedContent(props: { hosts: Array<{ hostname: string; reason: string
                   <code>{h.hostname}</code>
                 </td>
                 <td>{h.reason}</td>
-                <td class="hidden text-base-content/60 sm:table-cell">
+                <td class="hidden text-base-content/75 sm:table-cell">
                   <RelTime value={h.created_at} t={t} />
                 </td>
                 <td>

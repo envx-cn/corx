@@ -80,9 +80,9 @@ function Check(props: { name: string; label: string; hint: string; checked: bool
     <label class="flex cursor-pointer items-start justify-between gap-4">
       <span>
         <span class="block text-sm font-medium">{props.label}</span>
-        <span class="block text-xs text-base-content/60">{props.hint}</span>
+        <span class="block text-xs text-base-content/75">{props.hint}</span>
       </span>
-      <input type="checkbox" name={props.name} value="on" class="toggle toggle-sm mt-0.5" checked={props.checked} />
+      <input type="checkbox" name={props.name} value="on" class="toggle mt-0.5" checked={props.checked} />
     </label>
   );
 }
@@ -217,15 +217,15 @@ export default function KeyPanel(props: {
                 />
               </Field>
               <Field label={labels.noCache}>
-                <div class="flex h-10 items-center gap-2 text-sm text-base-content/70" title={labels.noCacheHint}>
-                  <input type="checkbox" name="noCache" value="on" class="checkbox checkbox-sm" checked={v?.noCache ?? false} />
+                <div class="flex h-10 items-center gap-2 text-sm text-base-content/75" title={labels.noCacheHint}>
+                  <input type="checkbox" name="noCache" value="on" class="checkbox" checked={v?.noCache ?? false} />
                   <span>{labels.noCacheShort}</span>
                 </div>
               </Field>
             </div>
 
             <div class="mt-4 rounded-box border border-base-300 p-3">
-              <div class="mb-2 text-xs font-medium uppercase tracking-wide text-base-content/50">{labels.checks}</div>
+              <div class="mb-2 text-xs font-medium uppercase tracking-wide text-base-content/75">{labels.checks}</div>
               <div class="space-y-3">
                 <Check name="ipCheck" label={labels.ipCheck} hint={labels.ipCheckHint} checked={v?.ipCheck ?? true} />
                 <Check name="dnsCheck" label={labels.dnsCheck} hint={labels.dnsCheckHint} checked={v?.dnsCheck ?? true} />
@@ -235,8 +235,8 @@ export default function KeyPanel(props: {
             {/* Upstream injection: variables are write-only — the editor shows
                 "NAME=" and a blank value keeps the stored secret. */}
             <div class="mt-4 rounded-box border border-base-300 p-3">
-              <div class="text-xs font-medium uppercase tracking-wide text-base-content/50">{labels.injection}</div>
-              <p class="mt-1 text-xs text-base-content/60">{labels.injectionHint}</p>
+              <div class="text-xs font-medium uppercase tracking-wide text-base-content/75">{labels.injection}</div>
+              <p class="mt-1 text-xs text-base-content/75">{labels.injectionHint}</p>
               <div class="mt-3 grid gap-3">
                 <Field label={labels.vars}>
                   <textarea
@@ -278,7 +278,7 @@ export default function KeyPanel(props: {
               <div class="mt-4 flex items-center justify-between gap-4 rounded-box border border-error/30 bg-error/5 p-3">
                 <div>
                   <div class="text-sm font-medium text-error">{labels.danger}</div>
-                  <p class="text-xs text-base-content/60">{labels.dangerHint}</p>
+                  <p class="text-xs text-base-content/75">{labels.dangerHint}</p>
                 </div>
                 <button
                   type="button"
@@ -312,7 +312,7 @@ export default function KeyPanel(props: {
             <h3 id={confirmTitleId} class="text-lg font-semibold">
               {labels.deleteTitle}
             </h3>
-            <p class="mt-2 text-sm text-base-content/70">{labels.deleteHint.replace("{name}", props.keyName)}</p>
+            <p class="mt-2 text-sm text-base-content/75">{labels.deleteHint.replace("{name}", props.keyName)}</p>
             <form method="post" action={props.deleteAction} class="mt-4">
               <input
                 ref={confirmInputRef}

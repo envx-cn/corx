@@ -27,24 +27,24 @@ function ProfileContent(props: { user: { email: string; via: "access" | "token" 
           </span>
           <div class="min-w-0">
             <div class="font-semibold truncate">{props.user.email}</div>
-            <div class="text-sm text-base-content/55">
+            <div class="text-sm text-base-content/75">
               {props.user.via === "access" ? t("console.profile.viaAccess") : t("console.profile.viaToken")}
             </div>
           </div>
         </div>
         <dl class="grid sm:grid-cols-2 gap-4 mt-6 text-sm">
           <div>
-            <dt class="text-base-content/55">{t("console.profile.email")}</dt>
+            <dt class="text-base-content/75">{t("console.profile.email")}</dt>
             <dd class="font-medium break-all">{props.user.email}</dd>
           </div>
           <div>
-            <dt class="text-base-content/55">{t("console.profile.authMethod")}</dt>
+            <dt class="text-base-content/75">{t("console.profile.authMethod")}</dt>
             <dd class="font-medium capitalize">{props.user.via}</dd>
           </div>
         </dl>
       </div>
       <p
-        class="text-xs text-base-content/50 mt-4"
+        class="text-xs text-base-content/75 mt-4"
         dangerouslySetInnerHTML={{ __html: t("console.profile.hint", { code: "<code>ADMIN_TOKEN</code>" }) }}
       />
     </>

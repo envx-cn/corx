@@ -55,7 +55,7 @@ export default function StatsTabs(props: {
             class={`px-3.5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
               active === i
                 ? "border-primary text-base-content"
-                : "border-transparent text-base-content/50 hover:text-base-content/80"
+                : "border-transparent text-base-content/75 hover:text-base-content/80"
             }`}
           >
             {t.label}
@@ -64,7 +64,7 @@ export default function StatsTabs(props: {
       </div>
       <div class="p-4">
         {data.length === 0 ? (
-          <p class="text-sm text-base-content/50 text-center py-6">{props.i18n.noData}</p>
+          <p class="text-sm text-base-content/75 text-center py-6">{props.i18n.noData}</p>
         ) : (
           <>
             <div class="chart">

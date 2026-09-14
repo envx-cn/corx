@@ -361,8 +361,8 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
       {/* ---------------- Request builder ---------------- */}
       <section class="bg-base-100 border border-base-300 rounded-box p-4">
         <div class="mb-3 flex items-center justify-between gap-2">
-          <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">{i18n.request}</h2>
-          <span class="inline-flex items-center gap-1.5 text-xs text-base-content/50">
+          <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/75">{i18n.request}</h2>
+          <span class="inline-flex items-center gap-1.5 text-xs text-base-content/75">
             <span class="lucide">
               <Lucide svg={zapSvg} />
             </span>
@@ -442,7 +442,7 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
               <label class="flex cursor-pointer items-center gap-1.5 text-sm">
                 <input
                   type="checkbox"
-                  class="checkbox checkbox-sm"
+                  class="checkbox"
                   checked={spec.noCache}
                   onChange={(e) => patch({ noCache: (e.target as HTMLInputElement).checked })}
                 />
@@ -454,7 +454,7 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
 
         {/* Auth & client identity */}
         <div class="mt-4 rounded-box border border-base-300 p-3">
-          <div class="mb-2 text-xs font-medium uppercase tracking-wide text-base-content/50">{i18n.auth}</div>
+          <div class="mb-2 text-xs font-medium uppercase tracking-wide text-base-content/75">{i18n.auth}</div>
           <div class="grid gap-2 sm:grid-cols-2">
             <label class="form-control">
               <div class="label py-0 pb-1">
@@ -524,7 +524,7 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
 
         {/* Headers */}
         <div class="mt-4">
-          <div class="mb-2 text-xs font-medium uppercase tracking-wide text-base-content/50">{i18n.headers}</div>
+          <div class="mb-2 text-xs font-medium uppercase tracking-wide text-base-content/75">{i18n.headers}</div>
           <div class="space-y-1.5">
             {spec.headers.map((h, i) => (
               <div class="flex items-center gap-1.5">
@@ -569,8 +569,8 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
         {/* Body */}
         <div class="mt-4">
           <div class="mb-2 flex items-center justify-between">
-            <span class="text-xs font-medium uppercase tracking-wide text-base-content/50">{i18n.body}</span>
-            <span class="text-xs text-base-content/50">{i18n.bodyHint}</span>
+            <span class="text-xs font-medium uppercase tracking-wide text-base-content/75">{i18n.body}</span>
+            <span class="text-xs text-base-content/75">{i18n.bodyHint}</span>
           </div>
           <textarea
             rows={5}
@@ -586,7 +586,7 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
       {/* ---------------- Response inspector ---------------- */}
       <section class="bg-base-100 border border-base-300 rounded-box p-4">
         <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">{i18n.response}</h2>
+          <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/75">{i18n.response}</h2>
           {result ? (
             <div class="flex items-center gap-2">
               <button type="button" class="btn btn-ghost btn-xs gap-1" onClick={() => void run()} disabled={running}>
@@ -612,7 +612,7 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
             </span>
           </div>
         ) : result == null ? (
-          <p class="py-12 text-center text-sm text-base-content/50">{i18n.empty}</p>
+          <p class="py-12 text-center text-sm text-base-content/75">{i18n.empty}</p>
         ) : (
           <>
             <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -620,8 +620,8 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
                 {result.status}
                 {result.statusText ? ` ${result.statusText}` : ""}
               </span>
-              <span class="text-sm text-base-content/60">{result.latencyMs} ms</span>
-              <span class="text-sm text-base-content/60">{humanBytes(result.bytes)}</span>
+              <span class="text-sm text-base-content/75">{result.latencyMs} ms</span>
+              <span class="text-sm text-base-content/75">{humanBytes(result.bytes)}</span>
               {responseHeaders.get("x-corx-cache") ? (
                 <span
                   class={`badge badge-sm ${
@@ -635,7 +635,7 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
             </div>
 
             {/* Meta: what the proxy did */}
-            <div class="mt-2 space-y-0.5 font-mono text-[11px] leading-4 break-all text-base-content/60">
+            <div class="mt-2 space-y-0.5 font-mono text-[11px] leading-4 break-all text-base-content/75">
               <div>{result.request.method} {result.request.path}</div>
               <div>→ {result.request.targetUrl}</div>
               {result.request.keyName ? <div>key: {result.request.keyName}</div> : null}
@@ -656,7 +656,7 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
                 <button
                   type="button"
                   class={`rounded-t px-3 py-1.5 text-xs font-medium ${
-                    tab === key ? "border-b-2 border-primary text-base-content" : "text-base-content/50 hover:text-base-content"
+                    tab === key ? "border-b-2 border-primary text-base-content" : "text-base-content/75 hover:text-base-content"
                   }`}
                   onClick={() => setTab(key)}
                 >
@@ -667,7 +667,7 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
               {tab === "body" ? (
                 <div class="ml-auto flex items-center gap-2">
                   {result.bodyEncoding === "text" && prettyJson(result.body) ? (
-                    <label class="flex cursor-pointer items-center gap-1 text-xs text-base-content/60">
+                    <label class="flex cursor-pointer items-center gap-1 text-xs text-base-content/75">
                       <input
                         type="checkbox"
                         class="checkbox checkbox-xs"
@@ -696,20 +696,20 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
               {tab === "body" ? (
                 result.bodyEncoding === "base64" ? (
                   <div>
-                    <p class="mb-1 text-xs text-base-content/50">{i18n.binary}</p>
+                    <p class="mb-1 text-xs text-base-content/75">{i18n.binary}</p>
                     <pre class="whitespace-pre-wrap break-all bg-base-200 rounded-box p-3 font-mono text-[12px] leading-5">{shownBody}</pre>
                   </div>
                 ) : hasBody ? (
                   <pre class="whitespace-pre-wrap break-all bg-base-200 rounded-box p-3 font-mono text-[12px] leading-5">{shownBody}</pre>
                 ) : (
-                  <p class="py-6 text-center text-xs text-base-content/50">—</p>
+                  <p class="py-6 text-center text-xs text-base-content/75">—</p>
                 )
               ) : tab === "headers" ? (
                 <table class="table table-xs">
                   <tbody>
                     {result.headers.map(([name, value]) => (
                       <tr>
-                        <td class="w-56 align-top font-mono text-xs text-base-content/60">{name}</td>
+                        <td class="w-56 align-top font-mono text-xs text-base-content/75">{name}</td>
                         <td class="break-all font-mono text-xs">{value}</td>
                       </tr>
                     ))}
@@ -718,13 +718,13 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
               ) : (
                 <div class="space-y-3 text-xs">
                   <div>
-                    <div class="mb-1 font-medium uppercase tracking-wide text-base-content/50">{i18n.tabRequest}</div>
+                    <div class="mb-1 font-medium uppercase tracking-wide text-base-content/75">{i18n.tabRequest}</div>
                     <pre class="whitespace-pre-wrap break-all bg-base-200 rounded-box p-3 font-mono text-[12px] leading-5">{requestPreview(spec, result)}</pre>
                   </div>
                   {result.request.injection ? (
                     <div>
-                      <div class="mb-1 font-medium uppercase tracking-wide text-base-content/50">{i18n.injection}</div>
-                      <p class="mb-2 text-base-content/50">{i18n.injectionHint}</p>
+                      <div class="mb-1 font-medium uppercase tracking-wide text-base-content/75">{i18n.injection}</div>
+                      <p class="mb-2 text-base-content/75">{i18n.injectionHint}</p>
                       <pre class="whitespace-pre-wrap break-all bg-base-200 rounded-box p-3 font-mono text-[12px] leading-5">{injectionPreview(result)}</pre>
                     </div>
                   ) : null}
@@ -738,14 +738,14 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
       {/* ---------------- History ---------------- */}
       <section class="xl:col-span-2 bg-base-100 border border-base-300 rounded-box p-4">
         <div class="mb-2 flex items-center justify-between gap-2">
-          <h2 class="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-base-content/60">
+          <h2 class="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-base-content/75">
             <span class="lucide">
               <Lucide svg={historySvg} />
             </span>
             {i18n.history}
           </h2>
           <div class="flex items-center gap-2">
-            <span class="text-xs text-base-content/50">{i18n.historyHint}</span>
+            <span class="text-xs text-base-content/75">{i18n.historyHint}</span>
             {history.length > 0 ? (
               <button type="button" class="btn btn-ghost btn-xs" onClick={() => saveHistory([])}>
                 {i18n.clear}
@@ -754,14 +754,14 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
           </div>
         </div>
         {history.length === 0 ? (
-          <p class="py-3 text-center text-xs text-base-content/50">{i18n.historyEmpty}</p>
+          <p class="py-3 text-center text-xs text-base-content/75">{i18n.historyEmpty}</p>
         ) : (
           <div class="overflow-x-auto">
             <table class="table table-xs table-hover">
               <tbody>
                 {history.map((h) => (
                   <tr class="cursor-pointer" onClick={() => loadHistory(h)}>
-                    <td class="font-mono text-xs text-base-content/50">
+                    <td class="font-mono text-xs text-base-content/75">
                       {new Date(h.at).toLocaleTimeString()}
                     </td>
                     <td class="w-16 font-mono text-xs">{h.spec.method}</td>
@@ -769,10 +769,10 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
                       {h.host}
                     </td>
                     <td class={`font-mono text-xs font-medium ${statusClass(h.status)}`}>{h.status}</td>
-                    <td class="text-right text-xs text-base-content/60">{h.latencyMs} ms</td>
-                    <td class="text-right text-xs text-base-content/60">{humanBytes(h.bytes)}</td>
-                    <td class="text-xs text-base-content/60">{h.cache || "—"}</td>
-                    <td class="max-w-[24rem] truncate text-xs text-base-content/50" title={h.spec.url}>
+                    <td class="text-right text-xs text-base-content/75">{h.latencyMs} ms</td>
+                    <td class="text-right text-xs text-base-content/75">{humanBytes(h.bytes)}</td>
+                    <td class="text-xs text-base-content/75">{h.cache || "—"}</td>
+                    <td class="max-w-[24rem] truncate text-xs text-base-content/75" title={h.spec.url}>
                       {h.spec.url}
                     </td>
                   </tr>

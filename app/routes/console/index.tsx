@@ -79,7 +79,7 @@ function DashboardContent(props: { stats: Stats; keyCount: number; blockedCount:
   return (
     <>
       <h1 class="text-3xl font-semibold tracking-tight mb-4">
-        {t("console.title.overview")} <span class="text-base font-normal text-base-content/50">{t("console.overview.last24h")}</span>
+        {t("console.title.overview")} <span class="text-base font-normal text-base-content/75">{t("console.overview.last24h")}</span>
       </h1>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Stat value={String(req)} label={t("console.overview.requests")} />
@@ -145,7 +145,7 @@ function DashboardContent(props: { stats: Stats; keyCount: number; blockedCount:
                 <tr>
                   <td class="whitespace-nowrap">
                     <span class="inline-block max-w-[12rem] truncate align-bottom sm:max-w-[20rem]" title={r.name || undefined}>
-                      {r.name ? r.name : <span class="text-base-content/40">{t("console.overview.anonymous")}</span>}
+                      {r.name ? r.name : <span class="text-base-content/75">{t("console.overview.anonymous")}</span>}
                     </span>
                   </td>
                   <td class="text-right tabular-nums">{r.n}</td>
@@ -183,7 +183,7 @@ function DashboardContent(props: { stats: Stats; keyCount: number; blockedCount:
             ) : (
               stats.recentErrors.map((l) => (
                 <tr>
-                  <td class="text-base-content/50">
+                  <td class="text-base-content/75">
                     <RelTime value={l.created_at} t={t} />
                   </td>
                   <td class="hidden sm:table-cell">

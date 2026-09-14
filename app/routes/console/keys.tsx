@@ -280,7 +280,7 @@ function KeysContent(props: {
             keys.map((k) => (
               <tr>
                 <td class="whitespace-nowrap">
-                  {k.name || <span class="text-base-content/40">—</span>}
+                  {k.name || <span class="text-base-content/75">—</span>}
                   {k.keyless ? (
                     <span class="badge badge-outline badge-sm ml-2 align-middle">{t("console.keys.badgeKeyless")}</span>
                   ) : null}
@@ -292,12 +292,12 @@ function KeysContent(props: {
                 </td>
                 <td class="tabular-nums">{k.rate_limit_per_min ?? t("console.keys.default")}</td>
                 <td>
-                  <code class="text-base-content/60">{k.allowed_origins || t("console.keys.global")}</code>
+                  <code class="text-base-content/75">{k.allowed_origins || t("console.keys.global")}</code>
                 </td>
                 <td class="hidden sm:table-cell">
-                  <code class="text-base-content/60">{cacheText(k, t)}</code>
+                  <code class="text-base-content/75">{cacheText(k, t)}</code>
                 </td>
-                <td class="hidden text-base-content/50 sm:table-cell">
+                <td class="hidden text-base-content/75 sm:table-cell">
                   <RelTime value={k.created_at} t={t} />
                 </td>
                 <td>
@@ -324,7 +324,7 @@ function KeysContent(props: {
 
       {/* Intentionally injected as trusted HTML: the code pills are part of the copy. */}
       <p
-        class="text-xs text-base-content/50"
+        class="text-xs text-base-content/75"
         dangerouslySetInnerHTML={{
           __html: t("console.keys.hint", {
             code: "<code>ALLOWED_ORIGINS</code>",
@@ -333,7 +333,7 @@ function KeysContent(props: {
           }),
         }}
       />
-      <p class="mt-1 text-xs text-base-content/50">{t("console.keys.hintInjection")}</p>
+      <p class="mt-1 text-xs text-base-content/75">{t("console.keys.hintInjection")}</p>
     </>
   );
 }

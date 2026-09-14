@@ -50,7 +50,7 @@ export function Sidebar(props: { user: string; active: string; items: NavItem[];
         <button
           type="button"
           id="sidebar-collapse-toggle"
-          class="size-8.5 grid place-items-center rounded-lg text-base-content/50 hover:bg-black/[0.045] hover:text-base-content cursor-pointer"
+          class="size-8.5 grid place-items-center rounded-lg text-base-content/75 hover:bg-black/[0.045] hover:text-base-content cursor-pointer"
           title={props.t("console.sidebar.collapse")}
           aria-label={props.t("console.sidebar.collapse")}
         >
