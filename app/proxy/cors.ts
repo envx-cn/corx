@@ -75,6 +75,12 @@ export function resolveAllowOrigin(req: Request, env: Env, keyRow?: Pick<ApiKeyR
   return allow.includes(origin) ? origin : null;
 }
 
+/** Response headers a cross-origin caller may read (public-tier quota included). */
+const EXPOSED_HEADERS =
+  "X-Corx-Cache, X-Corx-Target, X-Corx-Latency-Ms, X-RateLimit-Limit, X-RateLimit-Remaining, " +
+  "X-Corx-Quota-Day-Limit, X-Corx-Quota-Day-Remaining, X-Corx-Quota-Origin-Limit, " +
+  "X-Corx-Quota-Origin-Remaining, X-Corx-Quota-Host-Limit, X-Corx-Quota-Host-Remaining";
+
 function varyWithOrigin(headers: Headers): void {
   const vary = headers.get("vary");
   if (!vary) headers.set("Vary", "Origin");
@@ -152,7 +158,7 @@ export function cors() {
       }
       c.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS");
       c.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-Api-Key");
-      c.header("Access-Control-Expose-Headers", "X-Corx-Cache, X-Corx-Target, X-Corx-Latency-Ms");
+      c.header("Access-Control-Expose-Headers", EXPOSED_HEADERS);
     }
   };
 }

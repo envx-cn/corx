@@ -54,7 +54,11 @@ Files: `app/proxy/cors.ts`, `app/lib/auth.ts`, `app/lib/admin.ts`.
 - `REQUIRE_API_KEY=true` rejects anonymous proxy calls with 401.
 - Per-key fields: name (required), `rate_limit_per_min`, `allowed_origins`,
   `cache_ttl` (blank = global, `0` = never store), `no_cache`, `ip_check`,
-  `dns_check`, `keyless`, and the injection set (below).
+  `dns_check`, `keyless`, `tier` (`standard` | `public`) with the public
+  daily caps `daily_limit_per_origin` / `daily_limit_per_host` /
+  `daily_limit_total`, and the injection set (below).
+- Public tier is validated at save time: no injection, both SSRF guards must
+  stay on, and a daily total cap is required (see §12).
 - Lifecycle: create, partial update (`PATCH` merges with the stored row;
   blank variable values keep the secret), revoke (kill switch), hard delete
   from the console (type the key name to confirm).
@@ -81,14 +85,23 @@ Files: `app/lib/auth.ts`, `app/lib/admin.ts`, `app/routes/api/keys*`,
   entry never matches); checked on every request, including cache hits, and on
   every manual redirect hop; fail-open on DB errors.
 - Rate limit: fixed 1-minute window in D1, per key / per IP / per
-  `origin + IP` for keyless; cache hits are free; `X-RateLimit-Limit` +
-  `X-RateLimit-Remaining` on miss responses; fail-open.
+  `origin + IP` for keyless, and per IP for public keys (every caller shares
+  one public key, so a per-key bucket would glob them together); cache hits are
+  free; `X-RateLimit-Limit` + `X-RateLimit-Remaining` on miss responses;
+  fail-open.
+- Public-tier daily quotas (UTC days) per calling `Origin`, per target host
+  and per key, checked *before* the cache so hits consume budget too; over cap
+  → `429` + `Retry-After` + `{ scope, limit, resetAt }`; announced via
+  `X-Corx-Quota-*` (see §12).
+- Credentials never reach upstream: `X-Api-Key` / `X-Admin-Token` are always
+  stripped (they belong to this proxy), and for public keys `Cookie` +
+  `Authorization` are stripped too.
 - Body cap: `MAX_BODY_BYTES` (default 10 MiB) — enforced from `Content-Length`
   before buffering and again on the buffered bytes; an unreadable body is a 400
   rather than a silently-empty forward.
 
 Files: `app/proxy/ip.ts`, `app/proxy/guard.ts`, `app/proxy/dns-check.ts`,
-`app/proxy/ratelimit.ts`.
+`app/proxy/ratelimit.ts`, `app/proxy/quota.ts`.
 
 ## 5. Caching (R2)
 
@@ -267,19 +280,68 @@ Files: `app/lib/access.ts`, `app/lib/session.ts`,
 
 ## 11. Operations & tooling
 
-- Cron `0 3 * * *`: prune `request_logs` > 30 days, `rate_windows` > 2 h, and
-  a 100-object batch of expired R2 entries.
+- Cron `0 3 * * *`: prune `request_logs` > 30 days, `rate_windows` > 2 h,
+  `quota_counters` older than yesterday, and a 100-object batch of expired R2
+  entries.
 - Observability enabled in `wrangler.jsonc`; `npm run tail` for live logs.
 - Scripts: `dev`, `dev:worker`, `build` (client islands + worker),
   `deploy`, `db:create` / `db:migrate` / `db:migrate:local`,
+  `db:seed:public` (local public-tier key so `/` shows the key card),
   `bucket:create`, `cf-typegen`, `check` (tsc), `test` (vitest),
   `check:contrast` (WCAG AA guard: theme tokens + a low-opacity text scan).
-- 217 tests across 16 suites covering the guard/IP/DNS layers, cache policy,
-  injection grammar, key admin + keyless grants, CORS origins, subdomain
-  encoding, media/Range, playground, stats bucketing, i18n and the assembled
-  app (error pages, JSON wire format, body caps, `/fetch` CORS).
-- 7 numbered D1 migrations in `migrations/` (keys → per-key origins/cache →
-  log bytes → guard toggles → injection → keyless/audit).
+- 265 tests across 19 suites covering the guard/IP/DNS layers, cache policy,
+  injection grammar, key admin + keyless grants + public-tier policy, daily
+  quotas, CORS origins, subdomain encoding, media/Range, playground, stats
+  bucketing, i18n, the terms page and the assembled app (error pages, JSON
+  wire format, body caps, `/fetch` CORS, credential stripping).
+- 8 numbered D1 migrations in `migrations/` (keys → per-key origins/cache →
+  log bytes → guard toggles → injection → keyless/audit → public tier +
+  quota counters).
+
+---
+
+## 12. Public tier & terms of use
+
+A hosted instance can publish one **public key** (`vars.PUBLIC_KEY`) so visitors
+fetch URLs cross-origin from their own sites without deploying anything. It is
+a reduced product, enforced in code rather than by convention:
+
+- `GET`/`HEAD` only; `?ttl=` / `?no-cache=` rejected (the instance owns the
+  cache policy, default `PUBLIC_CACHE_TTL_SECONDS` = 300 s); subdomain mode
+  refused; injection impossible to configure; SSRF guards forced on.
+- `Cookie` / `Authorization` are stripped from the outgoing request, so the
+  public key can never be used to authenticate upstream as the caller.
+- Three daily quotas in UTC days — per calling `Origin` (soft: browsers set it,
+  scripts can forge it), per target host (keeps the pool from becoming a
+  scraper for one upstream) and per key (the real bound) — plus a per-IP minute
+  limit. Counters live in `quota_counters` (bucket + period, pruned by the
+  cron); the handler checks them **before** the cache, so cache hits consume
+  budget and “N requests/day” stays honest.
+- `429` carries `Retry-After` (seconds to UTC midnight) and a
+  `{ scope, limit, resetAt }` body; every response carries
+  `X-Corx-Quota-{Origin,Host,Day}-{Limit,Remaining}`, exposed cross-origin.
+- Sizing is a platform-budget decision: a proxied request costs ~6–7 D1 row
+  writes (log + indexes, rate window, up to three quota buckets) and the free
+  plan allows 100k writes/day, so the total cap ships at 15 000/day. All these
+  checks fail open, so exceeding the budget would mean serving unmetered —
+  raise the cap only behind Workers Paid, log sampling or edge rate limiting.
+- A public key with no `daily_limit_total` (hand-edited DB) is refused with
+  `503` instead of being served unmetered.
+- Console: the key panel has the tier switch + the three caps; the keys table
+  badges public keys; the landing page renders the key with a copy button and
+  reads its caps from D1 so the published numbers are the enforced ones.
+
+`/terms` is the public terms document (en/zh, `?lang=` sets the cookie and
+redirects): best-effort/no-SLA, prohibited uses, quotas and enforcement, what
+is logged and for how long, the shared-R2-cache caveat, no-warranty/liability,
+and the abuse contact. The landing page's public-key card links to it right
+alongside the copy button (a reminder where it matters, not a gate a `curl`
+caller never sees). The page needs no islands, session or D1, and `terms` is a
+subdomain `RESERVED_LABELS` entry so `terms.<zone>` never decodes as a target.
+
+Files: `app/proxy/quota.ts`, `app/routes/terms.tsx`, `app/routes/_terms.tsx`,
+`app/routes/index.ts` (public key card), `app/routes/_landing.tsx`,
+`migrations/0008_public_tier.sql`.
 
 ---
 
@@ -295,6 +357,13 @@ flagged has been fixed below.
    explicit.
 3. **Rate limiting is fixed-window** (D1-backed, fail-open) — simple and
    cross-isolate, but a burst can straddle a window boundary.
+4. **Public-tier quotas fail open too.** A D1 write error means the request is
+   allowed; the total cap is sized under the write budget so that state should
+   not arise from proxied traffic, but it is not a hard guarantee. A public key
+   also has no whitelist or exception process — by design.
+5. **The landing page reads D1 once per view** when `PUBLIC_KEY` is set (to
+   render the enforced caps). Cheap, but it is a real read on a page that is
+   otherwise static.
 
 ## Review follow-ups (fixed)
 
@@ -316,6 +385,15 @@ flagged has been fixed below.
 - **README drift fixed:** stale project-layout list, missing `PROXY_ZONE` row,
   an orphaned table row, `/fetch/<url>` and `/health` undocumented, playground
   presets listed as five (there are six).
+- **`X-Api-Key` / `X-Admin-Token` no longer leak upstream.** The proxy used to
+  copy every non-stripped client header to the target, so a corx key ended up
+  on whatever host the caller named. Both are now stripped, and public-tier
+  requests additionally drop `Cookie` + `Authorization`.
+- **`X-RateLimit-*` (and the new quota headers) actually reach the wire.**
+  `c.header()` before a handler returns writes to Hono's prepared headers,
+  which are discarded when the handler returns a raw `Response` — every proxy
+  path does. The handler now stamps pending headers onto the response object,
+  so the documented rate-limit headers were silently missing before this fix.
 - **Landing page highlights** the differentiators the code actually has:
   upstream secret injection, keyless browser access and playground
   introspection (with config snippets), plus streaming, bilingual console and

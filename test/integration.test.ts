@@ -135,6 +135,10 @@ describe("route wiring (integration)", () => {
     expect(page).toContain("Keyless access");
     expect(page).toContain('name="headerRules"');
     expect(page).toContain('name="allowedHosts"');
+    // Public tier: the shared-key switch and its three daily caps.
+    expect(page).toContain('name="tier"');
+    expect(page).toContain('name="dailyLimitPerOrigin"');
+    expect(page).toContain('name="dailyLimitTotal"');
 
     // Creating a key renders the CopyButton island (assert SSR output — the
     // hydration meta itself is injected at build time by the honox plugin).

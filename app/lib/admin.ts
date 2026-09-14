@@ -199,6 +199,10 @@ export interface KeyRow {
   param_rules: string | null;
   allowed_hosts: string | null;
   keyless: number;
+  tier: string;
+  daily_limit_per_origin: number | null;
+  daily_limit_per_host: number | null;
+  daily_limit_total: number | null;
   created_at: string;
   revoked_at: string | null;
 }
@@ -206,7 +210,7 @@ export interface KeyRow {
 export async function queryKeys(db: D1Database): Promise<KeyRow[]> {
   const rows = await db
     .prepare(
-      "SELECT id, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, allowed_hosts, keyless, created_at, revoked_at FROM api_keys ORDER BY created_at DESC",
+      "SELECT id, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, created_at, revoked_at FROM api_keys ORDER BY created_at DESC",
     )
     .all<KeyRow>();
   return rows.results;
@@ -216,7 +220,7 @@ export async function queryKeys(db: D1Database): Promise<KeyRow[]> {
 export async function queryKeyById(db: D1Database, id: string): Promise<ApiKeyRow | null> {
   return db
     .prepare(
-      "SELECT id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, allowed_hosts, keyless, created_at, revoked_at FROM api_keys WHERE id = ?",
+      "SELECT id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, created_at, revoked_at FROM api_keys WHERE id = ?",
     )
     .bind(id)
     .first<ApiKeyRow>();
@@ -242,6 +246,12 @@ export interface KeyInput {
   dnsCheck?: boolean;
   /** Allowed origins may use this key without presenting it (keyless access). */
   keyless?: boolean;
+  /** "standard" (default) or "public" — the shared, limited tier. */
+  tier?: unknown;
+  /** Public tier daily caps. "" / null = unlimited (except the total, required). */
+  dailyLimitPerOrigin?: unknown;
+  dailyLimitPerHost?: unknown;
+  dailyLimitTotal?: unknown;
   /** Injection fields — raw textarea text or the array forms (see inject.ts). */
   vars?: unknown;
   headerRules?: unknown;
@@ -254,6 +264,51 @@ function normalizeName(raw: unknown): string {
   const name = String(raw ?? "").trim();
   if (!name) throw new ProxyError(400, "Name is required");
   return name;
+}
+
+/** "standard" (default) or "public". */
+function normalizeTier(raw: unknown): string {
+  if (raw === undefined || raw === null || raw === "" || raw === false) return "standard";
+  if (raw === true) return "public";
+  const tier = String(raw).trim().toLowerCase();
+  if (tier === "standard" || tier === "public") return tier;
+  throw new ProxyError(400, 'Tier must be "standard" or "public"');
+}
+
+/** Daily quota input: blank/null → null (no cap), a positive integer otherwise. */
+function parseDailyLimit(raw: unknown, label: string): number | null {
+  if (raw === null || raw === undefined) return null;
+  const text = String(raw).trim();
+  if (text === "") return null;
+  const n = Number(text);
+  if (!Number.isInteger(n) || n < 1 || n > 10_000_000) {
+    throw new ProxyError(400, `Daily ${label} limit must be a positive integer (blank = unlimited)`);
+  }
+  return n;
+}
+
+/**
+ * The public tier is deliberately a reduced product: no upstream injection, the
+ * SSRF guards stay on, and it must carry a daily total cap — that cap is what
+ * keeps the shared key's D1 writes under the platform budget (see quota.ts).
+ */
+function assertPublicPolicy(
+  tier: string,
+  injection: InjectionParts,
+  ipCheck: number,
+  dnsCheck: number,
+  dailyLimitTotal: number | null,
+): void {
+  if (tier !== "public") return;
+  if (injection.vars.length || injection.headers.length || injection.params.length || injection.hosts.length) {
+    throw new ProxyError(400, "Public keys cannot inject upstream variables or rules");
+  }
+  if (ipCheck === 0 || dnsCheck === 0) {
+    throw new ProxyError(400, "Public keys must keep the SSRF checks on");
+  }
+  if (!dailyLimitTotal) {
+    throw new ProxyError(400, "Public keys need a daily total limit");
+  }
 }
 
 /**
@@ -341,14 +396,19 @@ export async function createApiKey(db: D1Database, input: KeyInput): Promise<{ i
   const ipCheck = input.ipCheck === false ? 0 : 1;
   const dnsCheck = input.dnsCheck === false ? 0 : 1;
   const keyless = input.keyless === true;
+  const tier = normalizeTier(input.tier);
+  const dailyLimitPerOrigin = parseDailyLimit(input.dailyLimitPerOrigin, "per-origin");
+  const dailyLimitPerHost = parseDailyLimit(input.dailyLimitPerHost, "per-host");
+  const dailyLimitTotal = parseDailyLimit(input.dailyLimitTotal, "total");
   const injection = buildInjection(input, { vars: [], headers: [], params: [], hosts: [] });
   const stored = serializeInjection(injection);
   const grants = keylessGrants(keyless, allowedOrigins ?? "", ipCheck, dnsCheck);
+  assertPublicPolicy(tier, injection, ipCheck, dnsCheck, dailyLimitTotal);
   if (grants.length) await assertOriginGrantsFree(db, grants, id);
 
   await db
     .prepare(
-      "INSERT INTO api_keys (id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, allowed_hosts, keyless) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO api_keys (id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(
       id,
@@ -365,6 +425,10 @@ export async function createApiKey(db: D1Database, input: KeyInput): Promise<{ i
       stored.paramRules,
       stored.allowedHosts,
       keyless ? 1 : 0,
+      tier,
+      dailyLimitPerOrigin,
+      dailyLimitPerHost,
+      dailyLimitTotal,
     )
     .run();
   if (grants.length) await writeOriginGrants(db, id, grants);
@@ -382,6 +446,12 @@ export interface KeyUpdate {
   ipCheck?: boolean;
   dnsCheck?: boolean;
   keyless?: boolean;
+  /** "standard" | "public". */
+  tier?: unknown;
+  /** Public tier daily caps (undefined = leave unchanged). */
+  dailyLimitPerOrigin?: unknown;
+  dailyLimitPerHost?: unknown;
+  dailyLimitTotal?: unknown;
   /** Injection fields — see KeyInput. */
   vars?: unknown;
   headerRules?: unknown;
@@ -399,6 +469,10 @@ interface CurrentKey {
   allowed_origins: string | null;
   ip_check: number;
   dns_check: number;
+  tier: string;
+  daily_limit_per_origin: number | null;
+  daily_limit_per_host: number | null;
+  daily_limit_total: number | null;
 }
 
 export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate): Promise<void> {
@@ -412,19 +486,25 @@ export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate
     update.allowedOrigins !== undefined ||
     update.ipCheck !== undefined ||
     update.dnsCheck !== undefined;
+  const touchesLimits =
+    update.tier !== undefined ||
+    update.dailyLimitPerOrigin !== undefined ||
+    update.dailyLimitPerHost !== undefined ||
+    update.dailyLimitTotal !== undefined;
 
   // Partial updates merge with the stored row: blank variable values keep the
   // secret, untouched injection fields stay, and keyless grants are re-derived.
   let current: CurrentKey | null = null;
-  if (touchesInjection || touchesAuth) {
+  if (touchesInjection || touchesAuth || touchesLimits) {
     current = await db
       .prepare(
-        "SELECT vars, header_rules, param_rules, allowed_hosts, keyless, allowed_origins, ip_check, dns_check FROM api_keys WHERE id = ?",
+        "SELECT vars, header_rules, param_rules, allowed_hosts, keyless, allowed_origins, ip_check, dns_check, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total FROM api_keys WHERE id = ?",
       )
       .bind(id)
       .first<CurrentKey>();
     if (!current) throw new ProxyError(404, "Key not found");
   }
+  let parts: InjectionParts | null = current ? readStoredInjection(current) : null;
 
   const sets: string[] = [];
   const values: Array<string | number | null> = [];
@@ -457,9 +537,26 @@ export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate
     values.push(update.dnsCheck ? 1 : 0);
   }
   if (touchesInjection) {
-    const stored = serializeInjection(buildInjection(update, readStoredInjection(current)));
+    parts = buildInjection(update, readStoredInjection(current));
+    const stored = serializeInjection(parts);
     sets.push("vars = ?", "header_rules = ?", "param_rules = ?", "allowed_hosts = ?");
     values.push(stored.vars, stored.headerRules, stored.paramRules, stored.allowedHosts);
+  }
+  if (update.tier !== undefined) {
+    sets.push("tier = ?");
+    values.push(normalizeTier(update.tier));
+  }
+  if (update.dailyLimitPerOrigin !== undefined) {
+    sets.push("daily_limit_per_origin = ?");
+    values.push(parseDailyLimit(update.dailyLimitPerOrigin, "per-origin"));
+  }
+  if (update.dailyLimitPerHost !== undefined) {
+    sets.push("daily_limit_per_host = ?");
+    values.push(parseDailyLimit(update.dailyLimitPerHost, "per-host"));
+  }
+  if (update.dailyLimitTotal !== undefined) {
+    sets.push("daily_limit_total = ?");
+    values.push(parseDailyLimit(update.dailyLimitTotal, "total"));
   }
 
   // Validate the keyless policy against the *effective* values (a guard toggle
@@ -479,6 +576,20 @@ export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate
       values.push(keyless ? 1 : 0);
     }
     if (grants.length) await assertOriginGrantsFree(db, grants, id);
+  }
+
+  // Public tier: validate against the *effective* values, so flipping a
+  // standard key to public can't slip past with stored injection, the SSRF
+  // guards off, or no total cap.
+  if (current && (touchesInjection || touchesAuth || touchesLimits)) {
+    const tier = update.tier !== undefined ? normalizeTier(update.tier) : current.tier;
+    const ipCheck = update.ipCheck !== undefined ? (update.ipCheck ? 1 : 0) : current.ip_check;
+    const dnsCheck = update.dnsCheck !== undefined ? (update.dnsCheck ? 1 : 0) : current.dns_check;
+    const total =
+      update.dailyLimitTotal !== undefined
+        ? parseDailyLimit(update.dailyLimitTotal, "total")
+        : current.daily_limit_total;
+    assertPublicPolicy(tier, parts ?? readStoredInjection(current), ipCheck, dnsCheck, total);
   }
 
   if (sets.length === 0) return;

@@ -9,6 +9,7 @@ import type { ProxyVariables } from "./lib/auth.js";
 import { apiKeyMiddleware } from "./lib/auth.js";
 import { cors, withProxyCors } from "./proxy/cors.js";
 import { proxyHandler } from "./proxy/handler.js";
+import { utcDay } from "./proxy/quota.js";
 import { resolveRawTarget } from "./proxy/subdomain.js";
 import { NotFoundPage } from "./routes/_not-found.js";
 import { ErrorPage } from "./routes/_error-page.js";
@@ -190,6 +191,11 @@ export default {
           .catch(() => undefined);
         await env.DB.prepare("DELETE FROM rate_windows WHERE window_min < ?")
           .bind(Math.floor(Date.now() / 60_000) - 120)
+          .run()
+          .catch(() => undefined);
+        // Daily quota counters: keep yesterday + today, drop the rest.
+        await env.DB.prepare("DELETE FROM quota_counters WHERE period < ?")
+          .bind(utcDay(Date.now() - 86_400_000))
           .run()
           .catch(() => undefined);
         // R2 TTL is lazy (checked on read); list-prune a small batch each run.

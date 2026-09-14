@@ -33,6 +33,10 @@ app.post("/", async (c) => {
       ipCheck: values.ipCheck,
       dnsCheck: values.dnsCheck,
       keyless: values.keyless,
+      tier: values.tier ? "public" : "standard",
+      dailyLimitPerOrigin: values.dailyLimitPerOrigin,
+      dailyLimitPerHost: values.dailyLimitPerHost,
+      dailyLimitTotal: values.dailyLimitTotal,
       allowedHosts: values.allowedHosts,
       vars: values.vars,
       headerRules: values.headerRules,
@@ -65,6 +69,10 @@ app.post("/:id", async (c) => {
       ipCheck: values.ipCheck,
       dnsCheck: values.dnsCheck,
       keyless: values.keyless,
+      tier: values.tier ? "public" : "standard",
+      dailyLimitPerOrigin: values.dailyLimitPerOrigin,
+      dailyLimitPerHost: values.dailyLimitPerHost,
+      dailyLimitTotal: values.dailyLimitTotal,
       allowedHosts: values.allowedHosts,
       vars: values.vars,
       headerRules: values.headerRules,
@@ -124,6 +132,10 @@ function readKeyForm(form: Record<string, unknown>): KeyFormValues {
     ipCheck: panel ? on("ipCheck") : true,
     dnsCheck: panel ? on("dnsCheck") : true,
     keyless: on("keyless"),
+    tier: on("tier"),
+    dailyLimitPerOrigin: String(form["dailyLimitPerOrigin"] ?? ""),
+    dailyLimitPerHost: String(form["dailyLimitPerHost"] ?? ""),
+    dailyLimitTotal: String(form["dailyLimitTotal"] ?? ""),
     allowedHosts: String(form["allowedHosts"] ?? ""),
     vars: String(form["vars"] ?? ""),
     headerRules: String(form["headerRules"] ?? ""),
@@ -150,6 +162,10 @@ function rowValues(k: KeyRow): KeyFormValues {
     ipCheck: !!k.ip_check,
     dnsCheck: !!k.dns_check,
     keyless: !!k.keyless,
+    tier: k.tier === "public",
+    dailyLimitPerOrigin: k.daily_limit_per_origin != null ? String(k.daily_limit_per_origin) : "",
+    dailyLimitPerHost: k.daily_limit_per_host != null ? String(k.daily_limit_per_host) : "",
+    dailyLimitTotal: k.daily_limit_total != null ? String(k.daily_limit_total) : "",
     allowedHosts: k.allowed_hosts ?? "",
     vars: varsToText(injection.vars),
     headerRules: rulesToText(injection.headers, "header"),
@@ -190,6 +206,13 @@ function panelLabels(t: TFunc): KeyPanelI18n {
     dnsCheckHint: t("console.keys.dnsCheckHint"),
     keyless: t("console.keys.keyless"),
     keylessHint: t("console.keys.keylessHint"),
+    publicTier: t("console.keys.publicTier"),
+    publicTierHint: t("console.keys.publicTierHint"),
+    dailyLimits: t("console.keys.dailyLimits"),
+    dailyLimitPerOrigin: t("console.keys.dailyLimitPerOrigin"),
+    dailyLimitPerHost: t("console.keys.dailyLimitPerHost"),
+    dailyLimitTotal: t("console.keys.dailyLimitTotal"),
+    dailyLimitPh: t("console.keys.dailyLimitPh"),
     allowedHosts: t("console.keys.allowedHosts"),
     allowedHostsPh: t("console.keys.allowedHostsPh"),
     injection: t("console.keys.injection"),
@@ -283,6 +306,9 @@ function KeysContent(props: {
                   {k.name || <span class="text-base-content/75">—</span>}
                   {k.keyless ? (
                     <span class="badge badge-outline badge-sm ml-2 align-middle">{t("console.keys.badgeKeyless")}</span>
+                  ) : null}
+                  {k.tier === "public" ? (
+                    <span class="badge badge-primary badge-sm ml-2 align-middle">{t("console.keys.badgePublic")}</span>
                   ) : null}
                   {injectionCount(k) > 0 ? (
                     <span class="badge badge-outline badge-sm ml-2 align-middle">

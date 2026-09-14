@@ -284,7 +284,9 @@ describe("console playground (integration)", () => {
       envWithKey({ ...injectingRow, vars: "[]", header_rules: "[]", param_rules: "[]", allowed_hosts: null }).env,
     );
     expect(good.data.status).toBe(200);
-    expect(calls[0]?.headers.get("x-api-key")).toBe("corx_secret");
+    // The caller's corx key belongs to this proxy and must never be forwarded
+    // upstream (it used to leak to whatever host the caller named).
+    expect(calls[0]?.headers.get("x-api-key")).toBe(null);
 
     // The stub DB only resolves the row for the recorded key_hash — an
     // anonymous run against REQUIRE_API_KEY is refused by the proxy.

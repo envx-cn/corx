@@ -219,6 +219,83 @@ and is looked up through the typed `t()` from `app/lib/i18n/locale.ts`. API
 error messages are intentionally **not** translated (developer-facing wire
 format).
 
+## Public tier (the hosted instance)
+
+The deployed site can hand out a **public key** so anyone can fetch a URL
+cross-origin from their own site without deploying anything. It is deliberately
+a reduced product:
+
+- **`GET` / `HEAD` only** — no POST/PUT/… relaying.
+- **No `?ttl=` / `?no-cache=`** — the instance owns the cache policy (public
+  keys default to `PUBLIC_CACHE_TTL_SECONDS`, 300 s).
+- **No subdomain mode** — `/fetch?url=` only, which also keeps arbitrary
+  third-party content off your wildcard domain.
+- **No injection** — variables and header/query rules cannot be configured.
+- **SSRF guards cannot be switched off** — `ipCheck`/`dnsCheck` stay on.
+- **Credentials are never forwarded** — `Cookie` and `Authorization` are
+  stripped from the outgoing request, so a public caller cannot use corx to
+  authenticate as themselves upstream. `X-Api-Key` / `X-Admin-Token` are
+  always stripped too: they belong to this proxy, never to the target.
+- **Daily quotas** — per calling `Origin`, per target host, and for the key as
+  a whole, counted in UTC days, plus the usual per-minute limit (metered per
+  IP for a public key, since every caller shares it). Cache hits count as well.
+
+Usage from a third-party site (a query-string key makes it a *simple*
+request, so there is no CORS preflight — and browsers don't send API keys on
+`OPTIONS` anyway):
+
+```js
+const KEY = "corx_pub_…"; // published on the landing page
+const r = await fetch(
+  `https://corx.example/fetch?url=${encodeURIComponent(url)}&key=${KEY}`,
+);
+```
+
+Responses carry `X-Corx-Quota-{Origin,Host,Day}-{Limit,Remaining}`; when a cap is
+hit the proxy answers `429` with `Retry-After` (seconds to UTC midnight) and a
+`{ scope, limit, resetAt }` body. Limits live on the key (console → API keys,
+or `PATCH /api/keys/:id`), and the landing page reads them from D1 so the
+numbers it advertises are the ones being enforced.
+
+**Sizing — the free plan is the budget.** Cloudflare's free tier gives 100k
+Worker requests/day and **100k D1 rows written/day** (indexes count: a
+`request_logs` insert costs ~3), plus ~33k R2 Class A and ~333k Class B per
+day. A proxied request spends roughly 6–7 D1 writes (log + rate window + up to
+three quota buckets), so a public key's *total* cap must stay well under 100k:
+all of these checks **fail open**, and if D1 starts rejecting writes the proxy
+would keep serving unmetered. The shipped defaults (15 000 total, 3 000 per
+origin, 5 000 per host, 60/min per IP) sit inside that budget. Raise them with
+Workers Paid ($5/mo lifts D1 to 50M writes and Workers to 10M requests per
+month), or by trimming writes (log sampling, edge rate limiting) — not by
+simply raising the number.
+
+**Enabling it:** create a normal key in the console, tick **Public tier**, set
+the caps (the total is required), copy the raw value into `vars.PUBLIC_KEY` in
+`wrangler.jsonc`, and deploy. `PUBLIC_KEY` is a plain var on purpose — the key
+is public and the landing page renders it, while D1 still stores only its hash.
+
+**Seeing it locally** takes both halves, which is the easy thing to get wrong:
+`PUBLIC_KEY` set (in `.dev.vars` for local dev) **and** a matching row in the
+local D1. `npm run db:seed:public` creates the row for whatever key `.dev.vars`
+holds (default caps; `--key` / `--origin` / `--host` / `--total` to override),
+and a dev-mode warning tells you when `PUBLIC_KEY` is set but resolves to
+nothing.
+
+Public-key traffic is logged and metered like any other key, so the console
+(Logs, stats, `api_key_id`) is where you watch for abuse; blocking a host or
+rotating/revoking the key takes effect immediately.
+
+## Terms of use
+
+`/terms` (en/zh via `?lang=`) is the public terms page: what the shared
+instance is (best effort, **no SLA**), prohibited uses, the quotas and how they
+are enforced, what is logged and for how long, the shared-cache caveat, the
+no-warranty clause and the abuse contact. The landing page's public-key card
+links to it right next to the copy button — a reminder at the moment it
+matters, rather than a click-through gate a `curl` caller never sees. The page
+is self-contained (no islands, no session, no D1), so it renders even when
+everything else is broken.
+
 ## Quickstart
 
 ```bash
@@ -231,6 +308,7 @@ npm run bucket:create
 # 2. Local dev (vite + Cloudflare adapter: D1/R2 bindings work locally)
 cp .dev.vars.example .dev.vars   # set ADMIN_TOKEN
 npm run db:migrate:local
+npm run db:seed:public           # optional: public-tier key, so / shows the key card
 npm run dev              # vite on :5173 (set PORT to change)
 
 # 3. Deploy (always through the vite build — wrangler serves ./dist)
@@ -259,6 +337,8 @@ appended to proxied HTML pages — dev-only artifact, production is untouched.
 | `ACCESS_TEAM_DOMAIN` | `""` | Cloudflare Access team domain (enables Access login) |
 | `ACCESS_AUD` | `""` | Access application AUD tag |
 | `ADMIN_EMAILS` | `""` | Optional comma-separated allowlist for admin access |
+| `PUBLIC_KEY` | `""` | Raw value of the public-tier key, rendered on the landing page (public by design; D1 stores only its hash). Empty = no public key advertised |
+| `PUBLIC_CACHE_TTL_SECONDS` | `300` | Default R2 TTL for public-tier GETs; public keys ignore `?ttl=` |
 
 ## Admin console (SSR + Cloudflare login)
 
@@ -368,6 +448,12 @@ curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: applicat
 curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"keyless":true,"allowedOrigins":"https://app.example"}' \
   https://corx.<you>.workers.dev/api/keys/KEY_ID
+
+# public tier: shared, limited, GET/HEAD-only key for the hosted instance.
+# dailyLimitTotal is required; injection and SSRF opt-outs are rejected.
+curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"tier":"public","dailyLimitPerOrigin":3000,"dailyLimitPerHost":5000,"dailyLimitTotal":15000}' \
+  https://corx.<you>.workers.dev/api/keys/KEY_ID
 # revoke (kill switch; the console's Delete removes the row for good) / block hosts
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" https://corx.<you>.workers.dev/api/keys/KEY_ID/revoke
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
@@ -398,7 +484,7 @@ browser ──► corx (Worker)
 
 ```
 wrangler.jsonc          bindings (D1, R2), vars, cron
-migrations/       numbered D1 migrations (0001…0007)
+migrations/       numbered D1 migrations (0001…0008)
 app/              HonoX frontend (entry + console UI + API routes)
   server.ts     worker entry: createApp + manual mounts (proxy only).
                 File routes register at createApp time, so the manual /*
@@ -432,6 +518,10 @@ app/              HonoX frontend (entry + console UI + API routes)
                 <body> (a closed dropdown is display:none), so they keep
                 working even when island hydration doesn't.
   routes/index.ts     landing page file route (subdomain-aware)
+  routes/terms.tsx    public terms page (+ colocated _terms.tsx markup); its
+                own document, no islands/session/D1. "terms" is in the
+                subdomain RESERVED_LABELS so terms.<zone> never decodes
+                as a proxy target.
   components/   shared presentational primitives (badges, chart, lucide,
                 table, logo) plus the response viewers (response-preview,
                 json-tree) used by both the landing demo and the playground —
@@ -456,7 +546,8 @@ app/              HonoX frontend (entry + console UI + API routes)
                 demo, KeyPanel, LogsRange, Playground, StatsTabs)
   proxy/        proxy feature: handler, guard (SSRF), dns-check, ip
                 classification, subdomain mode, CORS, R2 cache,
-                D1 rate limit, inject (variables + rules)
+                D1 rate limit, daily quotas (quota), inject
+                (variables + rules)
   lib/          shared kernel (no HTTP wiring): types, utils, API-key
                 auth, Access identity, sessions, request logging,
                 D1 query helpers, admin key/log queries, playground
@@ -464,7 +555,8 @@ app/              HonoX frontend (entry + console UI + API routes)
                 formatting, i18n dictionaries
 test/           vitest suites (guard, ip, dns-check, cache, inject,
                 admin, origins, subdomain, media, playground, preview,
-                stats, i18n, nav, access, error pages, integration)
+                stats, i18n, nav, access, quota, public tier, error
+                pages, integration)
 ```
 
 ## Scripts
@@ -472,6 +564,7 @@ test/           vitest suites (guard, ip, dns-check, cache, inject,
 | Script | What |
 | --- | --- |
 | `npm run dev` | vite dev with local D1/R2 (needs `.dev.vars`) |
+| `npm run db:seed:public` | seed the local D1 with a public-tier key (`PUBLIC_KEY` from `.dev.vars`), so `/` renders the public-key card |
 | `npm run dev:worker` | production bundle via `wrangler dev` |
 | `npm run build` | client (islands) + worker bundles into `./dist` |
 | `npm run deploy` | build + deploy to Cloudflare |

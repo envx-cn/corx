@@ -18,7 +18,7 @@ import { extractTargetUrl } from "./guard.js";
 export const CONTROL_PARAMS = ["ttl", "no-cache", "key", "corx-scheme", "corx-port"];
 
 /** First-labels that are always served locally, never decoded as targets. */
-const RESERVED_LABELS = new Set(["www", "admin", "console", "api", "health", "status"]);
+const RESERVED_LABELS = new Set(["www", "admin", "console", "api", "health", "status", "terms", "privacy", "docs", "blog"]);
 
 export function encodeHostname(hostname: string): string {
   return hostname.toLowerCase().replaceAll("-", "--").replaceAll(".", "-");

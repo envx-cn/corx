@@ -1,6 +1,12 @@
 # Local dev secrets (never commit). Copy to `.dev.vars`.
 ADMIN_TOKEN = "dev-admin-token-change-me"
 
+# The public tier's key is public by design, so it belongs in wrangler.jsonc
+# (`vars.PUBLIC_KEY`) when deployed. Set it here for local dev, then run
+# `npm run db:seed:public` once to create the matching public-tier row in the
+# local D1 — the landing page card needs both halves.
+# PUBLIC_KEY = "corx_dev_public_key"
+
 # Session cookie HMAC secret (optional — falls back to ADMIN_TOKEN).
 # SESSION_SECRET = "dev-session-secret-change-me"
 

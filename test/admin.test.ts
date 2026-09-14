@@ -70,13 +70,17 @@ describe("createApiKey", () => {
       "[]", // param_rules
       null, // allowed_hosts: no injection, so unrestricted
       0, // keyless
+      "standard", // tier
+      null, // daily_limit_per_origin
+      null, // daily_limit_per_host
+      null, // daily_limit_total
     ]);
   });
 
   it("defaults both checks to on (and no injection/keyless)", async () => {
     const { db, calls } = recordingDb();
     await createApiKey(db, { name: "app", rateLimitPerMin: null });
-    expect(calls[0]?.values.slice(7)).toEqual([1, 1, "[]", "[]", "[]", null, 0]);
+    expect(calls[0]?.values.slice(7)).toEqual([1, 1, "[]", "[]", "[]", null, 0, "standard", null, null, null]);
   });
 
   it("stores injection fields and requires a host allowlist", async () => {
@@ -233,5 +237,103 @@ describe("queryStats", () => {
     expect(
       calls.some((c) => c.sql.includes("created_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')")),
     ).toBe(true);
+  });
+});
+
+/**
+ * Public tier: a reduced product, so the policy is enforced at save time —
+ * no injection, SSRF checks on, and a mandatory daily total (that cap is what
+ * keeps the shared key's D1 writes inside the platform budget).
+ */
+describe("public tier policy", () => {
+  /** A stored standard row, as updateApiKey reads it back for merging. */
+  const standardRow = {
+    vars: "[]",
+    header_rules: "[]",
+    param_rules: "[]",
+    allowed_hosts: null,
+    keyless: 0,
+    allowed_origins: null,
+    ip_check: 1,
+    dns_check: 1,
+    tier: "standard",
+    daily_limit_per_origin: null,
+    daily_limit_per_host: null,
+    daily_limit_total: null,
+  };
+
+  it("stores the tier and the daily caps on create", async () => {
+    const { db, calls } = recordingDb();
+    await createApiKey(db, {
+      name: "public",
+      tier: "public",
+      dailyLimitPerOrigin: "3000",
+      dailyLimitPerHost: "5000",
+      dailyLimitTotal: "15000",
+    });
+    expect(calls[0]?.values.slice(14)).toEqual(["public", 3000, 5000, 15000]);
+  });
+
+  it("accepts a boolean tier from the console form", async () => {
+    const { db, calls } = recordingDb();
+    await createApiKey(db, { name: "public", tier: true, dailyLimitTotal: "15000" });
+    expect(calls[0]?.values[14]).toBe("public");
+  });
+
+  it("rejects injection on a public key", async () => {
+    const { db } = recordingDb();
+    await expect(
+      createApiKey(db, {
+        name: "public",
+        tier: "public",
+        dailyLimitTotal: "15000",
+        vars: "TOKEN=sk-1",
+        allowedHosts: "api.vendor.com",
+      }),
+    ).rejects.toThrowError(/cannot inject/);
+  });
+
+  it("rejects turning the SSRF checks off on a public key", async () => {
+    for (const bad of [{ ipCheck: false }, { dnsCheck: false }]) {
+      const { db } = recordingDb();
+      await expect(createApiKey(db, { name: "public", tier: "public", dailyLimitTotal: "15000", ...bad })).rejects
+        .toThrowError(/SSRF checks/);
+    }
+  });
+
+  it("requires a daily total", async () => {
+    const { db } = recordingDb();
+    await expect(createApiKey(db, { name: "public", tier: "public" })).rejects.toThrowError(/daily total/);
+  });
+
+  it("refuses to flip a key with stored injection to public", async () => {
+    const { db } = recordingDb({
+      ...standardRow,
+      vars: '[{"name":"TOKEN","value":"sk-1"}]',
+      allowed_hosts: "api.vendor.com",
+    });
+    await expect(updateApiKey(db, "id-1", { tier: "public", dailyLimitTotal: "15000" })).rejects.toThrowError(
+      /cannot inject/,
+    );
+  });
+
+  it("requires a daily total when flipping an existing key to public", async () => {
+    const { db } = recordingDb(standardRow);
+    await expect(updateApiKey(db, "id-1", { tier: "public" })).rejects.toThrowError(/daily total/);
+  });
+
+  it("writes the tier and caps when the policy holds", async () => {
+    const { db, calls } = recordingDb(standardRow);
+    await updateApiKey(db, "id-1", { tier: "public", dailyLimitPerOrigin: "3000", dailyLimitTotal: "15000" });
+    const update = calls.find((c) => c.sql.startsWith("UPDATE api_keys SET"));
+    expect(update?.sql).toContain("tier = ?");
+    expect(update?.sql).toContain("daily_limit_total = ?");
+    expect(update?.values).toEqual(["public", 3000, 15000, "id-1"]);
+  });
+
+  it("leaves a standard key alone", async () => {
+    const { db, calls } = recordingDb();
+    await createApiKey(db, { name: "app" });
+    expect(calls[0]?.values[14]).toBe("standard");
   });
 });
