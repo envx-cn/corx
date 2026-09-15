@@ -223,6 +223,21 @@ needed and the answers are plain text in the initial HTML) and a dark footer.
 The FAQ is not decoration: it is the content answer engines quote, and the same
 strings feed its `FAQPage` JSON-LD (see [SEO and GEO](#seo-and-geo)).
 
+Below the public-key card sits the **agent entry** (`id="agents"`): two file
+cards (`/llms.txt`, `/llms-full.txt`), a copy-to-clipboard prompt that names
+*this* instance's origin, and links to the generated `robots.txt` /
+`sitemap.xml`. Both llms files already existed for crawlers; the band is where
+a **human** finds out they exist. It belongs next to the public-key card — the
+two are the same kind of thing, an entry point you can act on without
+deploying, one for a frontend and one for an agent — and that placement keeps
+the closing sequence (FAQ → CTA) uninterrupted. The band's top padding
+collapses when the card renders, so the two read as one cluster instead of two
+sections (80px between them against 175px to Highlights). The card is
+conditional, so without `PUBLIC_KEY` the band takes the normal section padding
+and follows the live demo instead. Its
+machine-discoverable halves are a `<link rel="alternate" type="text/plain">` in
+`<head>` and an `llms.txt` link in the footer.
+
 The demo renders the response **by content type** instead of dumping every
 body into a `<pre>` (`app/lib/preview.ts` classifies, `app/islands/cors-demo.tsx`
 drives it, `app/components/response-preview.tsx` renders): JSON becomes a
@@ -315,7 +330,10 @@ to the proxy on a subdomain host, where every path is a proxy path).
 
 `<head>` on the public pages (`app/components/site.tsx` → `SiteHead`) carries a
 self-canonical per URL (`/` stays `/` even when it renders 中文 — one URL, one
-canonical), the hreflang cluster, `robots: index, follow,
+canonical), the hreflang cluster, an `alternate` link declaring `llms.txt` as
+this site's machine-readable representation (the agent entry's discoverable
+half — a crawler reading metadata should not have to parse the footer),
+`robots: index, follow,
 max-image-preview:large, max-snippet:-1`, Open Graph + Twitter tags with the
 1200×630 `public/og.png` card (`npm run og` regenerates it), and one JSON-LD
 `@graph` (`WebSite`, `Organization`, `SoftwareApplication`, `FAQPage`). The

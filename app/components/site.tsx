@@ -60,6 +60,13 @@ export function SiteHead(props: {
       {props.alternates?.map((alt) => (
         <link rel="alternate" hreflang={alt.hreflang} href={alt.href} />
       ))}
+      {/* The machine-discoverable agent entry: llms.txt is an alternate
+          representation of this site for agents, declared where a crawler
+          looks for metadata rather than only in the rendered footer. The
+          visible half is the landing page's own agents band. */}
+      {props.origin && (
+        <link rel="alternate" type="text/plain" href={absUrl(props.origin, "/llms.txt")} title="llms.txt" />
+      )}
       <meta property="og:type" content="website" />
       <meta property="og:site_name" content="CORX" />
       <meta property="og:title" content={props.title} />
@@ -180,6 +187,12 @@ export function SiteFooter(props: { origin?: string; t?: TFunc }) {
         <div class="flex items-center gap-6 text-sm text-secondary-content/70">
           <a href="/terms" class="hover:text-secondary-content inline-block py-2">
             {t("site.terms")}
+          </a>
+          {/* Left as the literal filename: it is a machine-facing entry (the
+              landing page's agents band explains it), and "llms.txt" is what
+              the reader who wants it is looking for. */}
+          <a href="/llms.txt" class="hover:text-secondary-content inline-block py-2 font-mono">
+            llms.txt
           </a>
           <a
             href={GITHUB_URL}

@@ -172,6 +172,19 @@ const en = {
       q6: "Can I self-host it?",
       a6: "Yes. CORX is MIT-licensed TypeScript for Cloudflare Workers, D1 and R2: deploy it to your own account and the quotas, limits and logs are yours. The repository README covers the whole deployment.",
     },
+    // The agent entry. This instance already publishes llms.txt /
+    // llms-full.txt (app/lib/seo.ts); the section is where a *human* finds out.
+    // Its machine-discoverable halves are the <link rel="alternate"> in
+    // SiteHead and the footer link.
+    agents: {
+      title: "Built to be read by agents",
+      sub: "This instance describes itself in llms.txt, so a coding agent can pick up the calling conventions, auth tiers, caching and limits in one fetch instead of reading the site.",
+      indexDesc: "The index: what CORX is, how to call it, and where to look next.",
+      fullDesc: "The full reference in one document: calling shapes, quotas, the security model, self-hosting.",
+      promptLabel: "Or paste this into your agent",
+      prompt: "Read {origin}/llms-full.txt, then use {origin}/fetch?url=<url> to fetch URLs cross-origin.",
+      more: "Also generated for this host:",
+    },
   },
   notfound: {
     title: "404 — Not found · CORX",
@@ -675,6 +688,15 @@ const zh: Messages = {
       a5: "会返回 429 和 Retry-After 头。限额按调用站点、目标站点、整个实例以及每分钟分别计算，命中缓存的请求也计入——配额算的是请求数，而不是上游压力。",
       q6: "可以自托管吗？",
       a6: "可以。CORX 是 MIT 许可的 TypeScript 项目，运行在 Cloudflare Workers + D1 + R2 上：部署到你自己的账号，配额、限额和日志都归你所有。仓库 README 覆盖了完整部署流程。",
+    },
+    agents: {
+      title: "为 agent 而写",
+      sub: "本站点通过 llms.txt 自我描述：编码 agent 一次抓取即可获得调用方式、鉴权层级、缓存策略与限额，无需通读整个站点。",
+      indexDesc: "索引：CORX 是什么、如何调用、接下来看哪里。",
+      fullDesc: "完整参考：调用形态、配额、安全模型与自托管。",
+      promptLabel: "或者把这段粘贴给你的 agent",
+      prompt: "读取 {origin}/llms-full.txt，然后用 {origin}/fetch?url=<url> 跨域抓取 URL。",
+      more: "同样按当前主机名生成：",
     },
   },
   notfound: {

@@ -225,6 +225,36 @@ describe("landing page metadata", () => {
     expect(JSON.stringify(zhFaq)).toContain("CORX 是什么？");
   });
 
+  it("points agents at llms.txt from the page, the head and the footer", async () => {
+    const html = await (await call("/en")).text();
+
+    // The visible band: both files, described, plus a prompt that names this
+    // origin (a self-hosted copy must never hand out the upstream domain).
+    expect(html).toContain('id="agents"');
+    expect(html).toContain("Built to be read by agents");
+    expect(html).toContain('href="/llms.txt"');
+    expect(html).toContain('href="/llms-full.txt"');
+    expect(html).toContain("https://corx.test/llms-full.txt");
+
+    // The machine-discoverable half: llms.txt declared as an alternate
+    // representation, where a crawler reads metadata instead of body text.
+    expect(html).toContain(
+      '<link rel="alternate" type="text/plain" href="https://corx.test/llms.txt" title="llms.txt"/>',
+    );
+
+    // The crawler files the band also advertises stay reachable on this host.
+    expect((await call("/robots.txt")).status).toBe(200);
+    expect((await call("/sitemap.xml")).status).toBe(200);
+
+    // Translated, not just carried over.
+    expect(await (await call("/zh")).text()).toContain("为 agent 而写");
+
+    // The band's padding collapses only when the public-key card above it is
+    // actually rendered (this env has no PUBLIC_KEY), so the cluster reads as
+    // a pair instead of two sections.
+    expect(html).toContain('class="max-w-6xl mx-auto px-4 sm:px-6 pb-20 pt-20"');
+  });
+
   it("locks the structured data against a </script> injection", async () => {
     const html = await (await call("/en")).text();
     const match = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
