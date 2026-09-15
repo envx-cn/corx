@@ -201,6 +201,25 @@ code:not(pre code) {
 
 /* --- Landing page ---------------------------------------------------------- */
 
+/* FAQ accordion. Native <details> on purpose: it needs no island, so the
+   answers are plain text in the initial HTML — which is exactly what an
+   answer engine reads, and the same strings feed the FAQPage JSON-LD. */
+.faq-item {
+  @apply border-t border-base-300;
+}
+.faq-item:last-child {
+  @apply border-b;
+}
+.faq-item .faq-chevron {
+  @apply shrink-0 transition-transform duration-200;
+}
+/* Attribute selector, not `:has()`: Chromium does not invalidate `:has()`
+   styles when `details[open]` flips (same class of bug as the console
+   sidebar — see AGENTS.md). */
+.faq-item[open] .faq-chevron {
+  transform: rotate(180deg);
+}
+
 /* --- 404 page (Cloudflare-style) -------------------------------------------- */
 
 /* Huge status digits (404/500): a solid ink→subtle gradient (no

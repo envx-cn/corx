@@ -20,11 +20,13 @@ const en = {
     publicKey: "Public key",
     features: "Features",
     highlights: "Highlights",
+    faq: "FAQ",
     tagline: "CORS proxy, served from the edge",
     console: "Console",
     terms: "Terms",
     github: "GitHub",
     githubAria: "View the corx source on GitHub",
+    ogAlt: "The CORX wordmark — CORS proxy, served from the edge",
     copyright: "© {year} CORX",
   },
   terms: {
@@ -150,6 +152,25 @@ const en = {
       title: "Ship your first proxy call in 60 seconds",
       sub: "Head to the console, grab an API key, and start fetching.",
       btn: "Open console",
+    },
+    // The FAQ is also emitted as FAQPage JSON-LD from these same strings, so
+    // the answers an answer engine quotes are the answers a human can read.
+    // Keep each one self-contained: it may be quoted without its question.
+    faq: {
+      title: "corx FAQ",
+      sub: "The questions a proxy has to answer before it sees production traffic.",
+      q1: "What is corx?",
+      a1: "corx is an open-source CORS proxy that runs on Cloudflare's edge. Prefix any URL with /fetch?url= and the response comes back with CORS headers, so browser code can read APIs that never set them — with R2 edge caching, rate limiting and SSRF guards built in.",
+      q2: "How do I call it?",
+      a2: "Four equivalent shapes: /fetch?url=<encoded>, /proxy/<url>, /<url> (path style), or subdomain mode where api.example.com becomes api-example-com.<your zone>. GET and HEAD are cached; every other method passes straight through uncached.",
+      q3: "Do I need an API key?",
+      a3: "Not for this hosted instance: copy the public key from this page and send GET/HEAD requests within its daily quotas. Your own deployment can use per-caller keys, keyless access for granted origins, or no auth at all behind its own network.",
+      q4: "Can I send cookies, tokens or personal data?",
+      a4: "Not through the public key: it strips Cookie and Authorization before forwarding, responses may be served from a shared cache, and requests are logged for 30 days. Keep private or authenticated traffic on your own deployment.",
+      q5: "What happens when I hit the limits?",
+      a5: "You get 429 with a Retry-After header. Requests are counted per calling site, per target host, per instance and per minute, and cached responses count too — the quota is about requests, not upstream load.",
+      q6: "Can I self-host it?",
+      a6: "Yes. corx is MIT-licensed TypeScript for Cloudflare Workers, D1 and R2: deploy it to your own account and the quotas, limits and logs are yours. The repository README covers the whole deployment.",
     },
   },
   notfound: {
@@ -510,11 +531,13 @@ const zh: Messages = {
     publicKey: "公共 key",
     features: "功能特性",
     highlights: "亮点功能",
+    faq: "常见问题",
     tagline: "边缘 CORS 代理",
     console: "控制台",
     terms: "使用条款",
     github: "GitHub",
     githubAria: "在 GitHub 上查看 corx 源码",
+    ogAlt: "CORX 标识——边缘 CORS 代理",
     copyright: "© {year} CORX",
   },
   terms: {
@@ -640,6 +663,25 @@ const zh: Messages = {
       title: "60 秒发出你的第一个代理请求",
       sub: "进入控制台，拿到 API 密钥，开始抓取。",
       btn: "打开控制台",
+    },
+    // 同一批文案同时生成 FAQPage JSON-LD（见 app/routes/_landing.tsx），
+    // 因此答案引擎引用到的内容与人类看到的一致。每条答案都写完整：
+    // 它可能被单独摘录，不带着问题一起出现。
+    faq: {
+      title: "常见问题",
+      sub: "在让一个代理承接生产流量之前，它得先回答这些问题。",
+      q1: "corx 是什么？",
+      a1: "corx 是一个运行在 Cloudflare 边缘的开源 CORS 代理。把任意 URL 拼在 /fetch?url= 之后，响应就会带着 CORS 头返回，浏览器代码因此能读取那些没有设置 CORS 的 API——并且自带 R2 边缘缓存、频率限制与 SSRF 防护。",
+      q2: "怎么调用？",
+      a2: "四种等价写法：/fetch?url=<编码后的 URL>、/proxy/<url>、/<url>（路径式），以及子域名模式——api.example.com 变成 api-example-com.<你的域名>。GET 和 HEAD 会被缓存，其他方法一律直接透传。",
+      q3: "需要 API 密钥吗？",
+      a3: "用本托管实例不需要：在页面复制公共 key，在每日配额内向 GET/HEAD 请求即可。自建部署可以用按调用方区分的密钥、为已授权来源开启免密钥访问，或者干脆不鉴权、靠自己的网络隔离。",
+      q4: "可以传递 Cookie、token 或个人信息吗？",
+      a4: "公共 key 不行：它会在转发前剥掉 Cookie 和 Authorization，响应可能来自共享缓存，请求日志保留 30 天。私有或带鉴权的流量请放在你自己的部署上。",
+      q5: "触发限额会怎样？",
+      a5: "会返回 429 和 Retry-After 头。限额按调用站点、目标站点、整个实例以及每分钟分别计算，命中缓存的请求也计入——配额算的是请求数，而不是上游压力。",
+      q6: "可以自托管吗？",
+      a6: "可以。corx 是 MIT 许可的 TypeScript 项目，运行在 Cloudflare Workers + D1 + R2 上：部署到你自己的账号，配额、限额和日志都归你所有。仓库 README 覆盖了完整部署流程。",
     },
   },
   notfound: {

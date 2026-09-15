@@ -2,10 +2,8 @@ import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import type { Env } from "../lib/types.js";
 import { detectLocale, isLocale, makeT } from "../lib/i18n/locale.js";
+import { ABUSE_EMAIL } from "../lib/site-info.js";
 import { TermsPage } from "./_terms.js";
-
-/** Where abuse reports and security issues go (see terms §7). */
-export const ABUSE_EMAIL = "abuse@envx.cn";
 
 const app = new Hono<{ Bindings: Env }>({ strict: false });
 

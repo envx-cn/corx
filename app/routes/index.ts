@@ -73,6 +73,7 @@ function landing(locale?: Locale): Handler<{ Bindings: Env; Variables: ProxyVari
       `<!DOCTYPE html>${LandingPage({
         host: reqUrl.host,
         origin: `${reqUrl.protocol}//${reqUrl.host}`,
+        path: reqUrl.pathname,
         locale: lang,
         t: makeT(lang),
         publicKey: await publicKeyInfo(c.env),

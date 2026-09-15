@@ -38,7 +38,9 @@ export function StatusPage(props: {
   return (
     <html lang={props.locale} data-theme="corx">
       <head>
-        <SiteHead title={props.title} />
+        {/* A 404 / 5xx carries no indexable content, and a soft-404 style
+            "page not found" description is worse than nothing in search. */}
+        <SiteHead title={props.title} noindex />
       </head>
       <body class="bg-base-100 min-h-svh flex flex-col font-sans antialiased">
         <SiteNav locale={props.locale} t={props.t} />

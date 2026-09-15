@@ -13,9 +13,12 @@ import clapperboardSvg from "lucide-static/icons/clapperboard.svg?raw";
 import languagesSvg from "lucide-static/icons/languages.svg?raw";
 import serverSvg from "lucide-static/icons/server.svg?raw";
 import arrowUpRightSvg from "lucide-static/icons/arrow-up-right.svg?raw";
+import chevronDownSvg from "lucide-static/icons/chevron-down.svg?raw";
 import { Lucide } from "../components/lucide.js";
 import { SiteFooter, SiteHead, SiteNav } from "../components/site.js";
 import { HeroX } from "../components/hero-x.js";
+import { GITHUB_URL } from "../lib/site-info.js";
+import { landingAlternates, landingJsonLd, OG_IMAGE, type Faq } from "../lib/seo.js";
 import type { Locale, TFunc } from "../lib/i18n/locale.js";
 import CorsDemo, { type CorsDemoI18n } from "../islands/cors-demo.js";
 import CopyButton from "../islands/copy-button.js";
@@ -31,12 +34,36 @@ import CopyButton from "../islands/copy-button.js";
 export function LandingPage(props: {
   host: string;
   origin: string;
+  /** Request path ("/", "/zh", "/en") — the canonical needs it, since the
+      auto-detecting root must not canonicalise to a specific language. */
+  path: string;
   locale: Locale;
   t: TFunc;
   /** The public tier key + its daily caps, when this instance has one. */
   publicKey?: { key: string; perOrigin: number | null; perHost: number | null; total: number | null };
 }) {
   const { t } = props;
+  // One source for both the visible FAQ and its JSON-LD: schema that disagrees
+  // with the page is worse than no schema at all.
+  const faq: Faq[] = [
+    { q: t("landing.faq.q1"), a: t("landing.faq.a1") },
+    { q: t("landing.faq.q2"), a: t("landing.faq.a2") },
+    { q: t("landing.faq.q3"), a: t("landing.faq.a3") },
+    { q: t("landing.faq.q4"), a: t("landing.faq.a4") },
+    { q: t("landing.faq.q5"), a: t("landing.faq.a5") },
+    { q: t("landing.faq.q6"), a: t("landing.faq.a6") },
+  ];
+  const features = [
+    t("landing.features.simple.title"),
+    t("landing.features.cached.title"),
+    t("landing.features.ssrf.title"),
+    t("landing.features.keys.title"),
+    t("landing.features.analytics.title"),
+    t("landing.features.subdomain.title"),
+    t("landing.features.streaming.title"),
+    t("landing.features.console.title"),
+    t("landing.features.selfHosted.title"),
+  ];
   const demo: CorsDemoI18n = {
     urlAria: t("corsDemo.urlAria"),
     urlPh: t("corsDemo.urlPh"),
@@ -69,6 +96,19 @@ export function LandingPage(props: {
           title={t("landing.title")}
           description={t("landing.meta.description")}
           origin={props.origin}
+          // /zh and /en are real, linkable documents that canonicalise to
+          // themselves; / is the x-default entry point and stays /.
+          canonical={props.path === "/" ? "/" : props.locale === "zh" ? "/zh" : "/en"}
+          alternates={landingAlternates(props.origin)}
+          locale={props.locale}
+          image={{ ...OG_IMAGE, alt: t("site.ogAlt") }}
+          structuredData={landingJsonLd({
+            origin: props.origin,
+            locale: props.locale,
+            description: t("landing.meta.description"),
+            faq,
+            features,
+          })}
         />
         {/* Island hydration entry (the CorsDemo below needs it). */}
         {import.meta.env.PROD ? (
@@ -98,6 +138,9 @@ export function LandingPage(props: {
               </a>
               <a href="#features" class="px-3 py-2 rounded-lg hover:bg-base-200">
                 {t("site.features")}
+              </a>
+              <a href="#faq" class="px-3 py-2 rounded-lg hover:bg-base-200">
+                {t("site.faq")}
               </a>
             </>
           }
@@ -223,6 +266,29 @@ export function LandingPage(props: {
               <Feature icon={clapperboardSvg} title={t("landing.features.streaming.title")} desc={t("landing.features.streaming.desc")} />
               <Feature icon={languagesSvg} title={t("landing.features.console.title")} desc={t("landing.features.console.desc")} />
               <Feature icon={serverSvg} title={t("landing.features.selfHosted.title")} desc={t("landing.features.selfHosted.desc")} />
+            </div>
+          </section>
+
+          {/* FAQ — the middle of the funnel: the objections (quotas, privacy,
+              self-hosting) answered in the open, in copy short enough that an
+              answer engine can quote it. Same strings feed the FAQPage JSON-LD. */}
+          <section id="faq" class="max-w-6xl mx-auto px-4 sm:px-6 py-20">
+            <div class="text-center mb-10">
+              <h2 class="text-2xl sm:text-3xl font-bold tracking-tight">{t("landing.faq.title")}</h2>
+              <p class="mt-2 text-base-content/75">{t("landing.faq.sub")}</p>
+            </div>
+            <div class="mx-auto max-w-3xl">
+              {faq.map((item, i) => (
+                <details class="faq-item" open={i === 0}>
+                  <summary class="flex cursor-pointer list-none items-center justify-between gap-4 py-4 font-semibold [&::-webkit-details-marker]:hidden">
+                    <h3 class="text-base font-semibold">{item.q}</h3>
+                    <span class="faq-chevron text-base-content/75">
+                      <Lucide svg={chevronDownSvg} />
+                    </span>
+                  </summary>
+                  <p class="pb-5 pr-8 text-sm leading-relaxed text-base-content/75">{item.a}</p>
+                </details>
+              ))}
             </div>
           </section>
 
