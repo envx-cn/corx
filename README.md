@@ -652,7 +652,12 @@ app/              HonoX frontend (entry + console UI + API routes)
                 then paints .corx-ink with currentColor and .corx-x with
                 --corx-brand-red, so one file works on light and dark chrome.
                 public/favicon.svg is the square X icon (Vite copies public/
-                into dist/, which wrangler serves at /favicon.svg).
+                into dist/, which wrangler serves at /favicon.svg). The same
+                directory carries one-off root files that must be fetchable
+                verbatim — currently the WeChat domain-verification token at
+                /ba1a95316b1fc4eb1e373ef870dfc69a.txt (a plain 40-byte text
+                file, no trailing newline; Workers Assets answers it before
+                the Worker, so no route or handler is involved).
   styles/       app.css = Tailwind v4 + daisyUI 5 (imported ?inline into
                 <style> by landing + console shell, PostCSS-processed by the
                 build; injected with dangerouslySetInnerHTML). Themes
