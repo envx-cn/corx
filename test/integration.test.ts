@@ -84,6 +84,22 @@ describe("route wiring (integration)", () => {
     // Full-document page: it bypasses the console renderer, so it carries its own doctype.
     expect(html).toContain("<!DOCTYPE html>");
     expect(html).toContain("CORX console");
+    // Logged out there is no topbar, so the page carries its own zh/EN switch
+    // and the document lang follows the resolved locale.
+    expect(html).toContain('<html lang="en"');
+    expect(html).toContain('href="?lang=zh"');
+
+    const zh = await call("/console/login", { headers: { "accept-language": "zh-CN,zh;q=0.9" } });
+    const zhHtml = await zh.text();
+    expect(zhHtml).toContain('<html lang="zh"');
+    expect(zhHtml).toContain("管理员令牌");
+    expect(zhHtml).toContain('href="?lang=en"');
+
+    // …and the same switch flips it back to English.
+    const en = await call("/console/login", {
+      headers: { "accept-language": "zh-CN,zh;q=0.9", cookie: "corx_lang=en" },
+    });
+    expect(await en.text()).toContain("Admin token");
   });
 
   it("serves the landing page in Chinese via /zh and Accept-Language", async () => {
@@ -116,7 +132,10 @@ describe("route wiring (integration)", () => {
     const zh = await call("/console/keys", {
       headers: { cookie: `corx_session=${sessionCookie}; corx_lang=zh` },
     });
-    expect(await zh.text()).toContain("API 密钥");
+    const zhHtml = await zh.text();
+    expect(zhHtml).toContain("API 密钥");
+    // The document language follows the UI language (screen readers, auto-translate).
+    expect(zhHtml).toContain('<html lang="zh"');
   });
 
   it("bounces unauthenticated console pages to login", async () => {

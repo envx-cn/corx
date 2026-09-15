@@ -2,6 +2,7 @@ import type { Child } from "hono/jsx";
 import appCss from "../../styles/app.css?inline";
 import { Sidebar } from "./_sidebar.js";
 import { Topbar } from "./_topbar.js";
+import { LangSwitch } from "./_lang-switch.js";
 import { NAV_ITEMS } from "./_nav.js";
 import type { Locale, TFunc } from "../../lib/i18n/locale.js";
 
@@ -11,9 +12,9 @@ import type { Locale, TFunc } from "../../lib/i18n/locale.js";
  * themselves (login → LoginShell, the error page in app/server.ts) bypass the
  * renderer and must add the doctype at their call site.
  */
-function Doc(props: { title: string; children: Child; scripts?: Child }) {
+function Doc(props: { title: string; locale: Locale; children: Child; scripts?: Child }) {
   return (
-    <html lang="en" data-theme="corx-dash">
+    <html lang={props.locale} data-theme="corx-dash">
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -117,7 +118,7 @@ export function ConsoleLayout(props: {
   scripts?: Child;
 }) {
   return (
-    <Doc title={props.title} scripts={props.scripts}>
+    <Doc title={props.title} locale={props.locale} scripts={props.scripts}>
       <div class="drawer lg:drawer-open">
         <input id="console-drawer" type="checkbox" class="drawer-toggle" />
         <div class="drawer-content flex flex-col min-h-svh">
@@ -141,10 +142,15 @@ export function ConsoleLayout(props: {
   );
 }
 
-export function LoginShell(props: { title: string; children: Child }) {
+export function LoginShell(props: { title: string; locale: Locale; t: TFunc; children: Child }) {
   return (
-    <Doc title={props.title}>
-      <div class="min-h-svh flex items-center justify-center p-4">
+    <Doc title={props.title} locale={props.locale}>
+      <div class="relative min-h-svh flex items-center justify-center p-4">
+        {/* Logged out there is no topbar to carry the switch, so the login
+            page gets its own — same ?lang=… links, same cookie. */}
+        <div class="absolute right-4 top-4">
+          <LangSwitch locale={props.locale} t={props.t} />
+        </div>
         <div class="card w-full max-w-md bg-base-100 shadow-xl">
           <div class="card-body">{props.children}</div>
         </div>

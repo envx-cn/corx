@@ -5,8 +5,8 @@ import { accessDetected, getAdminUser } from "../../lib/access.js";
 import { sessionSecret, signSession } from "../../lib/session.js";
 import { LoginShell } from "./_layout.js";
 import { CorxLogo } from "../../components/logo.js";
-import { consoleT } from "../../lib/i18n/hono.js";
-import type { TFunc } from "../../lib/i18n/locale.js";
+import { consoleLocale, consoleT } from "../../lib/i18n/hono.js";
+import type { Locale, TFunc } from "../../lib/i18n/locale.js";
 
 const app = new Hono<{ Bindings: Env }>({ strict: false });
 
@@ -33,6 +33,7 @@ app.get("/", async (c) => {
     <LoginPage
       accessDetected={accessDetected(c.env, c.req.raw)}
       accessEmail={assertion ? `(${t("console.login.verifying")})` : null}
+      locale={consoleLocale(c)}
       t={t}
     />
   );
@@ -41,10 +42,11 @@ app.get("/", async (c) => {
 
 app.post("/", async (c) => {
   const t = consoleT(c);
+  const locale = consoleLocale(c);
   const form = await c.req.parseBody();
   const fail = (error: string) =>
     c.html(
-      `<!DOCTYPE html>${<LoginPage accessDetected={accessDetected(c.env, c.req.raw)} accessEmail={null} error={error} t={t} />}`,
+      `<!DOCTYPE html>${<LoginPage accessDetected={accessDetected(c.env, c.req.raw)} accessEmail={null} error={error} locale={locale} t={t} />}`,
       401,
     );
 
@@ -70,10 +72,16 @@ app.post("/", async (c) => {
 export default app;
 
 // ---------- Page markup (colocated) ----------
-function LoginPage(props: { accessDetected: boolean; accessEmail: string | null; error?: string; t: TFunc }) {
+function LoginPage(props: {
+  accessDetected: boolean;
+  accessEmail: string | null;
+  error?: string;
+  locale: Locale;
+  t: TFunc;
+}) {
   const { t } = props;
   return (
-    <LoginShell title={t("console.title.login")}>
+    <LoginShell title={t("console.title.login")} locale={props.locale} t={t}>
       <h1 class="card-title">
         <CorxLogo class="h-9" />
         <span class="sr-only">{t("console.login.consoleTitle")}</span>
