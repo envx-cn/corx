@@ -384,6 +384,31 @@ rewritten from `wrangler.jsonc` on each one. That split is why everything that
 isn't a random identifier lives in a secret: the repository stays free of
 personal data, and the deployed values can't be clobbered by a config edit.
 
+### Deploy from CI
+
+`.github/workflows/deploy.yml` is started **by hand** — Actions → Deploy → *Run
+workflow* (pick the branch, optionally tick `skip_migrations`) — so nothing
+reaches production on its own; add `push: { branches: [main] }` under `on:` to
+make merges deploy automatically. A run does: typecheck → tests → contrast check
+→ build → D1 migrations → `wrangler deploy`, and leaves the worker URL and
+version id in the run summary. It needs two values on the organization, both
+**granted to this repository**:
+
+| Kind | Name | Value |
+| --- | --- | --- |
+| secret | `CF_WORKER_TOKEN` | API token with Account → **Workers Scripts: Edit**, **Account Settings: Read**, **D1: Edit** (add Zone → **Workers Routes: Edit** + **Zone: Read** once a custom domain or route is attached) |
+| variable | `CF_ACCOUNT_ID` | the Cloudflare account id |
+
+Wrangler reads them as `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`, which
+the workflow sets. **Worker secrets are not passed through CI** — they live on
+the Worker and every deploy inherits them, so the token is the only credential
+the pipeline needs. Migrations run before each deploy and are idempotent
+(wrangler skips the ones the database has already seen); `skip_migrations` ships
+code without touching the database.
+
+The trade-off of a manual trigger: nothing forces a deploy after a merge, so
+the live version can drift from `main` until you run it.
+
 Dev notes: `npm run dev:worker` runs the production bundle via
 `wrangler dev` (closest to prod). Under `vite` dev, its HMR client script is
 appended to proxied HTML pages — dev-only artifact, production is untouched.
