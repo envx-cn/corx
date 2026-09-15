@@ -11,12 +11,19 @@ export function isLocale(v: string | null | undefined): v is Locale {
   return v === "en" || v === "zh";
 }
 
+/**
+ * The cookie that remembers an explicit language choice. Read here (pure) and
+ * written by `setLangCookie` in ./hono.ts, which is the only writer — the name
+ * has to agree or pages silently fall back to Accept-Language.
+ */
+export const LANG_COOKIE = "corx_lang";
+
 /** Parse the corx_lang cookie out of a raw Cookie header ("" when absent). */
 export function langCookie(cookieHeader: string | null | undefined): string | null {
   if (!cookieHeader) return null;
   for (const part of cookieHeader.split(";")) {
     const [k, ...rest] = part.trim().split("=");
-    if (k === "corx_lang") return rest.join("=") || null;
+    if (k === LANG_COOKIE) return rest.join("=") || null;
   }
   return null;
 }
@@ -58,11 +65,6 @@ export function detectLocaleConsole(src: Omit<LocaleSource, "pathname">): Locale
   const al = firstAcceptLanguage(src.acceptLanguage);
   if (al.startsWith("zh")) return "zh";
   return DEFAULT_LOCALE;
-}
-
-/** Cookie value to remember the chosen language. */
-export function localeCookieValue(locale: Locale): string {
-  return `corx_lang=${locale}`;
 }
 
 export { DEFAULT_LOCALE, LOCALES };

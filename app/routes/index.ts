@@ -6,6 +6,7 @@ import { lookupApiKey } from "../lib/auth.js";
 import { proxyHandler } from "../proxy/handler.js";
 import { resolveRawTarget } from "../proxy/subdomain.js";
 import { detectLocale, makeT, type Locale } from "../lib/i18n/locale.js";
+import { setLangCookie } from "../lib/i18n/hono.js";
 import { LandingPage } from "./_landing.js";
 
 const app = new Hono<{ Bindings: Env; Variables: ProxyVariables }>({ strict: false });
@@ -67,6 +68,16 @@ function landing(locale?: Locale): Handler<{ Bindings: Env; Variables: ProxyVari
       cookie: c.req.header("cookie"),
       acceptLanguage: c.req.header("accept-language"),
     });
+    // An explicit /zh or /en URL is a language *choice*, not just this page's
+    // language: remember it, so /terms and the console — which have no URL
+    // prefix — follow what the reader was just looking at instead of their
+    // browser's Accept-Language. `/` deliberately writes nothing: it is the
+    // auto-detecting entry point, not a choice.
+    if (locale) setLangCookie(c, lang);
+    // Rendered per request (origin, language, the D1 public key) and pinned by
+    // a cookie, so it must not land in a shared cache in any of those shapes.
+    c.header("Cache-Control", "private, max-age=0, must-revalidate");
+    c.header("Vary", "Accept-Language, Cookie");
     // Plain call (not JSX) so this handler file stays .ts. c.html() doesn't add
     // a doctype; prepend one so browsers stay in standards mode.
     return c.html(

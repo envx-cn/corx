@@ -266,12 +266,24 @@ exempt).
 
 The landing (and the 404 / error pages) are **bilingual (English / 中文)**: `/en` and
 `/zh` URL prefixes force a language; without a prefix it's resolved from the
-`corx_lang` cookie, then the `Accept-Language` header. The nav has a zh / EN
-switch plus a GitHub link to the source repo (the footer repeats it as a text
-link). All UI copy lives in `app/lib/i18n/messages.ts` (en + zh dictionaries)
-and is looked up through the typed `t()` from `app/lib/i18n/locale.ts`. API
-error messages are intentionally **not** translated (developer-facing wire
-format).
+`corx_lang` cookie, then the `Accept-Language` header.
+
+An explicit choice is **remembered**: the `/en` and `/zh` prefixes, and every
+`?lang=…` switch (nav, `/terms`, console), write the cookie — so the pages that
+have no URL prefix (`/terms`, `/console/*`) and the console follow the language
+you were just reading rather than your browser's `Accept-Language`. Reading the
+English landing and clicking *Terms* used to land on a Chinese document whenever
+`Accept-Language` said 中文. `/` writes nothing: it is the auto-detecting entry
+point, not a choice. `setLangCookie` (`app/lib/i18n/hono.ts`) is the only
+writer, so the name and lifetime can't drift from the reader in `locale.ts`, and
+the public HTML is `Cache-Control: private` + `Vary: Accept-Language, Cookie`
+so no intermediary caches one reader's language.
+
+The nav has a zh / EN switch plus a GitHub link to the source repo (the footer
+repeats it as a text link). All UI copy lives in `app/lib/i18n/messages.ts`
+(en + zh dictionaries) and is looked up through the typed `t()` from
+`app/lib/i18n/locale.ts`. API error messages are intentionally **not**
+translated (developer-facing wire format).
 
 ## SEO and GEO
 

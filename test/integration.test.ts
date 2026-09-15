@@ -124,6 +124,43 @@ describe("route wiring (integration)", () => {
     expect(zhHtml).toContain('href="https://github.com/envx-cn/corx"');
   });
 
+  it("remembers an explicit /zh or /en URL in the language cookie", async () => {
+    // The prefixes are a *choice*, not just this page's language: /terms and the
+    // console have no prefix and read the cookie, so without this an English
+    // landing page could hand a 中文-preferring browser a Chinese Terms page.
+    for (const [path, lang] of [["/en", "en"], ["/zh", "zh"]] as const) {
+      const res = await call(path);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("set-cookie"), path).toContain(`corx_lang=${lang}`);
+    }
+    // `/` auto-detects: pinning it would freeze the first guess in the cookie.
+    expect((await call("/")).headers.get("set-cookie")).toBeNull();
+  });
+
+  it("keeps /terms in the language the reader just came from", async () => {
+    // English landing on a browser that prefers 中文: the URL prefix wins for
+    // the landing, and the cookie it sets has to win for /terms too.
+    const landing = await call("/en", { headers: { "accept-language": "zh-CN,zh;q=0.9" } });
+    expect(await landing.text()).toContain("without CORS.");
+    const cookie = landing.headers.get("set-cookie")!.split(";")[0]!;
+    expect(cookie).toBe("corx_lang=en");
+    const terms = await call("/terms", { headers: { cookie, "accept-language": "zh-CN,zh;q=0.9" } });
+    expect(await terms.text()).toContain("Terms of use");
+
+    // ...and the mirror image: Chinese landing, English-preferring browser.
+    const zhLanding = await call("/zh", { headers: { "accept-language": "en-US,en;q=0.9" } });
+    const zhCookie = zhLanding.headers.get("set-cookie")!.split(";")[0]!;
+    const zhTerms = await call("/terms", { headers: { cookie: zhCookie, "accept-language": "en-US,en;q=0.9" } });
+    expect(await zhTerms.text()).toContain("使用条款");
+  });
+
+  it("?lang= on /terms sets the cookie and bounces back to the clean URL", async () => {
+    const res = await call("/terms?lang=zh");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/terms");
+    expect(res.headers.get("set-cookie")).toContain("corx_lang=zh");
+  });
+
   it("?lang= switches the console language via cookie + redirect", async () => {
     const res = await call("/console/keys?lang=zh", {
       headers: { cookie: `corx_session=${sessionCookie}` },

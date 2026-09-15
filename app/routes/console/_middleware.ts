@@ -1,7 +1,7 @@
 import type { MiddlewareHandler } from "hono";
 import type { Context } from "hono";
-import { setCookie } from "hono/cookie";
 import { getAdminUser } from "../../lib/access.js";
+import { setLangCookie } from "../../lib/i18n/hono.js";
 import type { Env } from "../../lib/types.js";
 
 const PUBLIC_PATHS = ["/console/login", "/console/logout"];
@@ -14,7 +14,7 @@ const PUBLIC_PATHS = ["/console/login", "/console/logout"];
 const langSwitch: MiddlewareHandler = async (c, next) => {
   const q = c.req.query("lang");
   if (q === "zh" || q === "en") {
-    setCookie(c, "corx_lang", q, { path: "/", maxAge: 365 * 24 * 3600, sameSite: "Lax" });
+    setLangCookie(c, q);
     const u = new URL(c.req.url);
     u.searchParams.delete("lang");
     return c.redirect(`${u.pathname}${u.search}`, 302);
