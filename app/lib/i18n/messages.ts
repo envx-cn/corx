@@ -23,6 +23,8 @@ const en = {
     tagline: "CORS proxy, served from the edge",
     console: "Console",
     terms: "Terms",
+    github: "GitHub",
+    githubAria: "View the corx source on GitHub",
     copyright: "© {year} CORX",
   },
   terms: {
@@ -511,6 +513,8 @@ const zh: Messages = {
     tagline: "边缘 CORS 代理",
     console: "控制台",
     terms: "使用条款",
+    github: "GitHub",
+    githubAria: "在 GitHub 上查看 corx 源码",
     copyright: "© {year} CORX",
   },
   terms: {
