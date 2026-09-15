@@ -222,6 +222,18 @@ also covers its subdomains.
 - WCAG AA contrast floor (`text-base-content/75`, plus overrides for daisyUI's
   own `/55–60` table-head and `.label-text` defaults), ≥24px form controls in
   the playground/logs filters.
+- **Focus treatment** (`app/styles/app.css`): daisyUI 5 rings focused controls
+  with 2px of `--input-color` offset 2px *outside* the control, which in this
+  palette is a near-black box. Text-entry controls (`.input`, `.textarea`,
+  `.select`) drop the ring and keep the darker focused border instead, so a
+  select sitting beside a text input looks the same on focus as it does. The
+  `.select:open` rule is separate and deliberate — that is the state a *mouse*
+  click produces (the popup being open, with `:focus` and `:focus-visible` both
+  false), and an unsupported `:open` in a comma-separated selector would
+  invalidate the whole rule, taking the input and textarea fixes with it.
+  Controls with no border to darken (`.checkbox`, `.radio`, `.toggle`,
+  `.range`, `.file-input`) and `.btn` keep a ring — it is their only focus
+  affordance — recoloured to the brand red.
 - Errors keep the shell for authenticated console requests; the login page and
   unauthenticated paths get the standalone branded document.
 

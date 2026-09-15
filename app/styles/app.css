@@ -183,14 +183,38 @@ code:not(pre code) {
   @apply bg-black/15 border-black/10 text-inherit;
 }
 
-/* daisyUI 5 outlines focused inputs/textareas with 2px of --color-base-content
-   (a black box in this theme). The console wants the quiet look: just the
-   darker focused border, no ring. */
+/* daisyUI 5 outlines focused controls with 2px of `--input-color` (the base
+   content ink — a near-black box here), drawn 2px *outside* the control. Two
+   different fixes, because the two groups need different things:
+
+   Text-entry controls (input, textarea, select) drop the ring entirely and keep
+   the darker focused border, which is the console's quiet look.
+
+   Controls with no border to darken (checkbox, radio, toggle, range, file
+   input) and buttons keep a ring, because the ring *is* their only focus
+   affordance — but in the brand red rather than near-black. daisyUI already
+   colours a `.btn-primary` ring with its variant; ghost/outline buttons fell
+   back to the base content ink and looked like the same bug. */
 .input:focus,
 .input:focus-within,
 .textarea:focus,
-.textarea:focus-within {
+.textarea:focus-within,
+.select:focus,
+.select:focus-within {
   outline: none;
+}
+/* A separate rule on purpose: `.select:open` (the native popup being open) has
+   its own daisyUI rule, and it is the state a *mouse* click produces —
+   `:focus`/`:focus-visible` are both false then, so the select beside a focused
+   text input was the one that still drew a box. Kept out of the list above
+   because an unsupported `:open` in a comma-separated selector invalidates the
+   whole rule, which would take the input and textarea fixes with it. */
+.select:open {
+  outline: none;
+}
+:where(.checkbox, .radio, .toggle, .range, .file-input):focus-visible,
+.btn:focus-visible {
+  outline-color: var(--color-primary);
 }
 
 /* lucide inline icons (console chrome) */
