@@ -3,7 +3,7 @@
 Complete inventory of what the code actually implements, grouped by area.
 Derived from the source at the time of writing (`main`, post PR #14); every
 area lists the files it lives in. `npm run check` (tsc) and `npm test`
-(207 tests / 16 suites) pass for all of it.
+(298 tests / 21 suites) pass for all of it.
 
 See [README.md](./README.md) for usage, config and deployment; this file is the
 map, not the manual.
@@ -17,7 +17,8 @@ map, not the manual.
 | Routing modes | `?url=` on any proxy route (canonical), `/proxy/<url>`, `/<url>` (bare path), path form of `/fetch/<url>`, and DNS subdomain mode `<encoded-host>.<zone>/…` (`PROXY_ZONE`, auto-detect when blank). Precedence: `?url=` → path → subdomain. |
 | Subdomain encoding | `.` → `-`, `-` → `--` (lossless), bare label gets `.com`, reserved labels (`www`, `admin`, `console`, `api`, `health`, `status`) never decode, 63-char DNS cap → 400. |
 | Methods | Any method (`/fetch`, `/proxy/*` and the `/*` fallback are `app.all`). `OPTIONS` is answered by the CORS preflight before the handler runs. |
-| Control params | `ttl`, `no-cache`, `key`, `corx-scheme`, `corx-port` are consumed by corx and stripped from every target form (targets can never shadow them). |
+| Control params | `ttl`, `no-cache`, `key`, `corx-scheme`, `corx-port` are consumed by corx and stripped from every target form (targets can never shadow them); `callback` is consumed only when JSONP is requested. |
+| JSONP | `?callback=fn` wraps an `application/json` response as `fn(<json>);` (`application/javascript`, `nosniff`, 2 MiB cap, body validated with `JSON.parse`). Errors are wrapped too, the name must be a JS identifier path, and the cache is always bypassed (the callback name lives in the body). |
 | Request hygiene | Hop-by-hop + proxy-owned headers stripped (`Host`, `Connection`, `Upgrade`, `TE`, `X-Forwarded-For`, `CF-*`, `Origin`, `Referer`, …); `X-Forwarded-For` + `X-Proxied-By: corx` added; upstream asked for `accept-encoding: identity`. |
 | Upstream request | Buffered body (early `Content-Length` check, then a buffered cap; a body that fails to read is a 400 — never forwarded empty), shared `AbortController` bounded by `TIMEOUT_MS`; one 300 ms retry on transient `fetch` failure for GET/HEAD only (idempotent methods). |
 | Redirects | `follow` by default; `manual` whenever a key injects headers/rules or declares allowed hosts (a cross-origin redirect must not carry custom secret headers). In-scope hops are re-validated (blocklist + DNS) and re-scoped per rule; a hop outside the allowlist is returned to the caller with an absolute `Location` and never fetched; max 5 hops; `POST`→`GET` on 301/302/303. |
@@ -145,6 +146,13 @@ Files: `app/proxy/cache.ts`, `app/proxy/handler.ts`.
 - Secret hygiene: `request_logs.target_url` is the pre-injection URL, logs
   carry only the host + `injected` flag, variable values are masked on every
   read path, and the playground preview masks values as `***`.
+- **Encrypted at rest** (`app/lib/crypto.ts`): with `INJECTION_KEK` set, each
+  variable value is AES-256-GCM ciphertext (`enc:v1:<b64u(iv‖ct)>`), key derived
+  from the secret with HKDF-SHA256. Names/rules/hosts stay readable (the console
+  needs them). The request path decrypts at the D1 boundary and **fails closed**
+  (drops injection) if a value can't be read; edit paths throw a 400 instead of
+  overwriting a secret they can't see; values written before the KEK existed are
+  plaintext and re-encrypted on the next save.
 - Manual redirect handling is force-enabled for injecting keys (see §1).
 
 Files: `app/proxy/inject.ts`, `app/lib/admin.ts`, `app/routes/console/keys.tsx`,
@@ -289,7 +297,7 @@ Files: `app/lib/access.ts`, `app/lib/session.ts`,
   `db:seed:public` (local public-tier key so `/` shows the key card),
   `bucket:create`, `cf-typegen`, `check` (tsc), `test` (vitest),
   `check:contrast` (WCAG AA guard: theme tokens + a low-opacity text scan).
-- 265 tests across 19 suites covering the guard/IP/DNS layers, cache policy,
+- 298 tests across 21 suites covering the guard/IP/DNS layers, cache policy,
   injection grammar, key admin + keyless grants + public-tier policy, daily
   quotas, CORS origins, subdomain encoding, media/Range, playground, stats
   bucketing, i18n, the terms page and the assembled app (error pages, JSON
@@ -364,6 +372,9 @@ flagged has been fixed below.
 5. **The landing page reads D1 once per view** when `PUBLIC_KEY` is set (to
    render the enforced caps). Cheap, but it is a real read on a page that is
    otherwise static.
+6. **No KEK rotation.** Changing `INJECTION_KEK` makes existing ciphertext
+   unreadable (injection fails closed, edits are refused). Recovering means
+   re-entering the values on each key; a re-wrap migration script would fix it.
 
 ## Review follow-ups (fixed)
 

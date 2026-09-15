@@ -36,13 +36,16 @@ Options:
 | --- | --- |
 | `?ttl=300` | R2 cache TTL in seconds for this GET (capped at the global `CACHE_TTL_SECONDS` so anonymous callers can't pin entries for 24h) |
 | `?no-cache=1` | Bypass R2 cache |
+| `?callback=cb` | JSONP: wrap the JSON body as `cb(<json>);` for a `<script>` tag (see below) |
 
 Pass an API key with `X-Api-Key`, `Authorization: Bearer …`, or `?key=…`
 (required when `REQUIRE_API_KEY=true`).
 
 **Reserved query params** (`ttl`, `no-cache`, `key`, `corx-scheme`, `corx-port`) are
 consumed by the proxy and stripped from the target in every mode — don't use
-them as real params of the sites you proxy.
+them as real params of the sites you proxy. `callback` is consumed only when
+it is present (that's what turns the response into JSONP — see below); without
+it, a target's own `callback` param passes through untouched.
 
 Per-key cache policy (console → API keys, or `PATCH /api/keys/:id`): each key
 can set its own default TTL (`cacheTtl`, blank = global `CACHE_TTL_SECONDS`,
@@ -58,6 +61,28 @@ round-trip is what trusted internal keys may want to drop). The D1 blocklist
 (a blocked domain also covers its subdomains) and Cloudflare's own private-IP
 rules for Workers are never bypassed. Skipping
 a guard widens what that key can reach, so both default to on.
+
+**JSONP (`?callback=fn`)**
+
+When a strict CSP blocks `fetch`/XHR, or the page runs in a sandboxed
+`null`-origin context, a plain `<script>` tag still works — JSONP is the way
+in. Pass `?callback=fn` on a proxy request to a JSON endpoint and corx answers
+with `fn(<json>);` (a leading `/* */` comment, then the call):
+
+```html
+<script>
+  function cb(data) { console.log(data); }
+</script>
+<script src="https://corx.example/fetch?url=https://api.example.com/data&callback=cb"></script>
+```
+
+- The callback name must be a JS identifier path (`cb`, `window.app.onData`) —
+  anything with quotes, brackets or whitespace is rejected at parse time.
+- The upstream response must be JSON (`application/json`, `+json`, …); anything
+  else is a 400. Errors are wrapped too, so the callback fires with `{ error }`
+  instead of dying on a syntax error, and the body is capped at 2 MiB.
+- JSONP responses are never cached (the callback name lives in the body), so
+  each request hits upstream and is metered/rate-limited like any miss.
 
 **Upstream injection (per key)**
 
@@ -75,7 +100,7 @@ forwarding — the browser never holds the upstream secret:
   line order.
 - Hop-by-hop and proxy-owned headers (`Host`, `Content-Length`,
   `X-Forwarded-For`, `Accept-Encoding`, `CF-*`, …) and the reserved
-  `ttl`/`no-cache`/`key`/`corx-scheme`/`corx-port` query params are rejected at
+  `ttl`/`no-cache`/`key`/`corx-scheme`/`corx-port`/`callback` query params are rejected at
   save time, as are unknown `${VAR}` references.
 - **Allowed target hosts** is mandatory once anything is injected: the key can
   only reach those hosts (exact, `*.suffix`, or an explicit `*`). This is the
@@ -94,6 +119,13 @@ forwarding — the browser never holds the upstream secret:
 - Secrets stay out of logs and errors: `target_url` in `request_logs` is the
   pre-injection URL, `X-Corx-Target` carries only the host, and variable values
   are masked on every read path (`GET /api/keys` returns names only).
+- **Encrypted at rest:** with `INJECTION_KEK` set (a `wrangler secret`), variable
+  values are stored as AES-256-GCM ciphertext — HKDF derives the key from the
+  secret, each value gets its own random IV, and only names are readable in D1.
+  Values written before the KEK existed stay plaintext and are re-encrypted on
+  the next save. If the KEK is missing or wrong, injection is dropped (the
+  request still works, but with no secret attached) and edits are refused rather
+  than overwriting secrets that can't be read.
 
 **Keyless access (per key)**
 
@@ -306,7 +338,7 @@ npm run db:create        # paste the database_id into wrangler.jsonc
 npm run bucket:create
 
 # 2. Local dev (vite + Cloudflare adapter: D1/R2 bindings work locally)
-cp .dev.vars.example .dev.vars   # set ADMIN_TOKEN
+cp .dev.vars.example .dev.vars   # set ADMIN_TOKEN (+ INJECTION_KEK to encrypt secrets)
 npm run db:migrate:local
 npm run db:seed:public           # optional: public-tier key, so / shows the key card
 npm run dev              # vite on :5173 (set PORT to change)
@@ -314,6 +346,7 @@ npm run dev              # vite on :5173 (set PORT to change)
 # 3. Deploy (always through the vite build — wrangler serves ./dist)
 npm run db:migrate
 npx wrangler secret put ADMIN_TOKEN
+npx wrangler secret put INJECTION_KEK   # optional: encrypt injected secrets at rest
 npm run deploy           # = vite build (client + worker) && wrangler deploy
 ```
 
@@ -334,6 +367,7 @@ appended to proxied HTML pages — dev-only artifact, production is untouched.
 | `MAX_BODY_BYTES` | `10485760` | Max forwarded request body (early Content-Length check, then a buffered cap; an unreadable body is rejected, never forwarded empty) |
 | `ADMIN_TOKEN` (secret) | — | Bearer token for `/api/*`; legacy HMAC key for console sessions |
 | `SESSION_SECRET` (secret) | — | HMAC key for console session cookies (falls back to `ADMIN_TOKEN`) |
+| `INJECTION_KEK` (secret) | — | Encrypts injected variable values at rest (AES-256-GCM via HKDF). Empty = plaintext. Losing it makes stored secrets unreadable |
 | `ACCESS_TEAM_DOMAIN` | `""` | Cloudflare Access team domain (enables Access login) |
 | `ACCESS_AUD` | `""` | Access application AUD tag |
 | `ADMIN_EMAILS` | `""` | Optional comma-separated allowlist for admin access |

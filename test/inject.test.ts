@@ -131,7 +131,7 @@ describe("parseRulesInput (query params)", () => {
       { action: "set", name: "api_key", value: "${TOKEN}" },
       { action: "remove", name: "debug" },
     ]);
-    for (const reserved of ["ttl", "no-cache", "key", "corx-scheme", "corx-port"]) {
+    for (const reserved of ["ttl", "no-cache", "key", "corx-scheme", "corx-port", "callback"]) {
       expect(() => parseRulesInput(`${reserved} = 1`, "param", NAMES), reserved).toThrowError(ProxyError);
     }
     expect(() => parseRulesInput("a b = 1", "param", NAMES)).toThrowError(/invalid query param name/);

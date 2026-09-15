@@ -19,6 +19,11 @@ export interface Env {
   ADMIN_TOKEN?: string;
   /** Session-cookie signing secret (set via `wrangler secret put SESSION_SECRET`). Falls back to ADMIN_TOKEN. */
   SESSION_SECRET?: string;
+  /**
+   * KEK for injected variable values at rest (set via `wrangler secret put INJECTION_KEK`).
+   * Any sufficiently long random string. Empty = values stored as plaintext.
+   */
+  INJECTION_KEK?: string;
   /** Cloudflare Access team domain, e.g. https://myteam.cloudflareaccess.com */
   ACCESS_TEAM_DOMAIN?: string;
   /** Access application AUD tag. */

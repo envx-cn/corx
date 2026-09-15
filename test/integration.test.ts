@@ -588,3 +588,97 @@ describe("proxy wiring (integration)", () => {
     expect(await res.json()).toEqual({ logs: [] });
   });
 });
+
+describe("JSONP (integration)", () => {
+  /** fetch stub: answers DoH, returns `res` for the target. */
+  function stubUpstream(res: () => Response) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes("cloudflare-dns.com")) {
+          return new Response(JSON.stringify({ Answer: [{ type: 1, data: "1.2.3.4" }] }), { status: 200 });
+        }
+        return res();
+      }),
+    );
+  }
+
+  it("wraps a JSON response as a script call", async () => {
+    stubUpstream(() => new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } }));
+    const res = await call("/fetch?url=https://api.example.com/data&callback=cb");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/javascript");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await res.text()).toBe('/**/ cb({"ok":true});\n');
+  });
+
+  it("wraps errors too, so the script callback still fires", async () => {
+    stubUpstream(() => new Response("not json", { status: 200, headers: { "content-type": "text/plain" } }));
+    const res = await call("/fetch?url=https://api.example.com/data&callback=cb");
+    expect(res.status).toBe(400);
+    const text = await res.text();
+    expect(text.startsWith("/**/ cb(")).toBe(true);
+    const payload = text.slice(text.indexOf("(") + 1, text.lastIndexOf(")"));
+    expect(JSON.parse(payload)).toMatchObject({ error: expect.stringContaining("JSONP needs a JSON response") });
+  });
+
+  it("returns a plain JSON 400 for an invalid callback name", async () => {
+    const res = await call("/fetch?url=https://api.example.com/data&callback=1bad");
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining("Invalid JSONP callback") });
+  });
+
+  it("never caches a JSONP body (the callback is caller-specific)", async () => {
+    stubUpstream(() => new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } }));
+    const puts: unknown[] = [];
+    const bucket = {
+      get: async () => null,
+      put: async (...args: unknown[]) => {
+        puts.push(args);
+      },
+      list: async () => ({ objects: [] }),
+      delete: async () => undefined,
+    };
+    const res = await call(
+      "/fetch?url=https://api.example.com/data&callback=cb",
+      {},
+      { ...env, CACHE_BUCKET: bucket } as unknown as Env,
+    );
+    expect(res.status).toBe(200);
+    expect(puts).toHaveLength(0);
+  });
+
+  /** fetch stub that records the upstream URL it was asked for. */
+  function recordUpstream(res: () => Response): string[] {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes("cloudflare-dns.com")) {
+          return new Response(JSON.stringify({ Answer: [{ type: 1, data: "1.2.3.4" }] }), { status: 200 });
+        }
+        calls.push(url);
+        return res();
+      }),
+    );
+    return calls;
+  }
+
+  it("leaves a target's own callback param alone when JSONP isn't requested", async () => {
+    const calls = recordUpstream(() => new Response("x", { status: 200 }));
+    const target = encodeURIComponent("https://api.example.com/x?callback=upstream");
+    await call(`/fetch?url=${target}`);
+    expect(calls[0]).toContain("callback=upstream");
+  });
+
+  it("does not forward the JSONP callback to the upstream", async () => {
+    const calls = recordUpstream(
+      () => new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } }),
+    );
+    await call("/https://api.example.com/x?callback=cb");
+    expect(calls[0]).not.toContain("callback");
+  });
+});

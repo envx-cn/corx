@@ -35,7 +35,7 @@ export async function runPlayground(c: Ctx, spec: PlaygroundSpec): Promise<Playg
   // Resolve a stored key up front: a missing/revoked key is a clean console
   // error rather than a half-run, and the row lets us preview the injection
   // that the handler will apply. Raw key values never leave the worker.
-  const storedRow = spec.keyMode === "stored" ? await queryKeyById(c.env.DB, spec.keyId) : null;
+  const storedRow = spec.keyMode === "stored" ? await queryKeyById(c.env.DB, spec.keyId, c.env.INJECTION_KEK) : null;
   if (spec.keyMode === "stored" && (!storedRow || storedRow.revoked_at)) {
     throw new ProxyError(400, "Selected key was not found or is revoked");
   }

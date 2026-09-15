@@ -1,6 +1,7 @@
 import type { ApiKeyRow, Env } from "./types.js";
 import { ProxyError } from "./types.js";
 import { hashKey, newRawKey } from "./auth.js";
+import { decryptRowInjection, decryptVarsForEdit, encryptVars } from "./crypto.js";
 import { normalizeOriginsInput, parseOrigins } from "../proxy/cors.js";
 import { normalizeCacheTtlInput } from "../proxy/cache.js";
 import {
@@ -217,13 +218,15 @@ export async function queryKeys(db: D1Database): Promise<KeyRow[]> {
 }
 
 /** One key row by id (console playground selects a key without its raw value). */
-export async function queryKeyById(db: D1Database, id: string): Promise<ApiKeyRow | null> {
-  return db
+export async function queryKeyById(db: D1Database, id: string, kek?: string): Promise<ApiKeyRow | null> {
+  const row = await db
     .prepare(
       "SELECT id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, created_at, revoked_at FROM api_keys WHERE id = ?",
     )
     .bind(id)
     .first<ApiKeyRow>();
+  // The playground pins this row into the real handler — it needs plaintext.
+  return row ? decryptRowInjection(kek, row) : null;
 }
 
 /** Variable values never leave the server — mask them on every read path. */
@@ -389,7 +392,7 @@ async function writeOriginGrants(db: D1Database, keyId: string, origins: string[
   }
 }
 
-export async function createApiKey(db: D1Database, input: KeyInput): Promise<{ id: string; key: string }> {
+export async function createApiKey(db: D1Database, input: KeyInput, kek?: string): Promise<{ id: string; key: string }> {
   const raw = newRawKey();
   const id = crypto.randomUUID();
   const allowedOrigins = normalizeOriginsInput(input.allowedOrigins ?? "");
@@ -401,7 +404,8 @@ export async function createApiKey(db: D1Database, input: KeyInput): Promise<{ i
   const dailyLimitPerHost = parseDailyLimit(input.dailyLimitPerHost, "per-host");
   const dailyLimitTotal = parseDailyLimit(input.dailyLimitTotal, "total");
   const injection = buildInjection(input, { vars: [], headers: [], params: [], hosts: [] });
-  const stored = serializeInjection(injection);
+  // Values are encrypted at rest (names/rules stay readable); no KEK = plaintext passthrough.
+  const stored = serializeInjection({ ...injection, vars: await encryptVars(kek, injection.vars) });
   const grants = keylessGrants(keyless, allowedOrigins ?? "", ipCheck, dnsCheck);
   assertPublicPolicy(tier, injection, ipCheck, dnsCheck, dailyLimitTotal);
   if (grants.length) await assertOriginGrantsFree(db, grants, id);
@@ -475,7 +479,7 @@ interface CurrentKey {
   daily_limit_total: number | null;
 }
 
-export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate): Promise<void> {
+export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate, kek?: string): Promise<void> {
   const touchesInjection =
     update.vars !== undefined ||
     update.headerRules !== undefined ||
@@ -503,6 +507,14 @@ export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate
       .bind(id)
       .first<CurrentKey>();
     if (!current) throw new ProxyError(404, "Key not found");
+    // Merge against plaintext only when the injection fields are being edited:
+    // a blank editor value keeps the stored secret, and an already-encrypted
+    // blob must not be encrypted twice. A value that can't be decrypted is an
+    // error — silently overwriting it would destroy secrets. Untouched
+    // injection (a rename, a rate-limit change) never needs the KEK.
+    if (touchesInjection) {
+      current = { ...current, vars: JSON.stringify(await decryptVarsForEdit(kek, readStoredInjection(current).vars)) };
+    }
   }
   let parts: InjectionParts | null = current ? readStoredInjection(current) : null;
 
@@ -538,7 +550,7 @@ export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate
   }
   if (touchesInjection) {
     parts = buildInjection(update, readStoredInjection(current));
-    const stored = serializeInjection(parts);
+    const stored = serializeInjection({ ...parts, vars: await encryptVars(kek, parts.vars) });
     sets.push("vars = ?", "header_rules = ?", "param_rules = ?", "allowed_hosts = ?");
     values.push(stored.vars, stored.headerRules, stored.paramRules, stored.allowedHosts);
   }

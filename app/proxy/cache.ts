@@ -1,6 +1,7 @@
 import type { CachedEntry, Env } from "../lib/types.js";
 import { ProxyError } from "../lib/types.js";
 import { sha256Hex, num } from "../lib/utils.js";
+import { JSONP_PARAM } from "./jsonp.js";
 
 const PREFIX = "corx/v1/";
 
@@ -72,6 +73,9 @@ export function shouldBypassCache(req: Request, reqUrl: URL, keyRow?: KeyCachePo
   // leak across callers. See handler.ts for the same rule on the write side.
   if (req.headers.has("authorization") || req.headers.has("cookie")) return true;
   if (reqUrl.searchParams.get("no-cache") === "1") return true;
+  // JSONP wraps the body per-caller (the callback name is in the response), so
+  // it must never read or write an entry keyed on the URL alone.
+  if (reqUrl.searchParams.has(JSONP_PARAM)) return true;
   if (req.headers.get("cache-control")?.includes("no-cache")) return true;
   return false;
 }

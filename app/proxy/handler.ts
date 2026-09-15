@@ -6,6 +6,7 @@ import { normalizeOrigin } from "../lib/auth.js";
 import { validateTargetUrl, checkDbBlocklist } from "./guard.js";
 import { resolveRawTarget } from "./subdomain.js";
 import { assertPublicHost } from "./dns-check.js";
+import { JSONP_MAX_BYTES, JSONP_PARAM, isJsonContentType, jsonpCallback, jsonpHeaders, wrapJsonp } from "./jsonp.js";
 import {
   applyHeaderRules,
   applyParamRules,
@@ -141,6 +142,9 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
   let injected = false;
   let reqBytes = c.req.method === "GET" || c.req.method === "HEAD" ? reqUrl.toString().length : 0;
   let resBytes: number | null = null;
+  // Set once `?callback=` parses. Declared outside the try so even an error
+  // response can be wrapped for a <script> caller (see the catch below).
+  let jsonpName: string | null = null;
 
   const finish = (status: number | null, error = "") => {
     c.executionCtx.waitUntil(
@@ -175,6 +179,14 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
   };
 
   try {
+    // JSONP first: `?callback=fn` turns the JSON body into a script call. A
+    // bad callback name is a 400; an error after this point is still wrapped
+    // so the caller's function receives { error } instead of a syntax error.
+    jsonpName = jsonpCallback(reqUrl);
+    if (jsonpName && c.req.method !== "GET" && c.req.method !== "HEAD") {
+      throw new ProxyError(400, "JSONP only supports GET and HEAD");
+    }
+
     // Per-key SSRF opt-outs (api_keys.ip_check / dns_check, both default on).
     // Read the row before the guards so a key can skip them.
     const row = c.get("apiKey");
@@ -196,6 +208,10 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       }
     }
     const url = validateTargetUrl(rawTarget, { ipCheck: row?.ip_check !== 0 });
+    // JSONP consumes the caller's `callback` — never let it also reach upstream
+    // (which may itself speak JSONP). With no `callback` on the proxy request
+    // the param is untouched, so proxying a JSONP API still works.
+    if (jsonpName) url.searchParams.delete(JSONP_PARAM);
     // Log the pre-injection URL: injected params may carry secrets.
     target = url.toString();
     host = url.hostname;
@@ -445,6 +461,37 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
 
       // Non-cacheable responses (Range/206, non-GET, bypassed, no-store/private,
       // vary-dependent) stream untouched — no OOM, no wrong cache sharing.
+      if (jsonpName) {
+        if (!isJsonContentType(upstream.headers.get("content-type"))) {
+          throw new ProxyError(
+            400,
+            `JSONP needs a JSON response (got ${upstream.headers.get("content-type") ?? "no content-type"})`,
+          );
+        }
+        const jsonpResHeaders = jsonpHeaders();
+        jsonpResHeaders.set("X-Corx-Cache", "MISS");
+        jsonpResHeaders.set("X-Corx-Target", host);
+        jsonpResHeaders.set("X-Corx-Latency-Ms", String(Date.now() - started));
+        if (c.req.method === "HEAD") {
+          finish(upstream.status);
+          return withPending(new Response(null, { status: upstream.status, headers: jsonpResHeaders }));
+        }
+        const bounded = await readBounded(upstream.body, JSONP_MAX_BYTES);
+        if ("stream" in bounded) {
+          throw new ProxyError(413, `JSONP response exceeds ${JSONP_MAX_BYTES} bytes — use fetch instead`);
+        }
+        try {
+          JSON.parse(new TextDecoder().decode(bounded.bytes));
+        } catch {
+          throw new ProxyError(502, "Upstream returned invalid JSON");
+        }
+        resBytes = bounded.bytes.byteLength;
+        finish(upstream.status);
+        return withPending(
+          new Response(wrapJsonp(jsonpName, bounded.bytes), { status: upstream.status, headers: jsonpResHeaders }),
+        );
+      }
+
       const cacheable = c.req.method === "GET" && !bypass && upstream.status === 200 && responseCacheable(upstream);
       const contentLength = Number(upstream.headers.get("content-length") ?? NaN);
 
@@ -499,10 +546,16 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     const status = err instanceof ProxyError ? err.status : 500;
     const message = err instanceof Error ? err.message : "Internal error";
     finish(status, message);
-    if (err instanceof ProxyError && err.data) {
-      if (typeof err.data["retryAfter"] === "number") pending.set("Retry-After", String(err.data["retryAfter"]));
-      return withPending(c.json({ error: message, ...err.data }, status as 400));
+    const data = err instanceof ProxyError ? err.data : undefined;
+    if (typeof data?.["retryAfter"] === "number") pending.set("Retry-After", String(data["retryAfter"]));
+    const body = { error: message, ...(data ?? {}) };
+    // A <script> caller can't read a bare JSON error body — wrap it too, so its
+    // callback runs with { error } instead of dying on a syntax error.
+    if (jsonpName && (c.req.method === "GET" || c.req.method === "HEAD")) {
+      const payload =
+        c.req.method === "HEAD" ? null : wrapJsonp(jsonpName, new TextEncoder().encode(JSON.stringify(body)));
+      return withPending(new Response(payload, { status, headers: jsonpHeaders() }));
     }
-    return withPending(c.json({ error: message }, status as 400));
+    return withPending(c.json(body, status as 400));
   }
 }

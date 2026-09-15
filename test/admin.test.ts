@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createApiKey, queryLogs, queryStats, updateApiKey } from "../app/lib/admin.js";
+import { createApiKey, queryKeyById, queryLogs, queryStats, updateApiKey } from "../app/lib/admin.js";
 import { ProxyError } from "../app/lib/types.js";
+import { decryptSecret, encryptVars } from "../app/lib/crypto.js";
 
 /**
  * The admin D1 helpers run against a recording stub: we assert the SQL shape
@@ -335,5 +336,106 @@ describe("public tier policy", () => {
     const { db, calls } = recordingDb();
     await createApiKey(db, { name: "app" });
     expect(calls[0]?.values[14]).toBe("standard");
+  });
+});
+
+/**
+ * Secrets at rest: values are AES-GCM ciphertext in D1 when a KEK is set, and
+ * the edit path must merge against plaintext (a blank keeps the secret) without
+ * double-encrypting it.
+ */
+describe("secret encryption at rest", () => {
+  const KEK = "kek-for-admin-tests";
+
+  it("encrypts values on create and hands plaintext back on a key read", async () => {
+    const created = recordingDb();
+    await createApiKey(created.db, { name: "app", vars: "TOKEN=sk-live", allowedHosts: "api.vendor.com" }, KEK);
+    const insert = created.calls.find((c) => c.sql.startsWith("INSERT INTO api_keys"));
+    const storedVars = String(insert?.values[9]);
+    expect(JSON.stringify(insert?.values)).not.toContain("sk-live");
+    expect((JSON.parse(storedVars) as Array<{ value: string }>)[0]?.value.startsWith("enc:v1:")).toBe(true);
+
+    const read = recordingDb({
+      id: "id-1",
+      vars: storedVars,
+      header_rules: "[]",
+      param_rules: "[]",
+      allowed_hosts: "api.vendor.com",
+      keyless: 0,
+      allowed_origins: null,
+      ip_check: 1,
+      dns_check: 1,
+      tier: "standard",
+      daily_limit_per_origin: null,
+      daily_limit_per_host: null,
+      daily_limit_total: null,
+      revoked_at: null,
+    });
+    const row = await queryKeyById(read.db, "id-1", KEK);
+    expect(JSON.parse(String(row?.vars))).toEqual([{ name: "TOKEN", value: "sk-live" }]);
+  });
+
+  it("re-encrypts a kept secret exactly once (no double encryption)", async () => {
+    const enc = await encryptVars(KEK, [{ name: "TOKEN", value: "sk-live" }]);
+    const { db, calls } = recordingDb({
+      vars: JSON.stringify(enc),
+      header_rules: JSON.stringify([{ action: "set", name: "X-Token", value: "${TOKEN}" }]),
+      param_rules: "[]",
+      allowed_hosts: "api.vendor.com",
+      keyless: 0,
+      allowed_origins: null,
+      ip_check: 1,
+      dns_check: 1,
+      tier: "standard",
+      daily_limit_per_origin: null,
+      daily_limit_per_host: null,
+      daily_limit_total: null,
+    });
+    await updateApiKey(db, "key-1", { vars: "TOKEN=" }, KEK);
+    const update = calls.find((c) => c.sql.startsWith("UPDATE api_keys"));
+    const stored = JSON.parse(String(update?.values[0])) as Array<{ name: string; value: string }>;
+    expect(stored[0]?.value.startsWith("enc:v1:")).toBe(true);
+    expect(await decryptSecret(KEK, stored[0]!.value)).toBe("sk-live");
+  });
+
+  it("refuses to edit injection when the stored values can't be decrypted", async () => {
+    const enc = await encryptVars(KEK, [{ name: "TOKEN", value: "sk-live" }]);
+    const { db } = recordingDb({
+      vars: JSON.stringify(enc),
+      header_rules: "[]",
+      param_rules: "[]",
+      allowed_hosts: "api.vendor.com",
+      keyless: 0,
+      allowed_origins: null,
+      ip_check: 1,
+      dns_check: 1,
+      tier: "standard",
+      daily_limit_per_origin: null,
+      daily_limit_per_host: null,
+      daily_limit_total: null,
+    });
+    await expect(updateApiKey(db, "key-1", { vars: "TOKEN=" }, "wrong-kek")).rejects.toThrowError(/INJECTION_KEK/);
+  });
+
+  it("still allows a rename when the KEK is absent (injection untouched)", async () => {
+    const enc = await encryptVars(KEK, [{ name: "TOKEN", value: "sk-live" }]);
+    const { db, calls } = recordingDb({
+      vars: JSON.stringify(enc),
+      header_rules: "[]",
+      param_rules: "[]",
+      allowed_hosts: "api.vendor.com",
+      keyless: 0,
+      allowed_origins: null,
+      ip_check: 1,
+      dns_check: 1,
+      tier: "standard",
+      daily_limit_per_origin: null,
+      daily_limit_per_host: null,
+      daily_limit_total: null,
+    });
+    await updateApiKey(db, "key-1", { name: "renamed" });
+    const update = calls.find((c) => c.sql.startsWith("UPDATE api_keys"));
+    expect(update?.sql).toContain("name = ?");
+    expect(update?.sql).not.toContain("vars = ?");
   });
 });
