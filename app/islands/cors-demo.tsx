@@ -251,7 +251,11 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
   return (
     <div ref={rootRef} class="mockup-browser w-full max-w-[760px] mx-auto bg-base-100 border border-base-300 shadow-xl">
       <div class="mockup-browser-toolbar">
-        <div class="flex w-full items-center gap-2 mr-[1.4em] bg-base-200 border border-base-300 rounded-full! py-1 pl-3 pr-1 focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/25">
+        {/* `flex-1 min-w-0`, not `w-full` + `mr-[1.4em]`: daisyUI's toolbar already
+            reserves space for the window dots, so a full-width child plus its own
+            margin pushed the Go button past the right edge — clipped and pannable
+            on narrow screens (355px of content in a 326px box at 360px wide). */}
+        <div class="flex flex-1 min-w-0 items-center gap-2 bg-base-200 border border-base-300 rounded-full! py-1 pl-3 pr-1 focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/25">
           <span class="lucide text-base-content/60 shrink-0">
             <Lucide svg={searchSvg} />
           </span>
