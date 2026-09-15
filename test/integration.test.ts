@@ -119,6 +119,9 @@ describe("route wiring (integration)", () => {
     expect(enHtml).toContain('<meta name="description"');
     expect(enHtml).toContain('property="og:title"');
     expect(enHtml).toContain('property="og:url" content="https://corx.test"');
+    // The public source repo is linked from the nav and the footer.
+    expect(enHtml).toContain('href="https://github.com/envx-cn/corx"');
+    expect(zhHtml).toContain('href="https://github.com/envx-cn/corx"');
   });
 
   it("?lang= switches the console language via cookie + redirect", async () => {

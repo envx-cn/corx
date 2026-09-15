@@ -1,7 +1,11 @@
 import type { Child } from "hono/jsx";
 import appCss from "../styles/app.css?inline";
 import { CorxLogo } from "./logo.js";
+import { Lucide, githubMarkSvg } from "./lucide.js";
 import type { Locale, TFunc } from "../lib/i18n/locale.js";
+
+/** The public source repository, linked from the nav and the footer. */
+export const GITHUB_URL = "https://github.com/envx-cn/corx";
 
 /**
  * Shared chrome for the full-document public pages (landing + 404): the COR X
@@ -77,6 +81,16 @@ export function SiteNav(props: { links?: Child; locale?: Locale; t?: TFunc; lang
             </div>
           )}
           <div class="flex items-center gap-3">
+            <a
+              href={GITHUB_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn btn-ghost btn-sm btn-circle"
+              title={props.t ? props.t("site.githubAria") : "View the corx source on GitHub"}
+              aria-label={props.t ? props.t("site.githubAria") : "View the corx source on GitHub"}
+            >
+              <Lucide svg={githubMarkSvg} />
+            </a>
             <a href="/console/" class="btn btn-primary btn-sm rounded-full! px-4">
               {props.t ? props.t("site.openConsole") : "Open console"}
             </a>
@@ -112,6 +126,15 @@ export function SiteFooter(props: { origin?: string; t?: TFunc }) {
         <div class="flex items-center gap-6 text-sm text-secondary-content/70">
           <a href="/terms" class="hover:text-secondary-content inline-block py-2">
             {t("site.terms")}
+          </a>
+          <a
+            href={GITHUB_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="hover:text-secondary-content inline-flex items-center gap-1.5 py-2"
+          >
+            <Lucide svg={githubMarkSvg} />
+            {t("site.github")}
           </a>
           <a href="/console/" class="hover:text-secondary-content inline-block py-2">
             {t("site.console")}

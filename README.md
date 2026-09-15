@@ -264,7 +264,8 @@ exempt).
 The landing (and the 404 / error pages) are **bilingual (English / 中文)**: `/en` and
 `/zh` URL prefixes force a language; without a prefix it's resolved from the
 `corx_lang` cookie, then the `Accept-Language` header. The nav has a zh / EN
-switch. All UI copy lives in `app/lib/i18n/messages.ts` (en + zh dictionaries)
+switch plus a GitHub link to the source repo (the footer repeats it as a text
+link). All UI copy lives in `app/lib/i18n/messages.ts` (en + zh dictionaries)
 and is looked up through the typed `t()` from `app/lib/i18n/locale.ts`. API
 error messages are intentionally **not** translated (developer-facing wire
 format).
