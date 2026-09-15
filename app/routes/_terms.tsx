@@ -1,4 +1,5 @@
 import { SiteFooter, SiteHead, SiteNav } from "../components/site.js";
+import { OG_IMAGE, termsJsonLd } from "../lib/seo.js";
 import type { Locale, TFunc } from "../lib/i18n/locale.js";
 
 /**
@@ -11,10 +12,26 @@ import type { Locale, TFunc } from "../lib/i18n/locale.js";
  */
 export function TermsPage(props: { origin: string; locale: Locale; t: TFunc; email: string }) {
   const { t } = props;
+  const description = t("terms.lead", { origin: props.origin });
   return (
     <html lang={props.locale} data-theme="corx">
       <head>
-        <SiteHead title={`${t("terms.title")} — CORX`} description={t("terms.lead", { origin: props.origin })} />
+        {/* /terms has no /zh or /en URL (language is a cookie + ?lang=), so
+            there is no hreflang cluster here — just a canonical per origin. */}
+        <SiteHead
+          title={`${t("terms.title")} — CORX`}
+          description={description}
+          origin={props.origin}
+          canonical="/terms"
+          locale={props.locale}
+          image={{ ...OG_IMAGE, alt: t("site.ogAlt") }}
+          structuredData={termsJsonLd({
+            origin: props.origin,
+            locale: props.locale,
+            title: t("terms.title"),
+            description,
+          })}
+        />
       </head>
       <body class="bg-base-100 min-h-svh flex flex-col font-sans antialiased">
         <SiteNav
@@ -30,7 +47,7 @@ export function TermsPage(props: { origin: string; locale: Locale; t: TFunc; ema
         <main class="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-12">
           <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight">{t("terms.title")}</h1>
           <p class="mt-2 text-xs text-base-content/75">{t("terms.updated")}</p>
-          <p class="mt-4 text-sm text-base-content/75 leading-relaxed">{t("terms.lead", { origin: props.origin })}</p>
+          <p class="mt-4 text-sm text-base-content/75 leading-relaxed">{description}</p>
 
           <Section title={t("terms.s1Title")} body={t("terms.s1Body")} />
           <Section title={t("terms.s2Title")} body={t("terms.s2Body")} />

@@ -18,6 +18,7 @@
     "cf-typegen": "wrangler types worker-configuration.d.ts",
     "check": "tsc --noEmit",
     "check:contrast": "node scripts/contrast-check.mjs",
+    "og": "node scripts/make-og.mjs",
     "test": "vitest run"
   },
   "dependencies": {

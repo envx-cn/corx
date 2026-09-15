@@ -2,10 +2,11 @@ import type { Child } from "hono/jsx";
 import appCss from "../styles/app.css?inline";
 import { CorxLogo } from "./logo.js";
 import { Lucide, githubMarkSvg } from "./lucide.js";
+import { absUrl, jsonLd, OG_LOCALE } from "../lib/seo.js";
+import { GITHUB_URL } from "../lib/site-info.js";
 import type { Locale, TFunc } from "../lib/i18n/locale.js";
 
-/** The public source repository, linked from the nav and the footer. */
-export const GITHUB_URL = "https://github.com/envx-cn/corx";
+export { GITHUB_URL };
 
 /**
  * Shared chrome for the full-document public pages (landing + 404): the COR X
@@ -13,21 +14,74 @@ export const GITHUB_URL = "https://github.com/envx-cn/corx";
  * its own shell (app/routes/console/_layout.tsx) and doesn't use these.
  */
 
-/** Document <head>: fonts + injected app CSS. Inject it with
-    dangerouslySetInnerHTML — hono/jsx would otherwise HTML-escape the CSS and
-    silently drop any rule whose selector contains > or & (see AGENTS.md). */
-export function SiteHead(props: { title: string; description?: string; origin?: string }) {
+/**
+ * Document <head>: SEO/GEO meta, fonts + injected app CSS. Inject the CSS with
+ * dangerouslySetInnerHTML — hono/jsx would otherwise HTML-escape it and
+ * silently drop any rule whose selector contains > or & (see AGENTS.md).
+ *
+ * Every SEO prop is optional, because not every document wants to be indexed:
+ * the landing and /terms pass the full set (canonical, hreflang, card, JSON-LD),
+ * while 404 / 5xx pages pass `noindex` and nothing else. Without `origin` the
+ * absolute-only tags (canonical, og:url, og:image) are simply omitted rather
+ * than emitted as relative URLs crawlers would misread.
+ */
+export function SiteHead(props: {
+  title: string;
+  description?: string;
+  /** Scheme + host of *this* deployment; enables every absolute URL below. */
+  origin?: string;
+  /** Canonical path for this document ("/", "/zh", "/terms"). */
+  canonical?: string;
+  /** hreflang cluster (landing only — /terms has no translated URLs). */
+  alternates?: Array<{ hreflang: string; href: string }>;
+  locale?: Locale;
+  /** Social card, as a path relative to the origin (e.g. "/og.png"). */
+  image?: { path: string; width: number; height: number; alt: string };
+  /** schema.org nodes; wrapped into one @graph by jsonLd(). */
+  structuredData?: unknown[];
+  /** Keep this document out of every index (404, 5xx, anything trailing). */
+  noindex?: boolean;
+}) {
+  const canonical = props.origin && props.canonical ? absUrl(props.origin, props.canonical) : undefined;
+  const image = props.origin && props.image ? { url: absUrl(props.origin, props.image.path), ...props.image } : undefined;
   return (
     <>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <title>{props.title}</title>
       {props.description && <meta name="description" content={props.description} />}
+      {/* max-image-preview:large + max-snippet:-1 opt into the full previews
+          (and, in practice, the richer AI answers) search engines offer. */}
+      <meta
+        name="robots"
+        content={props.noindex ? "noindex, nofollow" : "index, follow, max-image-preview:large, max-snippet:-1"}
+      />
+      {canonical && <link rel="canonical" href={canonical} />}
+      {props.alternates?.map((alt) => (
+        <link rel="alternate" hreflang={alt.hreflang} href={alt.href} />
+      ))}
       <meta property="og:type" content="website" />
+      <meta property="og:site_name" content="CORX" />
       <meta property="og:title" content={props.title} />
       {props.description && <meta property="og:description" content={props.description} />}
-      {props.origin && <meta property="og:url" content={props.origin} />}
-      <meta name="twitter:card" content="summary" />
+      {canonical && <meta property="og:url" content={canonical} />}
+      {props.locale && <meta property="og:locale" content={OG_LOCALE[props.locale]} />}
+      {props.locale && (
+        <meta property="og:locale:alternate" content={OG_LOCALE[props.locale === "en" ? "zh" : "en"]} />
+      )}
+      {image && <meta property="og:image" content={image.url} />}
+      {image && <meta property="og:image:type" content="image/png" />}
+      {image && <meta property="og:image:width" content={String(image.width)} />}
+      {image && <meta property="og:image:height" content={String(image.height)} />}
+      {image && <meta property="og:image:alt" content={image.alt} />}
+      <meta name="twitter:card" content={image ? "summary_large_image" : "summary"} />
+      <meta name="twitter:title" content={props.title} />
+      {props.description && <meta name="twitter:description" content={props.description} />}
+      {image && <meta name="twitter:image" content={image.url} />}
+      {image && <meta name="twitter:image:alt" content={image.alt} />}
+      {props.structuredData && (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(props.structuredData) }}></script>
+      )}
       <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" />

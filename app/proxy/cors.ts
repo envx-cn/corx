@@ -169,6 +169,10 @@ export function cors() {
  */
 export function withProxyCors(c: Ctx, res: Response): Response {
   if (!isProxyRequest(c)) return res;
+  // Same reason as the handler's own stamp: a proxied response is never content
+  // the proxy wants indexed (this path is only reached when the chain was cut
+  // short by a thrown error, but it is still a proxy response).
+  res.headers.set("X-Robots-Tag", "noindex");
   const allow = effectiveOrigins(c.env, c.get("apiKey") ?? null);
   const origin = c.req.header("origin");
   const acao = allow === "*" ? "*" : origin && allow.includes(origin) ? origin : null;

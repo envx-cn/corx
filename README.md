@@ -207,7 +207,10 @@ any URL to take over; it sends **no key** — the request works anonymously
 and simply reports the 401 otherwise), a **Highlights** band with real config
 snippets (upstream
 secret injection, keyless browser access, playground introspection), a compact
-nine-item feature list and a dark footer.
+nine-item feature list, a **FAQ** band (native `<details>`, so no island is
+needed and the answers are plain text in the initial HTML) and a dark footer.
+The FAQ is not decoration: it is the content answer engines quote, and the same
+strings feed its `FAQPage` JSON-LD (see [SEO and GEO](#seo-and-geo)).
 
 The demo renders the response **by content type** instead of dumping every
 body into a `<pre>` (`app/lib/preview.ts` classifies, `app/islands/cors-demo.tsx`
@@ -269,6 +272,41 @@ link). All UI copy lives in `app/lib/i18n/messages.ts` (en + zh dictionaries)
 and is looked up through the typed `t()` from `app/lib/i18n/locale.ts`. API
 error messages are intentionally **not** translated (developer-facing wire
 format).
+
+## SEO and GEO
+
+Everything crawler-facing is generated from `app/lib/seo.ts`, over the
+origin-independent facts in `app/lib/site-info.ts`, and parameterised by the
+request's own origin — a self-hosted copy advertises its own hostname, never
+one deployment's URL.
+
+| Surface | What it is |
+| --- | --- |
+| `robots.txt` | Public pages open, machine surfaces closed (`/console`, `/api`, `/fetch`, `/proxy`, `/health`), absolute `Sitemap:` line. The main answer engines (GPTBot, ClaudeBot, PerplexityBot, …) are named and allowed on purpose: corx *wants* to be read and cited, and saying so in the file makes a future "block the bots" edit argue with the list. |
+| `sitemap.xml` | The four indexable URLs with `lastmod`, and an `xhtml:link` hreflang cluster (`en`, `zh`, `x-default`) on each landing URL. |
+| `llms.txt` | The [llmstxt.org](https://llmstxt.org) index: title, blockquote summary, `## Docs` / `## Facts` link sections, `## Optional` tail. |
+| `llms-full.txt` | The whole behaviour of the instance in one Markdown fetch — calling shapes, the `corx-*` namespace, auth tiers, caching, limits, security, console + admin API, self-hosting. |
+
+Those four are mounted in `app/server.ts` (before `createApp`, and they give way
+to the proxy on a subdomain host, where every path is a proxy path).
+
+`<head>` on the public pages (`app/components/site.tsx` → `SiteHead`) carries a
+self-canonical per URL (`/` stays `/` even when it renders 中文 — one URL, one
+canonical), the hreflang cluster, `robots: index, follow,
+max-image-preview:large, max-snippet:-1`, Open Graph + Twitter tags with the
+1200×630 `public/og.png` card (`npm run og` regenerates it), and one JSON-LD
+`@graph` (`WebSite`, `Organization`, `SoftwareApplication`, `FAQPage`). The
+landing FAQ renders from the same `t()` strings that feed `FAQPage`, so schema
+and page cannot drift — `test/seo.test.ts` asserts that per question and answer.
+
+Deliberately out of the index: the 404 / 5xx documents and the console
+(`noindex` meta + `Disallow`), and **every proxied response**, which carries
+`X-Robots-Tag: noindex` — a `/fetch?url=…` URL, or a mirror of the target,
+indexed under our hostname would be pure duplicate-content pollution, and
+robots.txt cannot express path-style proxy URLs.
+
+`CONTENT_UPDATED` in `app/lib/site-info.ts` is the sitemap's `lastmod` and the
+terms' own date; bump it whenever the public copy changes.
 
 ## Public tier (the hosted instance)
 
@@ -652,8 +690,10 @@ app/              HonoX frontend (entry + console UI + API routes)
                 wordmark is inlined via ?raw by components/logo.tsx; app.css
                 then paints .corx-ink with currentColor and .corx-x with
                 --corx-brand-red, so one file works on light and dark chrome.
-                public/favicon.svg is the square X icon (Vite copies public/
-                into dist/, which wrangler serves at /favicon.svg). The same
+                public/favicon.svg is the square X icon and public/og.png
+                the 1200×630 social card (Vite copies public/ into dist/,
+                which wrangler serves verbatim; scripts/make-og.mjs renders
+                the card through headless Chromium). The same
                 directory carries one-off root files that must be fetchable
                 verbatim — currently the WeChat domain-verification token at
                 /ba1a95316b1fc4eb1e373ef870dfc69a.txt (a plain 40-byte text
@@ -676,11 +716,14 @@ app/              HonoX frontend (entry + console UI + API routes)
                 auth, Access identity, sessions, request logging,
                 D1 query helpers, admin key/log queries, playground
                 spec, response-preview classification (preview),
-                formatting, i18n dictionaries
+                formatting, i18n dictionaries, SEO/GEO
+                (seo: canonical/hreflang/JSON-LD + robots.txt,
+                sitemap.xml, llms.txt, llms-full.txt; site-info: the
+                origin-independent facts those all quote)
 test/           vitest suites (guard, ip, dns-check, cache, inject,
                 admin, origins, subdomain, media, playground, preview,
                 stats, i18n, nav, access, quota, public tier, error
-                pages, integration)
+                pages, seo, integration)
 ```
 
 ## Scripts
@@ -693,5 +736,6 @@ test/           vitest suites (guard, ip, dns-check, cache, inject,
 | `npm run build` | client (islands) + worker bundles into `./dist` |
 | `npm run deploy` | build + deploy to Cloudflare |
 | `npm run check` / `npm test` | typecheck / vitest |
+| `npm run og` | regenerate `public/og.png` (needs a Chromium: `npx playwright install chromium` or `CHROMIUM_PATH`) |
 | `npm run check:contrast` | WCAG AA guard: theme tokens in `app/styles/app.css` + a scan for sub-`/75` text utilities in `app/` |
 | `npm run tail` | live logs |

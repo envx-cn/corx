@@ -118,7 +118,7 @@ describe("route wiring (integration)", () => {
     // Social/search previews: description + Open Graph tags on the landing.
     expect(enHtml).toContain('<meta name="description"');
     expect(enHtml).toContain('property="og:title"');
-    expect(enHtml).toContain('property="og:url" content="https://corx.test"');
+    expect(enHtml).toContain('property="og:url" content="https://corx.test/en"');
     // The public source repo is linked from the nav and the footer.
     expect(enHtml).toContain('href="https://github.com/envx-cn/corx"');
     expect(zhHtml).toContain('href="https://github.com/envx-cn/corx"');

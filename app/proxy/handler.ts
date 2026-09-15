@@ -178,6 +178,11 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
   // the handler returns a raw Response — and every proxy path does. Stamping
   // them here is what actually puts X-RateLimit-* / X-Corx-Quota-* on the wire.
   const pending = new Headers();
+  // Proxied bytes are somebody else's content served under our hostname:
+  // indexing a /fetch?url=… URL (or a mirror of the target) would show up as a
+  // duplicate of the origin. Crawlers are told to skip every proxied response;
+  // the public pages are the only thing corx wants in an index.
+  pending.set("X-Robots-Tag", "noindex");
   const withPending = (res: Response): Response => {
     pending.forEach((value, name) => res.headers.set(name, value));
     return res;
