@@ -12,6 +12,8 @@ import flaskSvg from "lucide-static/icons/flask-conical.svg?raw";
 import clapperboardSvg from "lucide-static/icons/clapperboard.svg?raw";
 import languagesSvg from "lucide-static/icons/languages.svg?raw";
 import serverSvg from "lucide-static/icons/server.svg?raw";
+import fileTextSvg from "lucide-static/icons/file-text.svg?raw";
+import bookOpenTextSvg from "lucide-static/icons/book-open-text.svg?raw";
 import arrowUpRightSvg from "lucide-static/icons/arrow-up-right.svg?raw";
 import chevronDownSvg from "lucide-static/icons/chevron-down.svg?raw";
 import { Lucide } from "../components/lucide.js";
@@ -64,6 +66,9 @@ export function LandingPage(props: {
     t("landing.features.console.title"),
     t("landing.features.selfHosted.title"),
   ];
+  // The agent entry's prompt: absolute, because it is meant to be pasted into
+  // a tool that has no idea which host this page came from.
+  const agentPrompt = t("landing.agents.prompt", { origin: props.origin });
   const demo: CorsDemoI18n = {
     urlAria: t("corsDemo.urlAria"),
     urlPh: t("corsDemo.urlPh"),
@@ -222,6 +227,85 @@ export function LandingPage(props: {
           {/* Public key: the no-deploy path for people who just want to fetch
               a URL cross-origin, with the limits stated up front. */}
           {props.publicKey ? <PublicKeyCard origin={props.origin} pub={props.publicKey} t={t} /> : null}
+
+          {/* Agent entry: this instance already publishes llms.txt and
+              llms-full.txt (app/lib/seo.ts); this band is where a *human* finds
+              out. Both files are generated per host, so the links are relative
+              and always address the reader's own copy — a self-hosted
+              deployment advertises itself here, never this project's domain.
+              The machine-discoverable halves of the same offer are the
+              <link rel="alternate"> in SiteHead and the footer link.
+
+              It sits directly under the public-key card because the two are
+              the same kind of thing — an entry point you can act on without
+              deploying anything: the key for a human's frontend, the llms
+              files for an agent. That also keeps the closing sequence intact
+              (FAQ → CTA), which a machine-facing band was interrupting. The
+              card is conditional, so without `PUBLIC_KEY` the band simply
+              follows the live demo instead. */}
+          <section
+            id="agents"
+            class={`max-w-6xl mx-auto px-4 sm:px-6 pb-20 ${props.publicKey ? "pt-0" : "pt-20"}`}
+          >
+            <div class="text-center">
+              <h2 class="text-2xl sm:text-3xl font-bold tracking-tight">{t("landing.agents.title")}</h2>
+              <p class="mx-auto mt-2 max-w-2xl text-base-content/75">{t("landing.agents.sub")}</p>
+            </div>
+            <div class="mx-auto mt-8 max-w-3xl rounded-box border border-base-300 bg-base-100 p-5">
+              <div class="grid gap-3 sm:grid-cols-2">
+                <a href="/llms.txt" class="agent-file">
+                  <span class="feature-icon-sm">
+                    <Lucide svg={fileTextSvg} />
+                  </span>
+                  <span class="min-w-0">
+                    <span class="block font-mono text-sm font-semibold">/llms.txt</span>
+                    <span class="mt-1 block text-xs leading-relaxed text-base-content/75">
+                      {t("landing.agents.indexDesc")}
+                    </span>
+                  </span>
+                </a>
+                <a href="/llms-full.txt" class="agent-file">
+                  <span class="feature-icon-sm">
+                    <Lucide svg={bookOpenTextSvg} />
+                  </span>
+                  <span class="min-w-0">
+                    <span class="block font-mono text-sm font-semibold">/llms-full.txt</span>
+                    <span class="mt-1 block text-xs leading-relaxed text-base-content/75">
+                      {t("landing.agents.fullDesc")}
+                    </span>
+                  </span>
+                </a>
+              </div>
+
+              {/* Same terminal card as the highlights/public-key cards, so the
+                  prompt reads as something to copy rather than prose. */}
+              <div class="mt-6 text-xs font-medium uppercase tracking-wide text-base-content/75">
+                {t("landing.agents.promptLabel")}
+              </div>
+              <div class="code-card mt-2">
+                <div class="code-head">
+                  <span class="size-2.5 rounded-full bg-error/80"></span>
+                  <span class="size-2.5 rounded-full bg-warning/80"></span>
+                  <span class="size-2.5 rounded-full bg-success/80"></span>
+                </div>
+                <div class="code-line wrap">{agentPrompt}</div>
+              </div>
+
+              <div class="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+                <p class="text-xs leading-relaxed text-base-content/75">
+                  {t("landing.agents.more")}{" "}
+                  <a href="/robots.txt" class="link link-primary">
+                    robots.txt
+                  </a>
+                  {" · "}
+                  <a href="/sitemap.xml" class="link link-primary">
+                    sitemap.xml
+                  </a>
+                </p>
+                <CopyButton text={agentPrompt} labels={{ copy: t("copy.copy"), copied: t("copy.copied") }} />
+              </div>
+            </div>
+          </section>
 
           {/* Highlights — the differentiators, each with a real config snippet. */}
           <section id="highlights" class="max-w-6xl mx-auto px-4 sm:px-6 py-20">

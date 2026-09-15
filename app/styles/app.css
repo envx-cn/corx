@@ -387,6 +387,14 @@ code:not(pre code) {
 .code-card .code-line + .code-line {
   @apply border-t border-white/10;
 }
+/* A copied prompt reads better breaking at spaces: `break-all` (above) is for
+   opaque tokens — a key, a usage line — where the whole string is one word and
+   any break point is as good as another. `anywhere` still splits a URL that is
+   genuinely too long for the line, it just stops there being no preference. */
+.code-card .code-line.wrap {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
 .code-card .code-prefix {
   @apply shrink-0 select-none text-primary font-semibold;
 }
@@ -414,8 +422,15 @@ code:not(pre code) {
 .feature-item {
   @apply flex items-start gap-3;
 }
-.feature-item .feature-icon-sm {
+/* shared by the feature grid and the landing's agent-entry file cards */
+.feature-item .feature-icon-sm,
+.agent-file .feature-icon-sm {
   @apply size-9 shrink-0 rounded-lg bg-primary/10 text-primary inline-flex items-center justify-center;
+}
+
+/* landing: the llms.txt / llms-full.txt entry cards (agent-facing) */
+.agent-file {
+  @apply flex items-start gap-3 rounded-box border border-base-300 bg-base-200/60 p-3 no-underline transition hover:border-primary/40 hover:bg-base-200 hover:shadow-md;
 }
 
 /* highlight card icon (landing) */
