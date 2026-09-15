@@ -12,7 +12,7 @@ app.get("/", async (c) => c.json({ keys: (await queryKeys(c.env.DB)).map(redactK
 app.post("/", async (c) => {
   const body = await c.req.json<Partial<KeyInput>>().catch(() => ({}) as Partial<KeyInput>);
   try {
-    const { id, key } = await createApiKey(c.env.DB, { ...body, name: body.name ?? "" });
+    const { id, key } = await createApiKey(c.env.DB, { ...body, name: body.name ?? "" }, c.env.INJECTION_KEK);
     // Raw key is shown once — store it somewhere safe.
     return c.json({ id, key, name: body.name ?? "" }, 201);
   } catch (err) {

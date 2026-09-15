@@ -1,6 +1,7 @@
 import type { Context, Next } from "hono";
 import type { ApiKeyRow, Env } from "./types.js";
 import { sha256Hex } from "./utils.js";
+import { decryptRowInjection } from "./crypto.js";
 
 /** Hono context variables set by apiKeyMiddleware (see server.ts). */
 export type ProxyVariables = {
@@ -36,7 +37,7 @@ export function extractRawKey(req: Request, url: URL): string | null {
 }
 
 /** Look up a key row by its raw value. Null when missing/revoked/DB error. */
-export async function lookupApiKey(db: D1Database, raw: string): Promise<ApiKeyRow | null> {
+export async function lookupApiKey(db: D1Database, raw: string, kek?: string): Promise<ApiKeyRow | null> {
   try {
     const row = await db
       .prepare(
@@ -45,7 +46,8 @@ export async function lookupApiKey(db: D1Database, raw: string): Promise<ApiKeyR
       .bind(await hashKey(raw))
       .first<ApiKeyRow>();
     if (!row || row.revoked_at) return null;
-    return row;
+    // Decrypt at the boundary: the handler/playground below consume plaintext.
+    return decryptRowInjection(kek, row);
   } catch {
     return null;
   }
@@ -72,7 +74,7 @@ export function normalizeOrigin(raw: string | null | undefined): string | null {
  * Keyless access: resolve a key from the request's Origin via keyless_origins.
  * Null when no grant / revoked / DB error (fail-open to anonymous).
  */
-export async function lookupKeyByOrigin(db: D1Database, origin: string): Promise<ApiKeyRow | null> {
+export async function lookupKeyByOrigin(db: D1Database, origin: string, kek?: string): Promise<ApiKeyRow | null> {
   try {
     const row = await db
       .prepare(
@@ -86,7 +88,7 @@ export async function lookupKeyByOrigin(db: D1Database, origin: string): Promise
       .bind(origin)
       .first<ApiKeyRow>();
     if (!row || row.revoked_at) return null;
-    return row;
+    return decryptRowInjection(kek, row);
   } catch {
     return null;
   }
@@ -104,7 +106,7 @@ export async function apiKeyMiddleware(
   next: Next,
 ): Promise<void> {
   const raw = extractRawKey(c.req.raw, new URL(c.req.url));
-  let row = raw ? await lookupApiKey(c.env.DB, raw) : null;
+  let row = raw ? await lookupApiKey(c.env.DB, raw, c.env.INJECTION_KEK) : null;
   let authVia: "key" | "origin" | null = row ? "key" : null;
   if (!row) {
     const origin = normalizeOrigin(c.req.header("origin"));
@@ -112,7 +114,7 @@ export async function apiKeyMiddleware(
       // keyless_origins may not exist yet on an unmigrated database — treat
       // a lookup failure as "no grant" and keep serving. Local updates go
       // through the console, which does not depend on this query.
-      row = await lookupKeyByOrigin(c.env.DB, origin);
+      row = await lookupKeyByOrigin(c.env.DB, origin, c.env.INJECTION_KEK);
       if (row) authVia = "origin";
     }
   }

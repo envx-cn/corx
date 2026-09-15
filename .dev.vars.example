@@ -10,6 +10,11 @@ ADMIN_TOKEN = "dev-admin-token-change-me"
 # Session cookie HMAC secret (optional — falls back to ADMIN_TOKEN).
 # SESSION_SECRET = "dev-session-secret-change-me"
 
+# Encrypts injected variable values at rest (optional; empty = plaintext).
+# Any long random string. Losing/changing it makes stored secrets unreadable,
+# so back it up with the same care as the values themselves.
+# INJECTION_KEK = "dev-injection-kek-change-me"
+
 # Cloudflare Access (Zero Trust) login for /console + /admin.
 # Leave empty for local dev (use the token form on /console/login).
 # ACCESS_TEAM_DOMAIN = "https://myteam.cloudflareaccess.com"

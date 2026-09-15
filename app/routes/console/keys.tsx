@@ -41,7 +41,7 @@ app.post("/", async (c) => {
       vars: values.vars,
       headerRules: values.headerRules,
       paramRules: values.paramRules,
-    });
+    }, c.env.INJECTION_KEK);
     // The raw key is shown once — re-render with it, don't redirect.
     return c.render(<KeysContent keys={await queryKeys(c.env.DB)} newKey={{ id, key, name: values.name }} t={t} />, {
       title: t("console.title.keys"),
@@ -77,7 +77,7 @@ app.post("/:id", async (c) => {
       vars: values.vars,
       headerRules: values.headerRules,
       paramRules: values.paramRules,
-    });
+    }, c.env.INJECTION_KEK);
     return c.redirect("/console/keys", 302);
   } catch (err) {
     const error = err instanceof ProxyError ? err.message : t("console.keys.saveFailed");
