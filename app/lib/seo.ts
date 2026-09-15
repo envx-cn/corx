@@ -288,6 +288,10 @@ every URL below is absolute and current for that instance.
   caching and the full deployment guide — Markdown in the repository.
 - [Feature list](${REPO_DOCS.featuresRaw}): every implemented feature mapped to the code that
   implements it.
+- [Security policy](${REPO_DOCS.security}): the threat model (SSRF guards, injection at rest,
+  cache isolation) and the limitations that are accepted rather than fixed.
+- [Contributing](${REPO_DOCS.contributing}): self-hosting setup, the checks a change must pass and
+  the repo conventions.
 - [Full reference](${absUrl(origin, "/llms-full.txt")}): this instance's behaviour in one document,
   for agents that would rather not crawl the site.
 - [Source repository](${GITHUB_URL}): TypeScript, MIT, issues and pull requests welcome.

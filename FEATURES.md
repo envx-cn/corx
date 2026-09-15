@@ -1,9 +1,13 @@
 # CORX — Feature List
 
 Complete inventory of what the code actually implements, grouped by area.
-Derived from the source at the time of writing (`main`, post PR #14); every
-area lists the files it lives in. `npm run check` (tsc) and `npm test`
-(298 tests / 21 suites) pass for all of it.
+Derived from the source on `main`; every area lists the files it lives in.
+`npm run check` (tsc) and `npm test` (vitest) pass for all of it — the same
+checks `.github/workflows/verify.yml` runs on every push and pull request.
+
+Counts are deliberately left out of this file's prose: they rot, and the
+suite is the source of truth. Where a number is load-bearing (quotas, byte
+caps, timeouts) it is named.
 
 See [README.md](./README.md) for usage, config and deployment; this file is the
 map, not the manual.
@@ -209,8 +213,8 @@ Files: `app/routes/api/**`, `app/lib/admin.ts`, `app/lib/access.ts`.
   and a 1 h–7 d lookback slider that re-filters on release.
 - **Blocklist**: inline add, removal behind a confirm dialog; blocking a domain
 also covers its subdomains.
-- **Profile / Billing**: identity (email, auth method) and a placeholder
-  billing page.
+- **Profile**: identity (email, auth method) and a note that changes to the
+  account happen on the upstream identity provider, not in CORX.
 - Login/logout: Access button when a JWT is detected, token form for local
   dev; logout confirms.
 - Bilingual (en/zh) cookie-based language switching; relative timestamps with
@@ -292,12 +296,17 @@ Files: `app/lib/access.ts`, `app/lib/session.ts`,
   `quota_counters` older than yesterday, and a 100-object batch of expired R2
   entries.
 - Observability enabled in `wrangler.jsonc`; `npm run tail` for live logs.
+- CI: `verify.yml` on every push to `main` and every pull request (typecheck →
+  tests → contrast → production build, read-only, no secrets); `deploy.yml` is
+  a manual dispatch that calls that same workflow as its `verify` job, then
+  applies D1 migrations and deploys. Manual by design, so a merge can never
+  reach production on its own.
 - Scripts: `dev`, `dev:worker`, `build` (client islands + worker),
   `deploy`, `db:create` / `db:migrate` / `db:migrate:local`,
   `db:seed:public` (local public-tier key so `/` shows the key card),
   `bucket:create`, `cf-typegen`, `check` (tsc), `test` (vitest),
   `check:contrast` (WCAG AA guard: theme tokens + a low-opacity text scan).
-- 298 tests across 21 suites covering the guard/IP/DNS layers, cache policy,
+- The vitest suite (`test/`) covering the guard/IP/DNS layers, cache policy,
   injection grammar, key admin + keyless grants + public-tier policy, daily
   quotas, CORS origins, subdomain encoding, media/Range, playground, stats
   bucketing, i18n, the terms page and the assembled app (error pages, JSON

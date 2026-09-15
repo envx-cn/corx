@@ -9,7 +9,18 @@
 
 A CORS proxy running on Cloudflare. Stack: **HonoX + D1 + R2**.
 
-See [FEATURES.md](./FEATURES.md) for the complete, code-mapped feature list.
+CORX is **open source and meant to be self-hosted**: you deploy your own
+Worker on your own Cloudflare account, under your own hostname, with your own
+keys. The repository deliberately carries no deployment's values — hostnames,
+keys and admin addresses are `wrangler secret`s, not config
+([`.env.production.template`](./.env.production.template) is the committed
+example). A public instance exists as a demo of the public tier; nothing in
+this repository depends on it.
+
+See [FEATURES.md](./FEATURES.md) for the complete, code-mapped feature list,
+[CONTRIBUTING.md](./CONTRIBUTING.md) for the dev setup and repo conventions,
+and [SECURITY.md](./SECURITY.md) for the threat model and how to report an
+issue.
 
 - **Hono** — routing, CORS, upstream fetch
 - **D1** — API keys, rate-limit windows, request logs, host blocklist
@@ -419,8 +430,9 @@ npm run dev              # vite on :5173 (set PORT to change)
 npm run db:migrate
 npx wrangler secret put ADMIN_TOKEN
 npx wrangler secret put INJECTION_KEK          # optional: encrypt injected secrets at rest
-# deployment values (also fine to bootstrap once with:
-#   npx wrangler deploy --secrets-file .env.production)
+# deployment values — copy the committed example and fill in your own:
+#   cp .env.production.template .env.production
+#   npx wrangler deploy --secrets-file .env.production      # bootstrap once
 npx wrangler secret put PROXY_ZONE             # subdomain mode suffix
 npx wrangler secret put PUBLIC_KEY             # optional: public-tier key
 npx wrangler secret put ACCESS_TEAM_DOMAIN     # optional: Access login
@@ -429,21 +441,32 @@ npx wrangler secret put ADMIN_EMAILS           # optional: admin allowlist
 npm run deploy           # = vite build (client + worker) && wrangler deploy
 ```
 
+`.env.production` is gitignored; only the value-free template is committed, so
+the repository stays free of one deployment's values. The file lists every
+deployment secret with what it does, including the ones most people skip
+(`SESSION_SECRET`, `INJECTION_KEK`) and why they are worth setting.
+
 Secrets are never touched by `wrangler deploy` (only `wrangler secret delete`
 removes them), so they survive every deploy — while plain-text `vars` are
 rewritten from `wrangler.jsonc` on each one. That split is why everything that
 isn't a random identifier lives in a secret: the repository stays free of
 personal data, and the deployed values can't be clobbered by a config edit.
 
-### Deploy from CI
+### Continuous integration
+
+`.github/workflows/verify.yml` is the gate: on every push to `main` and every
+pull request it runs typecheck → tests → contrast check → production build, on a
+read-only checkout with no secrets. Nothing here talks to Cloudflare, so it is
+safe (and useful) to run on forks.
 
 `.github/workflows/deploy.yml` is started **by hand** — Actions → Deploy → *Run
 workflow* (pick the branch, optionally tick `skip_migrations`) — so nothing
-reaches production on its own; add `push: { branches: [main] }` under `on:` to
-make merges deploy automatically. A run does: typecheck → tests → contrast check
-→ build → D1 migrations → `wrangler deploy`, and leaves the worker URL and
-version id in the run summary. It needs two values on the organization, both
-**granted to this repository**:
+reaches production on its own. Add `push: { branches: [main] }` under `on:` to
+make merges deploy automatically. Its `verify` job is `verify.yml` itself
+(`uses: ./.github/workflows/verify.yml`), so the deploy gate cannot drift from
+the merge gate; after it passes, the run does D1 migrations → `wrangler deploy`
+and leaves the worker URL and version id in the run summary. It needs two values
+on the organization, both **granted to this repository**:
 
 | Kind | Name | Value |
 | --- | --- | --- |
@@ -458,7 +481,8 @@ the pipeline needs. Migrations run before each deploy and are idempotent
 code without touching the database.
 
 The trade-off of a manual trigger: nothing forces a deploy after a merge, so
-the live version can drift from `main` until you run it.
+the live version can drift from `main` until you run it — but the code that
+reaches `main` has already passed the same checks the deploy would run.
 
 Dev notes: `npm run dev:worker` runs the production bundle via
 `wrangler dev` (closest to prod). Under `vite` dev, its HMR client script is
@@ -515,7 +539,7 @@ Logs (per-request size, plus the **Via** — presented key / keyless / anon — 
 **Caller** origin that authorized it, with a 1h–7d lookback **Window** slider
 that re-filters on release) · Host
 blocklist (add inline — blocking a domain also covers its subdomains — remove behind a confirm dialog; logout confirms too) ·
-Profile · Billing.
+Profile.
 
 Timestamps are rendered relative ("5m ago") with the exact UTC value on hover,
 and the console tightens itself on small screens: secondary table columns are
@@ -663,7 +687,7 @@ app/              HonoX frontend (entry + console UI + API routes)
   routes/console/   console pages as file routes (_renderer dash shell,
                 _middleware login guard, _layout document shell, colocated
                 chrome _nav/_sidebar/_topbar, and
-                index/keys/logs/blocked/profile/billing/login pages
+                index/keys/logs/blocked/profile/login pages
                 via c.render()). The sidebar collapse pin + hover-float
                 is a plain inline <script> in _layout (honox islands
                 re-render their own DOM, and Chromium :has/label quirks
