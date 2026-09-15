@@ -140,8 +140,8 @@ export function SiteNav(props: { links?: Child; locale?: Locale; t?: TFunc; lang
               target="_blank"
               rel="noopener noreferrer"
               class="btn btn-ghost btn-sm btn-circle"
-              title={props.t ? props.t("site.githubAria") : "View the corx source on GitHub"}
-              aria-label={props.t ? props.t("site.githubAria") : "View the corx source on GitHub"}
+              title={props.t ? props.t("site.githubAria") : "View the CORX source on GitHub"}
+              aria-label={props.t ? props.t("site.githubAria") : "View the CORX source on GitHub"}
             >
               <Lucide svg={githubMarkSvg} />
             </a>
