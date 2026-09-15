@@ -195,6 +195,10 @@ describe("route wiring (integration)", () => {
     expect(html).toContain('type="range"');
     expect(html).toContain('value="168"');
     expect(html).toContain("7d"); // the slider label, clamped to the 7-day max
+    // Via / Caller columns: which credential authorized the request, and the
+    // origin keyless matched on. Both were written to D1 but unreadable before.
+    expect(html).toContain("Via");
+    expect(html).toContain("Caller");
   });
 
   it("server-renders the shell confirm dialog (logout needs no island)", async () => {
@@ -207,6 +211,25 @@ describe("route wiring (integration)", () => {
     expect(html).toContain("[data-corx-confirm]"); // the Doc's wiring script
     // Profile renders no island at all now, so there is no hydration to fail.
     expect(html).not.toContain("<honox-island");
+  });
+
+  it("logout clears the cookie, and bounces through Access when configured", async () => {
+    const res = await call("/console/logout", { method: "POST" });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("set-cookie")).toContain("corx_session=");
+    expect(res.headers.get("set-cookie")).toContain("Max-Age=0");
+    // No Access configured: fall back to the console login page.
+    expect(res.headers.get("location")).toBe("/console/login");
+
+    // With Access in front, our cookie is not the whole session — the edge has
+    // to revoke its own, otherwise the next request re-authenticates.
+    const accessEnv = {
+      ...env,
+      ACCESS_TEAM_DOMAIN: "https://envx.cloudflareaccess.com/",
+      ACCESS_AUD: "aud-tag",
+    } as Env;
+    const viaAccess = await call("/console/logout", { method: "POST" }, accessEnv);
+    expect(viaAccess.headers.get("location")).toBe("https://envx.cloudflareaccess.com/cdn-cgi/access/logout");
   });
 
   it("delete route reports an unknown key instead of deleting", async () => {
@@ -408,6 +431,35 @@ describe("upstream injection + keyless access (integration)", () => {
     expect(res.status).toBe(200);
     expect(calls).toHaveLength(1);
     expect(rateBinds[0]?.[0]).toBe("rl:origin:https://app.example:ip:203.0.113.9");
+  });
+
+  it("keyless access resolves from the Referer too (same-origin GET / no-cors loads)", async () => {
+    // Browsers omit Origin on same-origin GETs and on no-cors subresource loads
+    // (<img>, <script>, JSONP), but do send Referer — the landing page's live
+    // demo takes exactly that path.
+    const keylessRow = { ...injectingRow, keyless: 1, allowed_origins: "https://app.example", vars: "[]", header_rules: "[]", param_rules: "[]", allowed_hosts: null };
+    const calls = stubFetch(() => new Response("ok", { status: 200 }));
+    const { env: keyed, rateBinds } = envForKey(keylessRow);
+    const res = await call(
+      "/fetch?url=https://example.com/data",
+      { headers: { referer: "https://app.example/some/page", "cf-connecting-ip": "203.0.113.9" } },
+      { ...keyed, REQUIRE_API_KEY: "true" } as Env,
+    );
+    expect(res.status).toBe(200);
+    expect(calls).toHaveLength(1);
+    // Same bucket as an Origin match: one caller, one bucket.
+    expect(rateBinds[0]?.[0]).toBe("rl:origin:https://app.example:ip:203.0.113.9");
+  });
+
+  it("keyless access stays anonymous without Origin or Referer", async () => {
+    const keylessRow = { ...injectingRow, keyless: 1, allowed_origins: "https://app.example", vars: "[]", header_rules: "[]", param_rules: "[]", allowed_hosts: null };
+    const { env: keyed } = envForKey(keylessRow);
+    const res = await call(
+      "/fetch?url=https://example.com/data",
+      { headers: { "cf-connecting-ip": "203.0.113.9" } },
+      { ...keyed, REQUIRE_API_KEY: "true" } as Env,
+    );
+    expect(res.status).toBe(401);
   });
 
   it("keyless access still 401s an origin without a grant", async () => {

@@ -9,6 +9,12 @@ export type ProxyVariables = {
   apiKey: ApiKeyRow | null;
   /** How the caller was authorized: presented key, keyless origin grant, or nobody. */
   authVia: "key" | "origin" | null;
+  /**
+   * Origin the keyless grant matched on (`Origin` header, else `Referer`).
+   * Quota and logs read this too, so one caller is always one bucket whichever
+   * header identified them.
+   */
+  callerOrigin: string | null;
 };
 
 /** Hash an API key with SHA-256 (hex). Never store raw keys. */
@@ -72,6 +78,30 @@ export function normalizeOrigin(raw: string | null | undefined): string | null {
 }
 
 /**
+ * The caller's origin as a browser reports it, for keyless grant matching.
+ *
+ * `Origin` only rides along on CORS requests and on same-origin requests that
+ * aren't GET/HEAD. Same-origin GETs (the landing page's live demo) and no-cors
+ * subresource loads (plain <img>/<script>, JSONP) send none — those do send a
+ * `Referer`, which is the same trust class: a caller-supplied header, which is
+ * exactly what the keyless console hint already warns about. Callers that
+ * suppress it (`Referrer-Policy: no-referrer`) fall through to anonymous and
+ * can present `?corx-key=` instead.
+ */
+export function callerOrigin(req: Request): string | null {
+  const direct = normalizeOrigin(req.headers.get("origin"));
+  if (direct) return direct;
+  const referer = req.headers.get("referer");
+  if (!referer) return null;
+  try {
+    // A same-origin Referer carries the full path; only its origin is matched.
+    return normalizeOrigin(new URL(referer).origin);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Keyless access: resolve a key from the request's Origin via keyless_origins.
  * Null when no grant / revoked / DB error (fail-open to anonymous).
  */
@@ -98,9 +128,10 @@ export async function lookupKeyByOrigin(db: D1Database, origin: string, kek?: st
 /**
  * Resolve the caller's identity once per request (runs before CORS, so
  * per-key allowed origins apply): a presented key wins; otherwise a keyless
- * origin grant. Unknown keys fall through to the origin grant (graceful key
- * rotation), and everything falls through to anonymous. Fail-open: a D1
- * hiccup means "anonymous", not "reject" — REQUIRE_API_KEY still applies.
+ * grant for the caller's `Origin` (or `Referer`, see `callerOrigin`). Unknown
+ * keys fall through to the grant (graceful key rotation), and everything falls
+ * through to anonymous. Fail-open: a D1 hiccup means "anonymous", not
+ * "reject" — REQUIRE_API_KEY still applies.
  */
 export async function apiKeyMiddleware(
   c: Context<{ Bindings: Env; Variables: ProxyVariables }>,
@@ -109,17 +140,16 @@ export async function apiKeyMiddleware(
   const raw = extractRawKey(c.req.raw, new URL(c.req.url));
   let row = raw ? await lookupApiKey(c.env.DB, raw, c.env.INJECTION_KEK) : null;
   let authVia: "key" | "origin" | null = row ? "key" : null;
-  if (!row) {
-    const origin = normalizeOrigin(c.req.header("origin"));
-    if (origin) {
-      // keyless_origins may not exist yet on an unmigrated database — treat
-      // a lookup failure as "no grant" and keep serving. Local updates go
-      // through the console, which does not depend on this query.
-      row = await lookupKeyByOrigin(c.env.DB, origin, c.env.INJECTION_KEK);
-      if (row) authVia = "origin";
-    }
+  const caller = callerOrigin(c.req.raw);
+  if (!row && caller) {
+    // keyless_origins may not exist yet on an unmigrated database — treat
+    // a lookup failure as "no grant" and keep serving. Local updates go
+    // through the console, which does not depend on this query.
+    row = await lookupKeyByOrigin(c.env.DB, caller, c.env.INJECTION_KEK);
+    if (row) authVia = "origin";
   }
   c.set("apiKey", row);
   c.set("authVia", authVia);
+  c.set("callerOrigin", caller);
   await next();
 }

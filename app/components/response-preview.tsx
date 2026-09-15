@@ -52,7 +52,7 @@ export interface ResponsePreviewProps {
 
 function RawLink({ href, label, className = "" }: { href: string; label: string; className?: string }) {
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" class={`preview-raw-link ${className}`}>
+    <a href={href} target="_blank" rel="noopener" class={`preview-raw-link ${className}`}>
       {label}
       <span class="lucide">
         <Lucide svg={arrowUpRightSvg} />
@@ -99,11 +99,16 @@ export function ResponsePreview(props: ResponsePreviewProps) {
     }
     return (
       <div class="preview-stack">
+        {/* The referrer policy is deliberately left at the default here: after
+            the fetch, the preview re-requests the same proxy URL, and a
+            same-origin navigation sends no Origin — dropping the Referer too
+            left that request anonymous (a 401 under REQUIRE_API_KEY). corx
+            strips `referer` before forwarding upstream, so nothing leaks to
+            the target. Same reason the raw links only use rel="noopener". */}
         <iframe
           src={rawUrl}
           title={i18n.frameHint}
           sandbox=""
-          referrerpolicy="no-referrer"
           loading="lazy"
           class="preview-frame"
         ></iframe>

@@ -1,11 +1,16 @@
 # Local dev secrets (never commit). Copy to `.dev.vars`.
-ADMIN_TOKEN = "dev-admin-token-change-me"
+#
+# In production the whole list below lives in `wrangler secret put` (or a
+# --secrets-file), never in `wrangler.jsonc` — the repository stays free of one
+# deployment's values. `wrangler deploy` rewrites plain-text `vars` from the
+# config file on every deploy, but never touches secrets, so a value kept in
+# the config would have to be identical for every deployment.
+#
+# Local dev still needs them here: `.dev.vars` is loaded as secret bindings for
+# `wrangler dev` / vite, and is gitignored.
 
-# The public tier's key is public by design, so it belongs in wrangler.jsonc
-# (`vars.PUBLIC_KEY`) when deployed. Set it here for local dev, then run
-# `npm run db:seed:public` once to create the matching public-tier row in the
-# local D1 — the landing page card needs both halves.
-# PUBLIC_KEY = "corx_dev_public_key"
+# --- Credentials ---------------------------------------------------------
+ADMIN_TOKEN = "dev-admin-token-change-me"
 
 # Session cookie HMAC secret (optional — falls back to ADMIN_TOKEN).
 # SESSION_SECRET = "dev-session-secret-change-me"
@@ -15,8 +20,23 @@ ADMIN_TOKEN = "dev-admin-token-change-me"
 # so back it up with the same care as the values themselves.
 # INJECTION_KEK = "dev-injection-kek-change-me"
 
+# --- Deployment values (secrets in production) ---------------------------
+# Subdomain mode suffix (`example.corx.com` → `example.com`).
+# Empty = auto-detect from the request Host (works at any zone depth).
+# PROXY_ZONE = "corx.example.com"
+
+# Public tier: the shared key users embed on their own sites. The raw value is
+# rendered on the landing page and D1 stores only its hash, so it is public by
+# design — it lives in a secret only to keep deployment values out of the repo.
+# For local dev: set it here, then run `npm run db:seed:public` once so the
+# landing page has a matching public-tier row.
+# PUBLIC_KEY = "corx_dev_public_key"
+
 # Cloudflare Access (Zero Trust) login for /console + /admin.
 # Leave empty for local dev (use the token form on /console/login).
+# ACCESS_TEAM_DOMAIN, ACCESS_AUD and ADMIN_EMAILS are one unit: Access login
+# stays off unless the first two are both set (a half-configured pair logs a
+# warning), and ADMIN_EMAILS is the optional allowlist checked per request.
 # ACCESS_TEAM_DOMAIN = "https://myteam.cloudflareaccess.com"
 # ACCESS_AUD = "paste-application-aud-tag"
 # ADMIN_EMAILS = "you@company.com"

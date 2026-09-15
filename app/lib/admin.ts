@@ -162,6 +162,9 @@ export interface LogRow {
   error: string;
   req_bytes: number;
   res_bytes: number | null;
+  api_key_id: string | null;
+  auth_via: string;
+  origin: string;
 }
 
 export interface LogQuery {
@@ -177,7 +180,8 @@ export async function queryLogs(db: D1Database, q: LogQuery = {}): Promise<LogRo
     q.hours == null || !Number.isFinite(q.hours) ? null : Math.min(Math.max(Math.round(q.hours), 1), 168);
   const rows = await db
     .prepare(
-      `SELECT id, created_at, method, target_host, status, latency_ms, country, cached, error, req_bytes, res_bytes
+      `SELECT id, created_at, method, target_host, status, latency_ms, country, cached, error, req_bytes, res_bytes,
+              api_key_id, auth_via, origin
        FROM request_logs ${hours == null ? "" : `WHERE created_at > ${ISO_SINCE}`}
        ORDER BY created_at DESC, id DESC LIMIT ?`,
     )

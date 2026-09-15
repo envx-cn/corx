@@ -167,7 +167,7 @@ export function LandingPage(props: {
                 <p class="mt-2 text-base-content/75">{t("landing.tryit.sub")}</p>
               </div>
               <div class="mt-8 lg:max-w-[560px]">
-                <CorsDemo base={props.origin} i18n={demo} apiKey={props.publicKey?.key} />
+                <CorsDemo base={props.origin} i18n={demo} />
                 <p class="mt-4 text-xs text-base-content/75 text-center lg:text-left leading-relaxed">
                   {t("landing.tryit.hint", { origin: props.origin })}
                 </p>

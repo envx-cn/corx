@@ -4,7 +4,7 @@
  * page's public-key card.
  *
  * The card needs two things at once:
- *   1. `PUBLIC_KEY` set (wrangler.jsonc `vars`, or `.dev.vars` for local dev)
+ *   1. `PUBLIC_KEY` set (a secret when deployed, `.dev.vars` locally)
  *   2. a matching row in `api_keys` with tier = 'public' — the raw key is only
  *      ever shown/used in plaintext, D1 stores nothing but its hash.
  *
@@ -83,6 +83,6 @@ console.log(`Seeded the local public-tier key.
   sha256(corx:v1:key) ${hash}
   daily caps          ${origin} per origin · ${host} per host · ${total} total
 
-Make sure PUBLIC_KEY is set to that same value (.dev.vars locally, or
-wrangler.jsonc "vars.PUBLIC_KEY" when deployed) — then open / and look for the
+Make sure PUBLIC_KEY is set to that same value (.dev.vars locally, or the
+PUBLIC_KEY secret when deployed) — then open / and look for the
 "public key" card between the try-it demo and the highlights.`);

@@ -55,6 +55,8 @@ function LogsContent(props: { logs: LogRow[]; hours: number; t: TFunc }) {
             <th>{t("console.logs.headStatus")}</th>
             <th class="hidden text-right sm:table-cell">{t("console.logs.headLatency")}</th>
             <th class="hidden md:table-cell">{t("console.logs.headCc")}</th>
+            <th class="hidden md:table-cell">{t("console.logs.headVia")}</th>
+            <th class="hidden lg:table-cell">{t("console.logs.headCaller")}</th>
             <th>{t("console.logs.headCache")}</th>
             <th class="hidden text-right sm:table-cell">{t("console.logs.headSize")}</th>
             <th>{t("console.logs.headError")}</th>
@@ -62,7 +64,7 @@ function LogsContent(props: { logs: LogRow[]; hours: number; t: TFunc }) {
         }
         body={
           props.logs.length === 0 ? (
-            <EmptyRow cols={9} text={t("console.logs.empty")} />
+            <EmptyRow cols={11} text={t("console.logs.empty")} />
           ) : (
             props.logs.map((l) => (
               <tr>
@@ -85,6 +87,20 @@ function LogsContent(props: { logs: LogRow[]; hours: number; t: TFunc }) {
                   {l.latency_ms == null ? "" : " ms"}
                 </td>
                 <td class="hidden md:table-cell">{l.country}</td>
+                <td class="hidden md:table-cell">
+                  {l.auth_via === "key" ? (
+                    <span class="badge badge-sm badge-ghost">{t("console.logs.viaKey")}</span>
+                  ) : l.auth_via === "origin" ? (
+                    <span class="badge badge-sm badge-ghost">{t("console.logs.viaOrigin")}</span>
+                  ) : (
+                    <span class="text-base-content/75">{t("console.logs.viaAnon")}</span>
+                  )}
+                </td>
+                <td class="hidden lg:table-cell">
+                  <code class="inline-block max-w-[12rem] truncate align-bottom" title={l.origin}>
+                    {l.origin || "—"}
+                  </code>
+                </td>
                 <td>
                   {l.cached ? (
                     <span class="font-medium text-success">{t("console.logs.hit")}</span>
