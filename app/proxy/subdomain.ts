@@ -1,5 +1,6 @@
 import type { Env } from "../lib/types.js";
 import { ProxyError } from "../lib/types.js";
+import { readControl, stripControlParams } from "../lib/control.js";
 import { extractTargetUrl } from "./guard.js";
 
 /**
@@ -13,9 +14,6 @@ import { extractTargetUrl } from "./guard.js";
  * Requires a wildcard Custom Domain (*.corx.com) on the Worker —
  * workers.dev hostnames can't do sub-subdomains, use /fetch?url= there.
  */
-
-/** Query params consumed by corx itself, stripped from every target form. */
-export const CONTROL_PARAMS = ["ttl", "no-cache", "key", "corx-scheme", "corx-port"];
 
 /** First-labels that are always served locally, never decoded as targets. */
 const RESERVED_LABELS = new Set(["www", "admin", "console", "api", "health", "status", "terms", "privacy", "docs", "blog"]);
@@ -76,8 +74,8 @@ export function subdomainTarget(reqUrl: URL, env: Env): string | null {
   if (!decoded) return null;
   if (!decoded.includes(".")) decoded += ".com"; // shorthand: example.corx.com -> example.com
 
-  const scheme = reqUrl.searchParams.get("corx-scheme")?.toLowerCase() === "http" ? "http" : "https";
-  const portRaw = reqUrl.searchParams.get("corx-port") ?? "";
+  const scheme = readControl(reqUrl, "scheme")?.toLowerCase() === "http" ? "http" : "https";
+  const portRaw = readControl(reqUrl, "port") ?? "";
   let port = "";
   if (portRaw !== "") {
     const n = Number(portRaw);
@@ -91,8 +89,9 @@ export function subdomainTarget(reqUrl: URL, env: Env): string | null {
   } catch {
     throw new ProxyError(400, `Cannot decode subdomain "${label}" as a hostname`);
   }
-  for (const p of CONTROL_PARAMS) target.searchParams.delete(p);
-  return target.toString();
+  // The proxy request's query *is* the target's query here, so the control
+  // params are stripped back off; everything else belongs to the target.
+  return stripControlParams(target.toString());
 }
 
 export interface ResolvedTarget {
@@ -100,28 +99,17 @@ export interface ResolvedTarget {
   viaSubdomain: boolean;
 }
 
-/** Remove corx's reserved query params from a target URL. */
-export function stripControlParams(raw: string): string {
-  try {
-    const u = new URL(raw);
-    for (const p of CONTROL_PARAMS) u.searchParams.delete(p);
-    return u.toString();
-  } catch {
-    return raw; // validateTargetUrl will 400 it
-  }
-}
-
 /**
  * Precedence: explicit `?url=` → path modes (/proxy/*, /https://…)
  * → subdomain mode → null (serve landing / 404).
  *
- * Control params are stripped from every target form so a target's own query
- * can never collide with the proxy's reserved `ttl`/`no-cache`/`key` params
- * (in path/subdomain modes those sit in the proxy request URL itself).
+ * A caller-supplied target is returned untouched: its query belongs to the
+ * target, so a genuine `?key=`/`?ttl=` keeps working. corx reads its control
+ * params from the proxy request's own query instead (app/lib/control.ts).
  */
 export function resolveRawTarget(reqUrl: URL, env: Env): ResolvedTarget {
   const pathMode = extractTargetUrl(reqUrl, reqUrl.pathname);
-  if (pathMode) return { target: stripControlParams(pathMode), viaSubdomain: false };
+  if (pathMode) return { target: pathMode, viaSubdomain: false };
   const sub = subdomainTarget(reqUrl, env);
   return { target: sub, viaSubdomain: sub !== null };
 }

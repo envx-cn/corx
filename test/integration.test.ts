@@ -606,7 +606,7 @@ describe("JSONP (integration)", () => {
 
   it("wraps a JSON response as a script call", async () => {
     stubUpstream(() => new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } }));
-    const res = await call("/fetch?url=https://api.example.com/data&callback=cb");
+    const res = await call("/fetch?url=https://api.example.com/data&corx-callback=cb");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("application/javascript");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
@@ -615,7 +615,7 @@ describe("JSONP (integration)", () => {
 
   it("wraps errors too, so the script callback still fires", async () => {
     stubUpstream(() => new Response("not json", { status: 200, headers: { "content-type": "text/plain" } }));
-    const res = await call("/fetch?url=https://api.example.com/data&callback=cb");
+    const res = await call("/fetch?url=https://api.example.com/data&corx-callback=cb");
     expect(res.status).toBe(400);
     const text = await res.text();
     expect(text.startsWith("/**/ cb(")).toBe(true);
@@ -624,7 +624,7 @@ describe("JSONP (integration)", () => {
   });
 
   it("returns a plain JSON 400 for an invalid callback name", async () => {
-    const res = await call("/fetch?url=https://api.example.com/data&callback=1bad");
+    const res = await call("/fetch?url=https://api.example.com/data&corx-callback=1bad");
     expect(res.status).toBe(400);
     expect(res.headers.get("content-type")).toContain("application/json");
     expect(await res.json()).toMatchObject({ error: expect.stringContaining("Invalid JSONP callback") });
@@ -642,7 +642,7 @@ describe("JSONP (integration)", () => {
       delete: async () => undefined,
     };
     const res = await call(
-      "/fetch?url=https://api.example.com/data&callback=cb",
+      "/fetch?url=https://api.example.com/data&corx-callback=cb",
       {},
       { ...env, CACHE_BUCKET: bucket } as unknown as Env,
     );
@@ -678,7 +678,121 @@ describe("JSONP (integration)", () => {
     const calls = recordUpstream(
       () => new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } }),
     );
-    await call("/https://api.example.com/x?callback=cb");
+    await call("/https://api.example.com/x?corx-callback=cb");
     expect(calls[0]).not.toContain("callback");
+  });
+});
+
+describe("control params (integration)", () => {
+  /** fetch stub: answers DoH, records the upstream URLs it was asked for. */
+  function recordUpstream(res: () => Response): string[] {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes("cloudflare-dns.com")) {
+          return new Response(JSON.stringify({ Answer: [{ type: 1, data: "1.2.3.4" }] }), { status: 200 });
+        }
+        calls.push(url);
+        return res();
+      }),
+    );
+    return calls;
+  }
+
+  function bucketSpy() {
+    const puts: string[] = [];
+    const bucket = {
+      get: async () => null,
+      put: async (key: string) => {
+        puts.push(key);
+      },
+      list: async () => ({ objects: [] }),
+      delete: async () => undefined,
+    };
+    return { puts, env: { ...env, CACHE_BUCKET: bucket } as unknown as Env };
+  }
+
+  const plainRow = {
+    id: "k2",
+    key_hash: "h",
+    name: "plain",
+    rate_limit_per_min: null,
+    allowed_origins: null,
+    cache_ttl: null,
+    no_cache: 0,
+    ip_check: 1,
+    dns_check: 1,
+    vars: "[]",
+    header_rules: "[]",
+    param_rules: "[]",
+    allowed_hosts: null,
+    keyless: 0,
+    created_at: "2026-01-01T00:00:00.000Z",
+    revoked_at: null,
+  };
+
+  it("accepts every control param in the prefixed spelling", async () => {
+    const calls = recordUpstream(() => new Response("ok", { status: 200 }));
+    const res = await call("/fetch?url=https://api.example.com/x&corx-key=corx_abc&corx-ttl=60");
+    expect(res.status).toBe(200);
+    // Control params are the proxy's: the target never sees them.
+    expect(calls[0]).toBe("https://api.example.com/x");
+  });
+
+  it("lets a caller-supplied target keep its own key/ttl/callback", async () => {
+    const calls = recordUpstream(() => new Response("ok", { status: 200 }));
+    const target = encodeURIComponent("https://api.example.com/x?key=abc&ttl=7&callback=upstream");
+    const res = await call(`/fetch?url=${target}`);
+    expect(res.status).toBe(200);
+    expect(calls[0]).toBe("https://api.example.com/x?key=abc&ttl=7&callback=upstream");
+  });
+
+  it("never forwards the corx key when it is a request param", async () => {
+    const calls = recordUpstream(() => new Response('{"ok":true}', { status: 200 }));
+    const res = await call(`/fetch?url=https://api.example.com/x&corx-key=corx_abc`, {}, envWithKey(plainRow));
+    expect(res.status).toBe(200);
+    expect(calls[0]).toBe("https://api.example.com/x");
+  });
+
+  it("honours corx-no-cache: the response is never written to R2", async () => {
+    recordUpstream(() => new Response("ok", { status: 200, headers: { "content-type": "text/plain" } }));
+    const cached = bucketSpy();
+    expect((await call("/fetch?url=https://api.example.com/x", {}, cached.env)).status).toBe(200);
+    expect(cached.puts).toHaveLength(1);
+
+    const bypassed = bucketSpy();
+    const res = await call("/fetch?url=https://api.example.com/x&corx-no-cache=1", {}, bypassed.env);
+    expect(res.status).toBe(200);
+    expect(bypassed.puts).toHaveLength(0);
+  });
+
+  it("wraps a JSON body for corx-callback too", async () => {
+    recordUpstream(
+      () => new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } }),
+    );
+    const res = await call("/fetch?url=https://api.example.com/x&corx-callback=cb");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('/**/ cb({"ok":true});\n');
+  });
+
+  it("rejects an unknown corx-* param instead of forwarding the typo", async () => {
+    const calls = recordUpstream(() => new Response("ok", { status: 200 }));
+    const res = await call("/fetch?url=https://api.example.com/x&corx-tt1=60");
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining("corx-tt1") });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("never reads the un-prefixed names: they are the target's params", async () => {
+    const calls = recordUpstream(() => new Response("ok", { status: 200 }));
+    const buckets = bucketSpy();
+    // `ttl`/`no-cache`/`key` on the proxy query mean nothing to corx now.
+    const res = await call("/fetch?url=https://api.example.com/x&ttl=1&no-cache=1&callback=cb", {}, buckets.env);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-corx-cache")).toBe("MISS");
+    expect(buckets.puts).toHaveLength(1); // still cached: no-cache=1 was ignored
+    expect(calls[0]).toBe("https://api.example.com/x");
   });
 });

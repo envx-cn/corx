@@ -17,8 +17,8 @@ map, not the manual.
 | Routing modes | `?url=` on any proxy route (canonical), `/proxy/<url>`, `/<url>` (bare path), path form of `/fetch/<url>`, and DNS subdomain mode `<encoded-host>.<zone>/…` (`PROXY_ZONE`, auto-detect when blank). Precedence: `?url=` → path → subdomain. |
 | Subdomain encoding | `.` → `-`, `-` → `--` (lossless), bare label gets `.com`, reserved labels (`www`, `admin`, `console`, `api`, `health`, `status`) never decode, 63-char DNS cap → 400. |
 | Methods | Any method (`/fetch`, `/proxy/*` and the `/*` fallback are `app.all`). `OPTIONS` is answered by the CORS preflight before the handler runs. |
-| Control params | `ttl`, `no-cache`, `key`, `corx-scheme`, `corx-port` are consumed by corx and stripped from every target form (targets can never shadow them); `callback` is consumed only when JSONP is requested. |
-| JSONP | `?callback=fn` wraps an `application/json` response as `fn(<json>);` (`application/javascript`, `nosniff`, 2 MiB cap, body validated with `JSON.parse`). Errors are wrapped too, the name must be a JS identifier path, and the cache is always bypassed (the callback name lives in the body). |
+| Control params | `corx-ttl`, `corx-no-cache`, `corx-key`, `corx-callback`, `corx-scheme`, `corx-port` are consumed by corx and never forwarded to a target; an unknown `corx-*` name is a 400 (namespace, not a filter — `app/lib/control.ts`). Everything else belongs to the target: a caller-supplied `?url=` / path target keeps its own `key`/`ttl`/`callback`, and only subdomain mode strips the control names (there the proxy request's query *is* the target's). |
+| JSONP | `?corx-callback=fn` wraps an `application/json` response as `fn(<json>);` (`application/javascript`, `nosniff`, 2 MiB cap, body validated with `JSON.parse`). Errors are wrapped too, the name must be a JS identifier path, and the cache is always bypassed (the callback name lives in the body). |
 | Request hygiene | Hop-by-hop + proxy-owned headers stripped (`Host`, `Connection`, `Upgrade`, `TE`, `X-Forwarded-For`, `CF-*`, `Origin`, `Referer`, …); `X-Forwarded-For` + `X-Proxied-By: corx` added; upstream asked for `accept-encoding: identity`. |
 | Upstream request | Buffered body (early `Content-Length` check, then a buffered cap; a body that fails to read is a 400 — never forwarded empty), shared `AbortController` bounded by `TIMEOUT_MS`; one 300 ms retry on transient `fetch` failure for GET/HEAD only (idempotent methods). |
 | Redirects | `follow` by default; `manual` whenever a key injects headers/rules or declares allowed hosts (a cross-origin redirect must not carry custom secret headers). In-scope hops are re-validated (blocklist + DNS) and re-scoped per rule; a hop outside the allowlist is returned to the caller with an absolute `Location` and never fetched; max 5 hops; `POST`→`GET` on 301/302/303. |
@@ -51,7 +51,7 @@ Files: `app/proxy/cors.ts`, `app/lib/auth.ts`, `app/lib/admin.ts`.
 
 - Keys are `corx_<base64url>` (24 random bytes), stored as SHA-256
   (`corx:v1:` prefix) — raw values are shown once at creation and never again.
-- Credential forms: `X-Api-Key`, `Authorization: Bearer …`, `?key=…`.
+- Credential forms: `X-Api-Key`, `Authorization: Bearer …`, `?corx-key=…`.
 - `REQUIRE_API_KEY=true` rejects anonymous proxy calls with 401.
 - Per-key fields: name (required), `rate_limit_per_min`, `allowed_origins`,
   `cache_ttl` (blank = global, `0` = never store), `no_cache`, `ip_check`,
@@ -108,10 +108,10 @@ Files: `app/proxy/ip.ts`, `app/proxy/guard.ts`, `app/proxy/dns-check.ts`,
 
 - GET 200s ≤ 5 MiB are buffered and stored in `corx-cache` under
   `corx/v1/<sha256(GET:url)>`; everything else streams and is not stored.
-- TTL resolution: `?ttl=` (shortens only, never above `CACHE_TTL_SECONDS`) →
+- TTL resolution: `?corx-ttl=` (shortens only, never above `CACHE_TTL_SECONDS`) →
   per-key `cache_ttl` → global default; `0` = never store; ≤ 86400 s.
 - Bypass matrix (read and write): non-GET, `no_cache` key, key with header
-  rules, `Range`, request `Authorization`/`Cookie`, `?no-cache=1`, request
+  rules, `Range`, request `Authorization`/`Cookie`, `?corx-no-cache=1`, request
   `Cache-Control: no-cache`.
 - Store policy: honor upstream `Cache-Control` (`no-store`, `private`,
   `no-cache`, `must-revalidate`, `max-age=0`) and skip responses that `Vary`
@@ -314,9 +314,9 @@ A hosted instance can publish one **public key** (`vars.PUBLIC_KEY`) so visitors
 fetch URLs cross-origin from their own sites without deploying anything. It is
 a reduced product, enforced in code rather than by convention:
 
-- `GET`/`HEAD` only; `?ttl=` / `?no-cache=` rejected (the instance owns the
-  cache policy, default `PUBLIC_CACHE_TTL_SECONDS` = 300 s); subdomain mode
-  refused; injection impossible to configure; SSRF guards forced on.
+- `GET`/`HEAD` only; `?corx-ttl=` / `?corx-no-cache=` are rejected (the
+  instance owns the cache policy, default `PUBLIC_CACHE_TTL_SECONDS` = 300 s);
+  subdomain mode refused; injection impossible to configure; SSRF guards forced on.
 - `Cookie` / `Authorization` are stripped from the outgoing request, so the
   public key can never be used to authenticate upstream as the caller.
 - Three daily quotas in UTC days — per calling `Origin` (soft: browsers set it,

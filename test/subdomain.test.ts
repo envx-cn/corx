@@ -49,8 +49,12 @@ describe("subdomainTarget", () => {
     expect(subdomainTarget(new URL("https://a.b.corx.com/"), zoneEnv)).toBeNull();
   });
   it("scheme/port overrides + control params stripped", () => {
-    const u = new URL("https://example.corx.com/a?corx-scheme=http&corx-port=8080&ttl=60&x=1");
+    const u = new URL("https://example.corx.com/a?corx-scheme=http&corx-port=8080&corx-ttl=60&x=1");
     expect(subdomainTarget(u, env)).toBe("http://example.com:8080/a?x=1");
+  });
+  it("keeps un-prefixed params: here the query is the target's", () => {
+    const u = new URL("https://example.corx.com/a?key=abc&ttl=60&callback=upstream");
+    expect(subdomainTarget(u, env)).toBe("https://example.com/a?key=abc&ttl=60&callback=upstream");
   });
   it("bad port throws", () => {
     expect(() => subdomainTarget(new URL("https://example.corx.com/?corx-port=abc"), env)).toThrow();
@@ -69,5 +73,18 @@ describe("resolveRawTarget precedence", () => {
   it("subdomain fallback flags viaSubdomain", () => {
     const u = new URL("https://example.corx.com/a");
     expect(resolveRawTarget(u, env)).toEqual({ target: "https://example.com/a", viaSubdomain: true });
+  });
+  it("a caller-supplied target keeps its own control-looking params", () => {
+    const target = encodeURIComponent("https://other.com/x?key=abc&ttl=7&callback=upstream");
+    const u = new URL(`https://corx.test/fetch?url=${target}`);
+    expect(resolveRawTarget(u, env)).toEqual({
+      target: "https://other.com/x?key=abc&ttl=7&callback=upstream",
+      viaSubdomain: false,
+    });
+  });
+  it("path mode keeps the target's query in the path", () => {
+    const u = new URL("https://corx.test/proxy/https://other.com/x?key=abc");
+    // The proxy request's query is corx's; the target is the path, verbatim.
+    expect(resolveRawTarget(u, env)).toEqual({ target: "https://other.com/x", viaSubdomain: false });
   });
 });

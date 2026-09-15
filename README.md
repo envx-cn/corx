@@ -34,18 +34,25 @@ Options:
 
 | Param | Effect |
 | --- | --- |
-| `?ttl=300` | R2 cache TTL in seconds for this GET (capped at the global `CACHE_TTL_SECONDS` so anonymous callers can't pin entries for 24h) |
-| `?no-cache=1` | Bypass R2 cache |
-| `?callback=cb` | JSONP: wrap the JSON body as `cb(<json>);` for a `<script>` tag (see below) |
+| `?corx-ttl=300` | R2 cache TTL in seconds for this GET (capped at the global `CACHE_TTL_SECONDS` so anonymous callers can't pin entries for 24h) |
+| `?corx-no-cache=1` | Bypass R2 cache |
+| `?corx-callback=cb` | JSONP: wrap the JSON body as `cb(<json>);` for a `<script>` tag (see below) |
 
-Pass an API key with `X-Api-Key`, `Authorization: Bearer …`, or `?key=…`
+Pass an API key with `X-Api-Key`, `Authorization: Bearer …`, or `?corx-key=…`
 (required when `REQUIRE_API_KEY=true`).
 
-**Reserved query params** (`ttl`, `no-cache`, `key`, `corx-scheme`, `corx-port`) are
-consumed by the proxy and stripped from the target in every mode — don't use
-them as real params of the sites you proxy. `callback` is consumed only when
-it is present (that's what turns the response into JSONP — see below); without
-it, a target's own `callback` param passes through untouched.
+**Control params** — `corx-ttl`, `corx-no-cache`, `corx-key`, `corx-callback`,
+`corx-scheme`, `corx-port` — are consumed by the proxy and never reach the
+target. `corx-*` is corx's namespace, so an unknown name (a typo like
+`corx-tt1`) is a 400 rather than a param quietly forwarded upstream. Everything
+else belongs to the target: a target's own `?key=`, `?ttl=` or `?callback=` is
+passed through untouched, and JSONP only happens when `corx-callback` is
+present.
+
+Subdomain mode is the one place where the two queries are the same one (the
+proxy request's query *is* the target's query), so the `corx-*` names are
+stripped back off the target there. A target that genuinely needs a param named
+`corx-*` is best addressed with `?url=` / path mode.
 
 Per-key cache policy (console → API keys, or `PATCH /api/keys/:id`): each key
 can set its own default TTL (`cacheTtl`, blank = global `CACHE_TTL_SECONDS`,
@@ -62,18 +69,18 @@ round-trip is what trusted internal keys may want to drop). The D1 blocklist
 rules for Workers are never bypassed. Skipping
 a guard widens what that key can reach, so both default to on.
 
-**JSONP (`?callback=fn`)**
+**JSONP (`?corx-callback=fn`)**
 
 When a strict CSP blocks `fetch`/XHR, or the page runs in a sandboxed
 `null`-origin context, a plain `<script>` tag still works — JSONP is the way
-in. Pass `?callback=fn` on a proxy request to a JSON endpoint and corx answers
-with `fn(<json>);` (a leading `/* */` comment, then the call):
+in. Pass `?corx-callback=fn` on a proxy request to a JSON endpoint and corx
+answers with `fn(<json>);` (a leading `/* */` comment, then the call):
 
 ```html
 <script>
   function cb(data) { console.log(data); }
 </script>
-<script src="https://corx.example/fetch?url=https://api.example.com/data&callback=cb"></script>
+<script src="https://corx.example/fetch?url=https://api.example.com/data&corx-callback=cb"></script>
 ```
 
 - The callback name must be a JS identifier path (`cb`, `window.app.onData`) —
@@ -100,7 +107,7 @@ forwarding — the browser never holds the upstream secret:
   line order.
 - Hop-by-hop and proxy-owned headers (`Host`, `Content-Length`,
   `X-Forwarded-For`, `Accept-Encoding`, `CF-*`, …) and the reserved
-  `ttl`/`no-cache`/`key`/`corx-scheme`/`corx-port`/`callback` query params are rejected at
+  `corx-*` query params (plus their deprecated un-prefixed aliases) are rejected at
   save time, as are unknown `${VAR}` references.
 - **Allowed target hosts** is mandatory once anything is injected: the key can
   only reach those hosts (exact, `*.suffix`, or an explicit `*`). This is the
@@ -258,8 +265,9 @@ cross-origin from their own site without deploying anything. It is deliberately
 a reduced product:
 
 - **`GET` / `HEAD` only** — no POST/PUT/… relaying.
-- **No `?ttl=` / `?no-cache=`** — the instance owns the cache policy (public
-  keys default to `PUBLIC_CACHE_TTL_SECONDS`, 300 s).
+- **No `?corx-ttl=` / `?corx-no-cache=`** (or their legacy spellings) — the
+  instance owns the cache policy (public keys default to
+  `PUBLIC_CACHE_TTL_SECONDS`, 300 s).
 - **No subdomain mode** — `/fetch?url=` only, which also keeps arbitrary
   third-party content off your wildcard domain.
 - **No injection** — variables and header/query rules cannot be configured.
@@ -279,7 +287,7 @@ request, so there is no CORS preflight — and browsers don't send API keys on
 ```js
 const KEY = "corx_pub_…"; // published on the landing page
 const r = await fetch(
-  `https://corx.example/fetch?url=${encodeURIComponent(url)}&key=${KEY}`,
+  `https://corx.example/fetch?url=${encodeURIComponent(url)}&corx-key=${KEY}`,
 );
 ```
 
@@ -361,7 +369,7 @@ appended to proxied HTML pages — dev-only artifact, production is untouched.
 | `PROXY_ZONE` | `""` | Suffix for subdomain mode (`example.corx.com` → `example.com`); empty = auto-detect from the request Host |
 | `ALLOWED_ORIGINS` | `*` | `*` or comma-separated origins allowed to use the **proxy routes only** (console/API never get CORS headers) |
 | `REQUIRE_API_KEY` | `false` | `"true"` to require an API key |
-| `CACHE_TTL_SECONDS` | `3600` | Default R2 TTL for GET 200s; also caps per-request `?ttl=` |
+| `CACHE_TTL_SECONDS` | `3600` | Default R2 TTL for GET 200s; also caps per-request `?corx-ttl=` |
 | `TIMEOUT_MS` | `30000` | Upstream timeout |
 | `RATE_LIMIT_PER_MIN` | `60` | Per key (or per IP) per minute — cache hits are free |
 | `MAX_BODY_BYTES` | `10485760` | Max forwarded request body (early Content-Length check, then a buffered cap; an unreadable body is rejected, never forwarded empty) |
@@ -372,7 +380,7 @@ appended to proxied HTML pages — dev-only artifact, production is untouched.
 | `ACCESS_AUD` | `""` | Access application AUD tag |
 | `ADMIN_EMAILS` | `""` | Optional comma-separated allowlist for admin access |
 | `PUBLIC_KEY` | `""` | Raw value of the public-tier key, rendered on the landing page (public by design; D1 stores only its hash). Empty = no public key advertised |
-| `PUBLIC_CACHE_TTL_SECONDS` | `300` | Default R2 TTL for public-tier GETs; public keys ignore `?ttl=` |
+| `PUBLIC_CACHE_TTL_SECONDS` | `300` | Default R2 TTL for public-tier GETs; public keys reject `corx-ttl` |
 
 ## Admin console (SSR + Cloudflare login)
 
@@ -467,7 +475,7 @@ curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: applicat
   -d '{"allowedOrigins":"https://app.example","cacheTtl":"300","ipCheck":false}' \
   https://corx.<you>.workers.dev/api/keys/KEY_ID
 # tip: browsers don't send API keys on OPTIONS preflights — pass the key via
-# ?key= if preflights must be evaluated per-key, or keep the global permissive
+# ?corx-key= if preflights must be evaluated per-key, or keep the global permissive
 
 # upstream injection + the host allowlist it requires (values are write-only):
 curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \

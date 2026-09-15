@@ -22,8 +22,7 @@
  * before any secret is attached to the request.
  */
 import { ProxyError } from "../lib/types.js";
-import { CONTROL_PARAMS } from "./subdomain.js";
-import { JSONP_PARAM } from "./jsonp.js";
+import { CONTROL_PARAMS } from "../lib/control.js";
 
 export interface InjectionVar {
   name: string;
@@ -98,7 +97,7 @@ export const HEADER_BLOCKLIST = new Set([
 ]);
 
 /** Query params corx owns; a target's own params must never shadow them. */
-const PARAM_BLOCKLIST = new Set([...CONTROL_PARAMS, JSONP_PARAM]);
+const PARAM_BLOCKLIST = new Set<string>(CONTROL_PARAMS);
 
 // ---------------------------------------------------------------------------
 // Input parsing (save time)

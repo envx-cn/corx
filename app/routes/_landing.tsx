@@ -262,7 +262,7 @@ function PublicKeyCard(props: {
     [t("landing.publicKey.limitHost"), pub.perHost],
     [t("landing.publicKey.limitTotal"), pub.total],
   ];
-  const usage = `fetch("${props.origin}/fetch?url=" + encodeURIComponent(url) + "&key=" + KEY)`;
+  const usage = `fetch("${props.origin}/fetch?url=" + encodeURIComponent(url) + "&corx-key=" + KEY)`;
   return (
     <section id="public-key" class="max-w-6xl mx-auto px-4 sm:px-6 py-20">
       <div class="text-center">

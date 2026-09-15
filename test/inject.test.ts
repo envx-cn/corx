@@ -127,11 +127,19 @@ describe("parseRulesInput (headers)", () => {
 
 describe("parseRulesInput (query params)", () => {
   it("parses set/remove and rejects reserved corx params", () => {
-    expect(parseRulesInput("api_key = ${TOKEN}\n!debug", "param", NAMES)).toEqual([
+    expect(parseRulesInput("ttl = 60\napi_key = ${TOKEN}\n!debug", "param", NAMES)).toEqual([
+      { action: "set", name: "ttl", value: "60" },
       { action: "set", name: "api_key", value: "${TOKEN}" },
       { action: "remove", name: "debug" },
     ]);
-    for (const reserved of ["ttl", "no-cache", "key", "corx-scheme", "corx-port", "callback"]) {
+    for (const reserved of [
+      "corx-ttl",
+      "corx-no-cache",
+      "corx-key",
+      "corx-callback",
+      "corx-scheme",
+      "corx-port",
+    ]) {
       expect(() => parseRulesInput(`${reserved} = 1`, "param", NAMES), reserved).toThrowError(ProxyError);
     }
     expect(() => parseRulesInput("a b = 1", "param", NAMES)).toThrowError(/invalid query param name/);

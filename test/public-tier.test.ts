@@ -101,7 +101,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("public tier (integration)", () => {
   it("serves a GET, meters it per IP, and reports the daily quotas", async () => {
     stubUpstream();
-    const res = await call(`/fetch?url=https://example.com/data&key=${PUBLIC_KEY}`, {
+    const res = await call(`/fetch?url=https://example.com/data&corx-key=${PUBLIC_KEY}`, {
       headers: { origin: "https://app.example" },
     });
     expect(res.status).toBe(200);
@@ -114,7 +114,7 @@ describe("public tier (integration)", () => {
 
   it("never forwards the caller's credentials upstream", async () => {
     const calls = stubUpstream();
-    const res = await call(`/fetch?url=https://example.com/data&key=${PUBLIC_KEY}`, {
+    const res = await call(`/fetch?url=https://example.com/data&corx-key=${PUBLIC_KEY}`, {
       headers: { cookie: "session=secret", authorization: "Bearer upstream-token", "x-api-key": PUBLIC_KEY },
     });
     expect(res.status).toBe(200);
@@ -125,16 +125,16 @@ describe("public tier (integration)", () => {
     expect(calls[0]?.headers.get("x-api-key")).toBe(null);
   });
 
-  it("rejects POST and the cache-control params", async () => {
+  it("rejects POST and the control params that steer the cache", async () => {
     stubUpstream();
-    const post = await call(`/fetch?url=https://example.com/x&key=${PUBLIC_KEY}`, { method: "POST", body: "x" });
+    const post = await call(`/fetch?url=https://example.com/x&corx-key=${PUBLIC_KEY}`, { method: "POST", body: "x" });
     expect(post.status).toBe(403);
     expect(await post.json()).toMatchObject({ error: expect.stringContaining("only allows GET and HEAD") });
 
-    const ttl = await call(`/fetch?url=https://example.com/x&ttl=5&key=${PUBLIC_KEY}`);
+    const ttl = await call(`/fetch?url=https://example.com/x&corx-ttl=5&corx-key=${PUBLIC_KEY}`);
     expect(ttl.status).toBe(403);
 
-    const noCache = await call(`/fetch?url=https://example.com/x&no-cache=1&key=${PUBLIC_KEY}`);
+    const noCache = await call(`/fetch?url=https://example.com/x&corx-no-cache=1&corx-key=${PUBLIC_KEY}`);
     expect(noCache.status).toBe(403);
   });
 
@@ -142,7 +142,7 @@ describe("public tier (integration)", () => {
     stubUpstream();
     const env = envWithKey(publicRow, 0, { PROXY_ZONE: "corx.test" });
     const res = await worker.fetch(
-      new Request(`https://example-com.corx.test/data?key=${PUBLIC_KEY}`),
+      new Request(`https://example-com.corx.test/data?corx-key=${PUBLIC_KEY}`),
       env,
       ctx,
     );
@@ -152,7 +152,7 @@ describe("public tier (integration)", () => {
 
   it("429s once the daily quota is spent, telling the caller when it resets", async () => {
     stubUpstream();
-    const res = await call(`/fetch?url=https://example.com/x&key=${PUBLIC_KEY}`, {}, envWithKey(publicRow, 99999));
+    const res = await call(`/fetch?url=https://example.com/x&corx-key=${PUBLIC_KEY}`, {}, envWithKey(publicRow, 99999));
     expect(res.status).toBe(429);
     expect(res.headers.get("retry-after")).toBeTruthy();
     expect(await res.json()).toMatchObject({ scope: "origin", limit: 3000, resetAt: expect.any(String) });
@@ -161,7 +161,7 @@ describe("public tier (integration)", () => {
   it("refuses to serve a public key with no total cap", async () => {
     stubUpstream();
     const res = await call(
-      `/fetch?url=https://example.com/x&key=${PUBLIC_KEY}`,
+      `/fetch?url=https://example.com/x&corx-key=${PUBLIC_KEY}`,
       {},
       envWithKey({ ...publicRow, daily_limit_total: null }),
     );
@@ -171,7 +171,7 @@ describe("public tier (integration)", () => {
   it("leaves a standard key's behavior unchanged (a fresh row has no tier)", async () => {
     stubUpstream();
     const res = await call(
-      `/fetch?url=https://example.com/x&key=corx_other`,
+      `/fetch?url=https://example.com/x&corx-key=corx_other`,
       {},
       envWithKey({ ...publicRow, tier: "standard", daily_limit_total: null }),
     );

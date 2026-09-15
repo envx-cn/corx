@@ -116,10 +116,10 @@ export async function runPlayground(c: Ctx, spec: PlaygroundSpec): Promise<Playg
 function buildProxyUrl(env: Env, spec: PlaygroundSpec, origin: string): { url: URL; target: URL; path: string } {
   const target = new URL(spec.url);
   // Control params ride the proxy request URL in every mode (the proxy strips
-  // them from the target).
+  // them from the target in subdomain mode, where the query is shared).
   const control = new URLSearchParams();
-  if (spec.ttl !== null) control.set("ttl", String(spec.ttl));
-  if (spec.noCache) control.set("no-cache", "1");
+  if (spec.ttl !== null) control.set("corx-ttl", String(spec.ttl));
+  if (spec.noCache) control.set("corx-no-cache", "1");
   const base = origin;
   let url: URL;
   switch (spec.route) {

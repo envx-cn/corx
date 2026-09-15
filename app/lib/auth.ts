@@ -2,6 +2,7 @@ import type { Context, Next } from "hono";
 import type { ApiKeyRow, Env } from "./types.js";
 import { sha256Hex } from "./utils.js";
 import { decryptRowInjection } from "./crypto.js";
+import { readControl } from "./control.js";
 
 /** Hono context variables set by apiKeyMiddleware (see server.ts). */
 export type ProxyVariables = {
@@ -25,13 +26,13 @@ export function newRawKey(): string {
   return `corx_${b64}`;
 }
 
-/** Pull a key from `x-api-key`, `Authorization: Bearer`, or `?key=`. */
+/** Pull a key from `x-api-key`, `Authorization: Bearer`, or `?corx-key=`. */
 export function extractRawKey(req: Request, url: URL): string | null {
   const header = req.headers.get("x-api-key");
   if (header?.trim()) return header.trim();
   const auth = req.headers.get("authorization");
   if (auth?.toLowerCase().startsWith("bearer ")) return auth.slice(7).trim() || null;
-  const q = url.searchParams.get("key");
+  const q = readControl(url, "key");
   if (q?.trim()) return q.trim();
   return null;
 }

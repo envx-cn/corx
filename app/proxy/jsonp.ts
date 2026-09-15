@@ -1,19 +1,17 @@
 /**
- * JSONP support: `?callback=fn` wraps a JSON proxy response as a JavaScript
- * call — a leading block comment, then `fn(<json>);` — so a plain `<script src>`
- * can read it. That is the escape hatch for strict CSPs (script-src allows
- * script tags but blocks fetch/XHR) and sandboxed/`null`-origin pages where
- * CORS can't apply.
+ * JSONP support: `?corx-callback=fn` wraps a JSON proxy
+ * response as a JavaScript call — a leading block comment, then `fn(<json>);` —
+ * so a plain `<script src>` can read it. That is the escape hatch for strict
+ * CSPs (script-src allows script tags but blocks fetch/XHR) and
+ * sandboxed/`null`-origin pages where CORS can't apply.
  *
- * `callback` is consumed only when JSONP is requested: it is taken from the
- * proxy request and stripped from the effective target, so an upstream that
- * also speaks JSONP never double-wraps. When no JSONP was asked for, a
- * `callback` inside a proxied target's own query is left untouched.
+ * The callback is consumed only when JSONP is requested: it is read from the
+ * proxy request's own query, so a target's own `callback` (a JSONP upstream)
+ * is left untouched — unless the caller wrote it in subdomain mode, where the
+ * two queries are the same one. See app/lib/control.ts.
  */
+import { readControl } from "../lib/control.js";
 import { ProxyError } from "../lib/types.js";
-
-/** The reserved query param that triggers JSONP wrapping. */
-export const JSONP_PARAM = "callback";
 
 /**
  * Cap on a wrapped body. JSONP is a page-script concern; multi-megabyte payloads
@@ -33,7 +31,7 @@ const MAX_CALLBACK = 128;
  * whitespace can reach the output.
  */
 export function jsonpCallback(reqUrl: URL): string | null {
-  const raw = reqUrl.searchParams.get(JSONP_PARAM);
+  const raw = readControl(reqUrl, "callback");
   if (raw === null) return null;
   const name = raw.trim();
   if (!name || name.length > MAX_CALLBACK || !CALLBACK_RE.test(name)) {

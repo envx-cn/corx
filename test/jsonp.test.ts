@@ -10,24 +10,33 @@ describe("jsonpCallback", () => {
   });
 
   it("accepts simple and dotted identifier paths", () => {
-    expect(jsonpCallback(url("&callback=cb"))).toBe("cb");
-    expect(jsonpCallback(url("&callback=window.app.onData_2"))).toBe("window.app.onData_2");
-    expect(jsonpCallback(url("&callback=%20cb%20"))).toBe("cb"); // trimmed
+    expect(jsonpCallback(url("&corx-callback=cb"))).toBe("cb");
+    expect(jsonpCallback(url("&corx-callback=window.app.onData_2"))).toBe("window.app.onData_2");
+    expect(jsonpCallback(url("&corx-callback=%20cb%20"))).toBe("cb"); // trimmed
   });
 
   it("rejects anything that could break out of the call or execute", () => {
     for (const bad of ["", "1cb", "cb()", "alert(1)", "cb-x", "a..b", "cb;x", "x".repeat(129)]) {
-      expect(() => jsonpCallback(url(`&callback=${encodeURIComponent(bad)}`)), bad).toThrowError(ProxyError);
+      expect(() => jsonpCallback(url(`&corx-callback=${encodeURIComponent(bad)}`)), bad).toThrowError(ProxyError);
     }
   });
 
   it("is a 400 so a bad name is readable as a JSON error", () => {
     try {
-      jsonpCallback(url("&callback=1bad"));
+      jsonpCallback(url("&corx-callback=1bad"));
       throw new Error("should have thrown");
     } catch (err) {
       expect((err as ProxyError).status).toBe(400);
     }
+  });
+
+  it("ignores the un-prefixed `callback`, which belongs to the target", () => {
+    expect(jsonpCallback(url("&callback=cb"))).toBeNull();
+  });
+
+  it("ignores a callback that only lives inside the target's own query", () => {
+    const target = encodeURIComponent("https://api.example.com/x?callback=upstream");
+    expect(jsonpCallback(new URL(`https://corx.test/fetch?url=${target}`))).toBeNull();
   });
 });
 

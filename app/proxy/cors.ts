@@ -113,7 +113,7 @@ function isProxyRequest(c: Ctx): boolean {
  * CORS middleware, applied to proxy routes only.
  * Uses the caller's per-key origins when set (see apiKeyMiddleware, which
  * must run before this). Note: browsers don't send API keys on OPTIONS
- * preflights — pass the key via `?key=` if preflights must be per-key,
+ * preflights — pass the key via `?corx-key=` if preflights must be per-key,
  * or keep the global ALLOWED_ORIGINS permissive.
  */
 export function cors() {

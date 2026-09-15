@@ -224,7 +224,7 @@ describe("console playground (integration)", () => {
     expect(data.contentType).toContain("application/json");
     expect(data.request.targetUrl).toBe("https://example.com/data");
     expect(data.request.path).toContain("/fetch?url=");
-    expect(data.request.path).toContain("ttl=60");
+    expect(data.request.path).toContain("corx-ttl=60");
     // Response headers are exposed to the console, including proxy-owned ones.
     const headerNames = data.headers.map(([name]: [string, string]) => name.toLowerCase());
     expect(headerNames).toContain("x-upstream");
