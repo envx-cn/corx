@@ -204,7 +204,6 @@ const en = {
       logs: "Logs",
       blocked: "Blocklist",
       profile: "Profile",
-      billing: "Billing",
       login: "Sign in",
     },
     sidebar: {
@@ -213,7 +212,6 @@ const en = {
     topbar: {
       openSidebar: "Open sidebar",
       profile: "Profile",
-      billing: "Billing",
       logout: "Log out",
       logoutTitle: "Log out?",
       logoutBody: "The session cookie is cleared — and you are signed out of Cloudflare Access when it sits in front of the console.",
@@ -426,11 +424,6 @@ const en = {
       email: "Email",
       authMethod: "Auth method",
       hint: "Console access is controlled by your deployment's Access policy or {code}. Changes to the account (email, permissions) happen on the upstream identity provider, not here.",
-    },
-    billing: {
-      body: "CORX is self-hosted on your own Cloudflare account, so there is nothing to bill here. Usage of the proxy (requests, cache, storage) is charged by Cloudflare against the plan of the account this worker runs on.",
-      active: "active",
-      noBill: "No plan, no seat, no invoice.",
     },
     login: {
       consoleTitle: "CORX console",
@@ -715,7 +708,6 @@ const zh: Messages = {
       logs: "日志",
       blocked: "黑名单",
       profile: "个人资料",
-      billing: "账单",
       login: "登录",
     },
     sidebar: {
@@ -724,7 +716,6 @@ const zh: Messages = {
     topbar: {
       openSidebar: "打开侧边栏",
       profile: "个人资料",
-      billing: "账单",
       logout: "退出登录",
       logoutTitle: "退出登录？",
       logoutBody: "会话 cookie 会被清除；如果控制台前面配置了 Cloudflare Access，也会一并退出 Access。",
@@ -937,11 +928,6 @@ const zh: Messages = {
       email: "邮箱",
       authMethod: "认证方式",
       hint: "控制台访问由部署时的 Access 策略或 {code} 控制。账号相关修改（邮箱、权限）发生在上游身份提供商，而不是这里。",
-    },
-    billing: {
-      body: "CORX 自托管在你自己的 Cloudflare 账户上，因此这里没有任何账单。代理的使用量（请求、缓存、存储）由 Cloudflare 按该 Worker 所在账户的套餐计费。",
-      active: "活跃",
-      noBill: "没有套餐、没有席位、没有账单。",
     },
     login: {
       consoleTitle: "CORX 控制台",

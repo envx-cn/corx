@@ -7,8 +7,7 @@ import type { Locale, TFunc } from "../../lib/i18n/locale.js";
 /**
  * Top bar, styled after dash.cloudflare.com: the header shares the page's
  * canvas background and hairline bottom border; breadcrumb on the left, a
- * language switch, and the user menu on the right (Profile / Billing / Log
- * out). The language switch sets the corx_lang cookie via ?lang=… (handled by
+ * language switch, and the user menu on the right (Profile / Log out). The language switch sets the corx_lang cookie via ?lang=… (handled by
  * the console _middleware) and keeps the current page.
  */
 export function Topbar(props: { title: string; user: string; locale: Locale; t: TFunc }) {
@@ -59,9 +58,6 @@ export function Topbar(props: { title: string; user: string; locale: Locale; t: 
             <li class="menu-title px-3 pt-3 pb-0.5">{t("console.topbar.account")}</li>
             <li>
               <a href="/console/profile">{t("console.topbar.profile")}</a>
-            </li>
-            <li>
-              <a href="/console/billing">{t("console.topbar.billing")}</a>
             </li>
             <li class="menu-title px-3 pt-3 pb-0.5">{t("console.topbar.session")}</li>
             <li>
