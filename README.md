@@ -43,7 +43,7 @@ Pass an API key with `X-Api-Key`, `Authorization: Bearer …`, or `?corx-key=…
 
 **Control params** — `corx-ttl`, `corx-no-cache`, `corx-key`, `corx-callback`,
 `corx-scheme`, `corx-port` — are consumed by the proxy and never reach the
-target. `corx-*` is corx's namespace, so an unknown name (a typo like
+target. `corx-*` is CORX's namespace, so an unknown name (a typo like
 `corx-tt1`) is a 400 rather than a param quietly forwarded upstream. Everything
 else belongs to the target: a target's own `?key=`, `?ttl=` or `?callback=` is
 passed through untouched, and JSONP only happens when `corx-callback` is
@@ -73,7 +73,7 @@ a guard widens what that key can reach, so both default to on.
 
 When a strict CSP blocks `fetch`/XHR, or the page runs in a sandboxed
 `null`-origin context, a plain `<script>` tag still works — JSONP is the way
-in. Pass `?corx-callback=fn` on a proxy request to a JSON endpoint and corx
+in. Pass `?corx-callback=fn` on a proxy request to a JSON endpoint and CORX
 answers with `fn(<json>);` (a leading `/* */` comment, then the call):
 
 ```html
@@ -93,7 +93,7 @@ answers with `fn(<json>);` (a leading `/* */` comment, then the call):
 
 **Upstream injection (per key)**
 
-A key can carry variables plus header/query rules that corx applies when
+A key can carry variables plus header/query rules that CORX applies when
 forwarding — the browser never holds the upstream secret:
 
 | Field | Editor format |
@@ -155,7 +155,7 @@ proxy without sending the key at all:
   shows both as **Via** and **Caller**).
 - **Honest caveat:** this is quota attribution, not authentication. Browsers
   cannot forge `Origin`/`Referer`, but non-browser clients can — it is exactly
-  as strict as shipping the key in a frontend, which is the model corx targets.
+  as strict as shipping the key in a frontend, which is the model CORX targets.
   Anyone who can forge a granted origin can do whatever the key may do
   (including injected variables), so keep the allowed hosts tight.
 
@@ -227,10 +227,10 @@ read at all (the element points at the proxy URL, which is why a repeated image
 request shows `X-Corx-Cache: HIT`).
 
 **Sandboxing:** proxied HTML only ever runs inside `<iframe sandbox="">` — no
-`allow-same-origin` (the document is served from corx's origin, so that would
+`allow-same-origin` (the document is served from CORX's origin, so that would
 hand upstream scripts our cookies, storage and admin API), no scripts, forms,
 popups or top-navigation — plus `referrerpolicy="no-referrer"`. Because the
-framed document's address *is* corx, the target's own `X-Frame-Options:
+framed document's address *is* CORX, the target's own `X-Frame-Options:
 SAMEORIGIN` / `frame-ancestors 'self'` pass, while `DENY` and foreign
 `frame-ancestors` lists still block; those are detected from the response
 headers up front (`frameBlock`) and replaced with an explanation card + *Open
@@ -294,7 +294,7 @@ one deployment's URL.
 
 | Surface | What it is |
 | --- | --- |
-| `robots.txt` | Public pages open, machine surfaces closed (`/console`, `/api`, `/fetch`, `/proxy`, `/health`), absolute `Sitemap:` line. The main answer engines (GPTBot, ClaudeBot, PerplexityBot, …) are named and allowed on purpose: corx *wants* to be read and cited, and saying so in the file makes a future "block the bots" edit argue with the list. |
+| `robots.txt` | Public pages open, machine surfaces closed (`/console`, `/api`, `/fetch`, `/proxy`, `/health`), absolute `Sitemap:` line. The main answer engines (GPTBot, ClaudeBot, PerplexityBot, …) are named and allowed on purpose: CORX *wants* to be read and cited, and saying so in the file makes a future "block the bots" edit argue with the list. |
 | `sitemap.xml` | The four indexable URLs with `lastmod`, and an `xhtml:link` hreflang cluster (`en`, `zh`, `x-default`) on each landing URL. |
 | `llms.txt` | The [llmstxt.org](https://llmstxt.org) index: title, blockquote summary, `## Docs` / `## Facts` link sections, `## Optional` tail. |
 | `llms-full.txt` | The whole behaviour of the instance in one Markdown fetch — calling shapes, the `corx-*` namespace, auth tiers, caching, limits, security, console + admin API, self-hosting. |
@@ -335,7 +335,7 @@ a reduced product:
 - **No injection** — variables and header/query rules cannot be configured.
 - **SSRF guards cannot be switched off** — `ipCheck`/`dnsCheck` stay on.
 - **Credentials are never forwarded** — `Cookie` and `Authorization` are
-  stripped from the outgoing request, so a public caller cannot use corx to
+  stripped from the outgoing request, so a public caller cannot use CORX to
   authenticate as themselves upstream. `X-Api-Key` / `X-Admin-Token` are
   always stripped too: they belong to this proxy, never to the target.
 - **Daily quotas** — per calling `Origin`, per target host, and for the key as
@@ -633,7 +633,7 @@ curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: applicati
 ## How it works
 
 ```
-browser ──► corx (Worker)
+browser ──► CORX (Worker)
               ├─ CORS preflight / origin check (proxy routes only)
               ├─ identity: presented key → keyless Origin grant → anonymous
               ├─ SSRF guard (private/reserved IPs incl. IPv6 + CGNAT,

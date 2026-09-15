@@ -107,7 +107,7 @@ describe("crawler files", () => {
     const txt = await res.text();
 
     // Title, then the one-line summary as a blockquote (the spec's shape).
-    expect(txt.startsWith("# corx\n\n> ")).toBe(true);
+    expect(txt.startsWith("# CORX\n\n> ")).toBe(true);
     // The index is an index: real link sections and the optional tail.
     expect(txt).toContain("## Docs");
     expect(txt).toContain("## Optional");
@@ -124,7 +124,7 @@ describe("crawler files", () => {
 
   it("llms-full.txt documents the calling conventions and the limits", async () => {
     const txt = await (await call("/llms-full.txt")).text();
-    expect(txt).toContain("# corx — full reference for answer engines");
+    expect(txt).toContain("# CORX — full reference for answer engines");
     expect(txt).toContain("/fetch?url=");
     expect(txt).toContain("corx-ttl");
     expect(txt).toContain("429");
@@ -222,7 +222,7 @@ describe("landing page metadata", () => {
     const { "@graph": zhNodes } = await graph(await call("/zh"));
     const zhFaq = zhNodes.find((n) => n["@type"] === "FAQPage")!;
     expect(zhFaq["inLanguage"]).toBe("zh");
-    expect(JSON.stringify(zhFaq)).toContain("corx 是什么？");
+    expect(JSON.stringify(zhFaq)).toContain("CORX 是什么？");
   });
 
   it("locks the structured data against a </script> injection", async () => {

@@ -212,13 +212,13 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     const { target: rawTarget, viaSubdomain } = resolveRawTarget(reqUrl, c.env);
     if (isPublic) {
       if (viaSubdomain) {
-        throw new ProxyError(403, "Subdomain mode is not available with the public key — self-host corx to use it");
+        throw new ProxyError(403, "Subdomain mode is not available with the public key — self-host CORX to use it");
       }
       if (c.req.method !== "GET" && c.req.method !== "HEAD") {
         throw new ProxyError(403, `The public key only allows GET and HEAD (got ${c.req.method})`);
       }
       if (hasControl(reqUrl, "ttl") || hasControl(reqUrl, "no-cache")) {
-        throw new ProxyError(403, "The public key does not accept ttl/no-cache — self-host corx to control caching");
+        throw new ProxyError(403, "The public key does not accept ttl/no-cache — self-host CORX to control caching");
       }
     }
     const url = validateTargetUrl(rawTarget, { ipCheck: row?.ip_check !== 0 });

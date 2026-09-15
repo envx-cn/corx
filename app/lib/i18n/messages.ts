@@ -25,7 +25,7 @@ const en = {
     console: "Console",
     terms: "Terms",
     github: "GitHub",
-    githubAria: "View the corx source on GitHub",
+    githubAria: "View the CORX source on GitHub",
     ogAlt: "The CORX wordmark — CORS proxy, served from the edge",
     copyright: "© {year} CORX",
   },
@@ -33,7 +33,7 @@ const en = {
     title: "Terms of use",
     updated: "Last updated 2026-09-14",
     lead:
-      "This page covers the public corx instance at {origin}: a free, best-effort service maintained as a personal project. By using the public key or the public pages you agree to these terms. If you do not agree, do not use them.",
+      "This page covers the public CORX instance at {origin}: a free, best-effort service maintained as a personal project. By using the public key or the public pages you agree to these terms. If you do not agree, do not use them.",
     s1Title: "What this service is",
     s1Body:
       "A shared CORS proxy run by a single Cloudflare Worker with a small D1 database and an R2 cache. There is no SLA, no support commitment and no uptime target: the service may be slow, rate-limited, changed, suspended or shut down at any time without notice. Anything you depend on deserves its own deployment.",
@@ -51,11 +51,11 @@ const en = {
       'The service is provided "as is", without warranty of any kind, express or implied, including merchantability, fitness for a particular purpose, availability, accuracy and non-infringement. To the maximum extent permitted by law, the operator is not liable for any direct, indirect, incidental, special or consequential loss — including lost data, profits or business — arising from the use of, or inability to use, this service.',
     s6Title: "Changes",
     s6Body:
-      "These terms, the quotas and the feature set may change at any time; the version on this page is the current one, and continued use after a change means you accept it. corx itself is open source: for guarantees, advanced features and no shared quotas, run your own instance.",
+      "These terms, the quotas and the feature set may change at any time; the version on this page is the current one, and continued use after a change means you accept it. CORX itself is open source: for guarantees, advanced features and no shared quotas, run your own instance.",
     s7Title: "Report abuse",
     s7BodyA: "Report abuse, illegal content or security issues to",
     s7BodyB: "Include the full request URL when you can.",
-    back: "Back to corx",
+    back: "Back to CORX",
   },
   landing: {
     title: "CORX — CORS proxy on Cloudflare",
@@ -98,7 +98,7 @@ const en = {
       sub: "The details that keep secrets, browser callers and debugging under control.",
       injection: {
         title: "Secrets stay on the edge",
-        desc: "Attach variables and header/query rules to a key; corx injects them upstream. The browser never holds the token, and values are masked in the console and logs.",
+        desc: "Attach variables and header/query rules to a key; CORX injects them upstream. The browser never holds the token, and values are masked in the console and logs.",
       },
       keyless: {
         title: "Keyless browser access",
@@ -157,10 +157,10 @@ const en = {
     // the answers an answer engine quotes are the answers a human can read.
     // Keep each one self-contained: it may be quoted without its question.
     faq: {
-      title: "corx FAQ",
+      title: "CORX FAQ",
       sub: "The questions a proxy has to answer before it sees production traffic.",
-      q1: "What is corx?",
-      a1: "corx is an open-source CORS proxy that runs on Cloudflare's edge. Prefix any URL with /fetch?url= and the response comes back with CORS headers, so browser code can read APIs that never set them — with R2 edge caching, rate limiting and SSRF guards built in.",
+      q1: "What is CORX?",
+      a1: "CORX is an open-source CORS proxy that runs on Cloudflare's edge. Prefix any URL with /fetch?url= and the response comes back with CORS headers, so browser code can read APIs that never set them — with R2 edge caching, rate limiting and SSRF guards built in.",
       q2: "How do I call it?",
       a2: "Four equivalent shapes: /fetch?url=<encoded>, /proxy/<url>, /<url> (path style), or subdomain mode where api.example.com becomes api-example-com.<your zone>. GET and HEAD are cached; every other method passes straight through uncached.",
       q3: "Do I need an API key?",
@@ -170,7 +170,7 @@ const en = {
       q5: "What happens when I hit the limits?",
       a5: "You get 429 with a Retry-After header. Requests are counted per calling site, per target host, per instance and per minute, and cached responses count too — the quota is about requests, not upstream load.",
       q6: "Can I self-host it?",
-      a6: "Yes. corx is MIT-licensed TypeScript for Cloudflare Workers, D1 and R2: deploy it to your own account and the quotas, limits and logs are yours. The repository README covers the whole deployment.",
+      a6: "Yes. CORX is MIT-licensed TypeScript for Cloudflare Workers, D1 and R2: deploy it to your own account and the quotas, limits and logs are yours. The repository README covers the whole deployment.",
     },
   },
   notfound: {
@@ -536,7 +536,7 @@ const zh: Messages = {
     console: "控制台",
     terms: "使用条款",
     github: "GitHub",
-    githubAria: "在 GitHub 上查看 corx 源码",
+    githubAria: "在 GitHub 上查看 CORX 源码",
     ogAlt: "CORX 标识——边缘 CORS 代理",
     copyright: "© {year} CORX",
   },
@@ -544,7 +544,7 @@ const zh: Messages = {
     title: "使用条款",
     updated: "最后更新 2026-09-14",
     lead:
-      "本页适用于 corx 的公共实例 {origin}：一个以个人项目形式免费提供的尽力而为的服务。使用公共 key 或公共页面，即表示你同意本条款；如不同意，请勿使用。",
+      "本页适用于 CORX 的公共实例 {origin}：一个以个人项目形式免费提供的尽力而为的服务。使用公共 key 或公共页面，即表示你同意本条款；如不同意，请勿使用。",
     s1Title: "服务说明",
     s1Body:
       "共享 CORS 代理，由单个 Cloudflare Worker 配合小型 D1 数据库与 R2 缓存运行。没有 SLA、没有支持承诺、没有可用性目标：服务可能随时变慢、被限流、变更、暂停或停止，且不另行通知。任何你依赖的东西，都应当自行部署。",
@@ -562,11 +562,11 @@ const zh: Messages = {
       "服务按“现状”提供，不作任何明示或默示担保，包括适销性、特定用途适用性、可用性、准确性与不侵权。在法律允许的最大范围内，运营者不对因使用或无法使用本服务而产生的任何直接、间接、附带、特殊或后果性损失（包括数据、利润或业务损失）承担责任。",
     s6Title: "变更",
     s6Body:
-      "本条款、配额与功能范围可能随时变更；本页版本即为当前版本，变更后继续使用即视为接受。corx 本身是开源的：如需担保、高级功能以及不与他人共享的配额，请自行部署。",
+      "本条款、配额与功能范围可能随时变更；本页版本即为当前版本，变更后继续使用即视为接受。CORX 本身是开源的：如需担保、高级功能以及不与他人共享的配额，请自行部署。",
     s7Title: "滥用举报",
     s7BodyA: "如需举报滥用、违法内容或安全问题，请联系",
     s7BodyB: "，并尽量附上完整的请求 URL。",
-    back: "返回 corx",
+    back: "返回 CORX",
   },
   landing: {
     title: "CORX — Cloudflare 上的 CORS 代理",
@@ -609,7 +609,7 @@ const zh: Messages = {
       sub: "这些细节让密钥、浏览器调用方与调试都尽在掌控。",
       injection: {
         title: "密钥留在边缘",
-        desc: "给密钥绑定变量与请求头/查询参数规则，corx 会在转发时注入——浏览器拿不到 token，变量值在控制台和日志中始终打码。",
+        desc: "给密钥绑定变量与请求头/查询参数规则，CORX 会在转发时注入——浏览器拿不到 token，变量值在控制台和日志中始终打码。",
       },
       keyless: {
         title: "浏览器免密钥访问",
@@ -670,8 +670,8 @@ const zh: Messages = {
     faq: {
       title: "常见问题",
       sub: "在让一个代理承接生产流量之前，它得先回答这些问题。",
-      q1: "corx 是什么？",
-      a1: "corx 是一个运行在 Cloudflare 边缘的开源 CORS 代理。把任意 URL 拼在 /fetch?url= 之后，响应就会带着 CORS 头返回，浏览器代码因此能读取那些没有设置 CORS 的 API——并且自带 R2 边缘缓存、频率限制与 SSRF 防护。",
+      q1: "CORX 是什么？",
+      a1: "CORX 是一个运行在 Cloudflare 边缘的开源 CORS 代理。把任意 URL 拼在 /fetch?url= 之后，响应就会带着 CORS 头返回，浏览器代码因此能读取那些没有设置 CORS 的 API——并且自带 R2 边缘缓存、频率限制与 SSRF 防护。",
       q2: "怎么调用？",
       a2: "四种等价写法：/fetch?url=<编码后的 URL>、/proxy/<url>、/<url>（路径式），以及子域名模式——api.example.com 变成 api-example-com.<你的域名>。GET 和 HEAD 会被缓存，其他方法一律直接透传。",
       q3: "需要 API 密钥吗？",
@@ -681,7 +681,7 @@ const zh: Messages = {
       q5: "触发限额会怎样？",
       a5: "会返回 429 和 Retry-After 头。限额按调用站点、目标站点、整个实例以及每分钟分别计算，命中缓存的请求也计入——配额算的是请求数，而不是上游压力。",
       q6: "可以自托管吗？",
-      a6: "可以。corx 是 MIT 许可的 TypeScript 项目，运行在 Cloudflare Workers + D1 + R2 上：部署到你自己的账号，配额、限额和日志都归你所有。仓库 README 覆盖了完整部署流程。",
+      a6: "可以。CORX 是 MIT 许可的 TypeScript 项目，运行在 Cloudflare Workers + D1 + R2 上：部署到你自己的账号，配额、限额和日志都归你所有。仓库 README 覆盖了完整部署流程。",
     },
   },
   notfound: {

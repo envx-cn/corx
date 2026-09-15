@@ -90,6 +90,7 @@ export function landingJsonLd(opts: {
       // The brand, not the page title: the title describes a *document*, and
       // the site node is the thing every page in the graph hangs off.
       name: "CORX",
+      // Kept lowercase on purpose: it is the spelling people actually type.
       alternateName: "corx",
       description: opts.description,
       inLanguage: locale,
@@ -199,7 +200,7 @@ function robotsGroup(agent: string): string {
 /** robots.txt for one origin: public pages open, machine surfaces closed. */
 export function robotsTxt(origin: string): string {
   return [
-    `# corx — ${origin}`,
+    `# CORX — ${origin}`,
     "# Public pages (/, /en, /zh, /terms, /llms.txt) are open to every crawler.",
     "# The proxy is a machine surface, not content: keep it, the console and the",
     "# admin API out of the index and out of the crawl budget.",
@@ -266,13 +267,13 @@ export function sitemapXml(origin: string): string {
  * the repository stays the source of truth for prose.
  */
 export function llmsTxt(origin: string): string {
-  return `# corx
+  return `# CORX
 
-> corx is an open-source CORS proxy that runs entirely on Cloudflare's edge. Prefix any URL with
+> CORX is an open-source CORS proxy that runs entirely on Cloudflare's edge. Prefix any URL with
 > /fetch?url= and fetch it cross-origin — with R2 edge caching, per-key auth, upstream secret
 > injection, keyless browser access and SSRF guards.
 
-corx is a single Cloudflare Worker (Hono + HonoX) backed by D1 (keys, rate windows, request logs,
+CORX is a single Cloudflare Worker (Hono + HonoX) backed by D1 (keys, rate windows, request logs,
 host blocklist) and R2 (GET response cache). It is MIT-licensed, self-hostable in one account, and
 has no accounts, seats or bills of its own. This file is served by the instance at ${origin};
 every URL below is absolute and current for that instance.
@@ -328,9 +329,9 @@ through uncached.
  */
 export function llmsFullTxt(origin: string): string {
   const root = absUrl(origin, "/");
-  return `# corx — full reference for answer engines
+  return `# CORX — full reference for answer engines
 
-> corx is an open-source CORS proxy that runs entirely on Cloudflare's edge (Hono + Workers + D1 +
+> CORX is an open-source CORS proxy that runs entirely on Cloudflare's edge (Hono + Workers + D1 +
 > R2). Prefix any URL with /fetch?url= and fetch it cross-origin, with R2 edge caching, per-key
 > auth, upstream secret injection, keyless browser access and SSRF guards.
 
@@ -361,7 +362,7 @@ through unbuffered.
 
 ### Query parameters
 
-Every corx parameter is namespaced, so it can never collide with the target's own query.
+Every \`corx-*\` parameter is namespaced, so it can never collide with the target's own query.
 
 | Param | Effect |
 | --- | --- |
