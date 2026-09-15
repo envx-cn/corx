@@ -105,11 +105,13 @@ function LoginPage(props: { accessDetected: boolean; accessEmail: string | null;
       <p class="text-sm text-base-content/75">{t("console.login.tokenHint", { code: "ADMIN_TOKEN" })}</p>
       <form method="post" action="/console/login">
         <input type="hidden" name="mode" value="token" />
-        <div class="form-control mb-4">
-          <label class="label pb-1" for="admin-token">
-            <span class="label-text">{t("console.login.adminToken")}</span>
+        <div class="mb-4">
+          {/* daisyUI 5 dropped .form-control/.label-text and made .label an
+              inline-flex chip — a bare label would sit *beside* the input. */}
+          <label class="mb-1.5 block text-sm text-base-content/75" for="admin-token">
+            {t("console.login.adminToken")}
           </label>
-          <input id="admin-token" type="password" name="token" autocomplete="off" class="input input-bordered" />
+          <input id="admin-token" type="password" name="token" autocomplete="off" class="input input-bordered w-full" />
         </div>
         <button class="btn w-full">{t("console.login.signIn")}</button>
       </form>
