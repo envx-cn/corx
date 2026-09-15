@@ -1,7 +1,7 @@
 import type { CachedEntry, Env } from "../lib/types.js";
 import { ProxyError } from "../lib/types.js";
 import { sha256Hex, num } from "../lib/utils.js";
-import { JSONP_PARAM } from "./jsonp.js";
+import { hasControl, readControl } from "../lib/control.js";
 
 const PREFIX = "corx/v1/";
 
@@ -42,12 +42,12 @@ export function ttlSeconds(
     keyRow.cache_ttl <= 86400
       ? keyRow.cache_ttl
       : null;
-  // Public tier: the instance owns the cache policy (the handler rejects ?ttl),
+  // Public tier: the instance owns the cache policy (the handler rejects corx-ttl),
   // and entries default to a short TTL so a shared cache turns over quickly.
   if (keyRow?.tier === "public") return stored ?? num(env.PUBLIC_CACHE_TTL_SECONDS, 300);
-  // A per-request ?ttl= can only shorten — never lengthen beyond the global
+  // A per-request ?corx-ttl= can only shorten — never lengthen beyond the global
   // default — so anonymous callers can't pin a public cache entry for 24h.
-  const rawTtl = reqUrl.searchParams.get("ttl");
+  const rawTtl = readControl(reqUrl, "ttl");
   if (rawTtl !== null) {
     const override = Number(rawTtl);
     if (Number.isFinite(override) && override >= 0 && override <= 86400) return Math.min(override, cap);
@@ -72,10 +72,10 @@ export function shouldBypassCache(req: Request, reqUrl: URL, keyRow?: KeyCachePo
   // is the URL only, so user-specific (Authorization/Cookie) responses would
   // leak across callers. See handler.ts for the same rule on the write side.
   if (req.headers.has("authorization") || req.headers.has("cookie")) return true;
-  if (reqUrl.searchParams.get("no-cache") === "1") return true;
+  if (readControl(reqUrl, "no-cache") === "1") return true;
   // JSONP wraps the body per-caller (the callback name is in the response), so
   // it must never read or write an entry keyed on the URL alone.
-  if (reqUrl.searchParams.has(JSONP_PARAM)) return true;
+  if (hasControl(reqUrl, "callback")) return true;
   if (req.headers.get("cache-control")?.includes("no-cache")) return true;
   return false;
 }

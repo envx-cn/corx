@@ -35,7 +35,7 @@ export interface Env {
    * by design — D1 only stores its hash). Empty = no public key on the site.
    */
   PUBLIC_KEY?: string;
-  /** Default R2 TTL for public-tier GETs, in seconds. Public keys ignore ?ttl=. */
+  /** Default R2 TTL for public-tier GETs, in seconds. Public keys reject corx-ttl. */
   PUBLIC_CACHE_TTL_SECONDS?: string;
 }
 

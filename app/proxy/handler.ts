@@ -3,10 +3,11 @@ import type { Env } from "../lib/types.js";
 import { ProxyError } from "../lib/types.js";
 import type { ProxyVariables } from "../lib/auth.js";
 import { normalizeOrigin } from "../lib/auth.js";
+import { assertKnownControlParams, hasControl } from "../lib/control.js";
 import { validateTargetUrl, checkDbBlocklist } from "./guard.js";
 import { resolveRawTarget } from "./subdomain.js";
 import { assertPublicHost } from "./dns-check.js";
-import { JSONP_MAX_BYTES, JSONP_PARAM, isJsonContentType, jsonpCallback, jsonpHeaders, wrapJsonp } from "./jsonp.js";
+import { JSONP_MAX_BYTES, isJsonContentType, jsonpCallback, jsonpHeaders, wrapJsonp } from "./jsonp.js";
 import {
   applyHeaderRules,
   applyParamRules,
@@ -142,7 +143,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
   let injected = false;
   let reqBytes = c.req.method === "GET" || c.req.method === "HEAD" ? reqUrl.toString().length : 0;
   let resBytes: number | null = null;
-  // Set once `?callback=` parses. Declared outside the try so even an error
+  // Set once `?corx-callback=` parses. Declared outside the try so even an error
   // response can be wrapped for a <script> caller (see the catch below).
   let jsonpName: string | null = null;
 
@@ -179,7 +180,11 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
   };
 
   try {
-    // JSONP first: `?callback=fn` turns the JSON body into a script call. A
+    // Unknown `corx-*` params are typos, not target params: fail loudly here
+    // rather than forward them upstream.
+    assertKnownControlParams(reqUrl);
+
+    // JSONP first: `?corx-callback=fn` turns the JSON body into a script call. A
     // bad callback name is a 400; an error after this point is still wrapped
     // so the caller's function receives { error } instead of a syntax error.
     jsonpName = jsonpCallback(reqUrl);
@@ -203,15 +208,15 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       if (c.req.method !== "GET" && c.req.method !== "HEAD") {
         throw new ProxyError(403, `The public key only allows GET and HEAD (got ${c.req.method})`);
       }
-      if (reqUrl.searchParams.has("ttl") || reqUrl.searchParams.has("no-cache")) {
+      if (hasControl(reqUrl, "ttl") || hasControl(reqUrl, "no-cache")) {
         throw new ProxyError(403, "The public key does not accept ttl/no-cache — self-host corx to control caching");
       }
     }
     const url = validateTargetUrl(rawTarget, { ipCheck: row?.ip_check !== 0 });
-    // JSONP consumes the caller's `callback` — never let it also reach upstream
-    // (which may itself speak JSONP). With no `callback` on the proxy request
-    // the param is untouched, so proxying a JSONP API still works.
-    if (jsonpName) url.searchParams.delete(JSONP_PARAM);
+    // The JSONP callback was read from (and consumed in) the proxy request's own
+    // query: a caller-supplied target keeps its own `callback` untouched, so
+    // proxying a JSONP upstream still works. Path/subdomain targets never had
+    // it — in subdomain mode stripControlParams already removed it.
     // Log the pre-injection URL: injected params may carry secrets.
     target = url.toString();
     host = url.hostname;
@@ -250,7 +255,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     // Auth: optional unless REQUIRE_API_KEY=true (key resolved by apiKeyMiddleware).
     apiKeyId = row?.id ?? null;
     if ((c.env.REQUIRE_API_KEY ?? "false").toLowerCase() === "true" && !apiKeyId) {
-      throw new ProxyError(401, "Valid API key required (X-Api-Key, Authorization: Bearer, or ?key=)");
+      throw new ProxyError(401, "Valid API key required (X-Api-Key, Authorization: Bearer, or ?corx-key=)");
     }
 
     // Param rules go into the effective upstream URL *before* the cache key:

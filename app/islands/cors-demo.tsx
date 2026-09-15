@@ -124,7 +124,7 @@ export default function CorsDemo({ base, i18n, apiKey }: { base: string; i18n: C
     setLoading(true);
     setTab("preview");
     const t0 = performance.now();
-    const rawUrl = `${base}/fetch?url=${encodeURIComponent(target)}${apiKey ? `&key=${encodeURIComponent(apiKey)}` : ""}`;
+    const rawUrl = `${base}/fetch?url=${encodeURIComponent(target)}${apiKey ? `&corx-key=${encodeURIComponent(apiKey)}` : ""}`;
     try {
       const res = await fetch(rawUrl, { headers: { Accept: "*/*" } });
       const latency = Math.round(performance.now() - t0);

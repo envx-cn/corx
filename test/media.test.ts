@@ -36,12 +36,14 @@ describe("per-key cache policy", () => {
     expect(shouldBypassCache(req(), url, { cache_ttl: null, no_cache: 0 })).toBe(false);
     expect(shouldBypassCache(req(), url, null)).toBe(false);
   });
-  it("ttl precedence: ?ttl= > key > env", () => {
+  it("ttl precedence: ?corx-ttl= > key > env", () => {
     const env = { CACHE_TTL_SECONDS: "3600" } as import("../app/lib/types.js").Env;
     const key = { cache_ttl: 300 };
     expect(ttlSeconds(env, url, key)).toBe(300);
     expect(ttlSeconds(env, url, null)).toBe(3600);
-    expect(ttlSeconds(env, new URL("https://corx.test/x?ttl=60"), key)).toBe(60);
+    expect(ttlSeconds(env, new URL("https://corx.test/x?corx-ttl=60"), key)).toBe(60);
+    expect(ttlSeconds(env, new URL("https://corx.test/x?corx-ttl=9999"), key)).toBe(3600); // capped, not above CACHE_TTL_SECONDS
+    expect(ttlSeconds(env, new URL("https://corx.test/x?ttl=60"), key)).toBe(300);
     expect(ttlSeconds(env, url, { cache_ttl: 0 })).toBe(0);
   });
 });

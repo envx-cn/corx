@@ -355,7 +355,7 @@ function KeysContent(props: {
           __html: t("console.keys.hint", {
             code: "<code>ALLOWED_ORIGINS</code>",
             opt: "<code>OPTIONS</code>",
-            query: "<code>?key=</code>",
+            query: "<code>?corx-key=</code>",
           }),
         }}
       />
