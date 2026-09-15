@@ -82,12 +82,12 @@ function LogsContent(props: { logs: LogRow[]; hours: number; t: TFunc }) {
                 <td>
                   <StatusBadge status={l.status} />
                 </td>
-                <td class="hidden text-right tabular-nums sm:table-cell">
+                <td class="hidden text-right tabular-nums sm:table-cell whitespace-nowrap">
                   {l.latency_ms ?? "—"}
                   {l.latency_ms == null ? "" : " ms"}
                 </td>
                 <td class="hidden md:table-cell">{l.country}</td>
-                <td class="hidden md:table-cell">
+                <td class="hidden md:table-cell whitespace-nowrap">
                   {l.auth_via === "key" ? (
                     <span class="badge badge-sm badge-ghost">{t("console.logs.viaKey")}</span>
                   ) : l.auth_via === "origin" ? (
@@ -101,14 +101,14 @@ function LogsContent(props: { logs: LogRow[]; hours: number; t: TFunc }) {
                     {l.origin || "—"}
                   </code>
                 </td>
-                <td>
+                <td class="whitespace-nowrap">
                   {l.cached ? (
                     <span class="font-medium text-success">{t("console.logs.hit")}</span>
                   ) : (
                     <span class="text-base-content/75">{t("console.logs.miss")}</span>
                   )}
                 </td>
-                <td class="hidden text-right tabular-nums sm:table-cell">{humanBytes(l.res_bytes)}</td>
+                <td class="hidden text-right tabular-nums sm:table-cell whitespace-nowrap">{humanBytes(l.res_bytes)}</td>
                 <td class="text-error">{l.error}</td>
               </tr>
             ))
