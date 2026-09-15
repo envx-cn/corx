@@ -268,6 +268,29 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
   console uses the same tokens on purpose — one product, one shape language —
   which is why the handful of explicit `rounded-lg`/`rounded-md` in the console
   chrome were swept to `rounded-xs` too.
+- **Footer:** one band, not two — the wordmark, tagline and the copyright +
+  instance origin sit in the brand column, and the four reader-facing links
+  (terms, `llms.txt`, source, console) each carry a lucide icon so the row
+  reads as four destinations rather than four similar words.
+- **Mobile nav:** below md the section links, the language switch, GitHub and
+  the console CTA collapse into a full-screen `<details>` sheet — no island,
+  because this nav also renders on `/terms`, the 404 and the 5xx documents,
+  which ship no client script. The summary swaps a hamburger for an X via
+  `[open]`. The sheet is `100svh - 4rem` with `overflow-y-auto`, so a short
+  landscape viewport scrolls rather than clipping the CTA; the CTA is
+  full-width above the rule, with the language/GitHub row under it as fine
+  print, and that also leaves the top row as just the logo and the menu button.
+  Opening animates from CSS (`[open]`); closing cannot, because `<details>`
+  hides its content the instant `open` goes away — the script adds
+  `.is-closing` and removes `open` one animation later (its `EXIT_MS` must match
+  the CSS duration). Three behaviours the element lacks come from a few lines
+  of inline script: body scroll is locked while the sheet is open, a section
+  link closes it without animating (the unlock has to happen **before** the
+  browser handles the hash navigation — `<details>` queues its `toggle` event
+  as a separate task, which is too late and leaves the page unscrollable), and
+  an outside tap closes it. The old second row of section chips is gone, so the
+  sticky nav is one 64px row at every width and the mobile `scroll-margin-top`
+  override went with it.
 - Bilingual resolution: URL prefix → `corx_lang` cookie → `Accept-Language`;
   landing, 404 and error pages translated; API errors are not.
 - 404 strategy: fallback `/*` decides proxy vs. non-proxy → branded 404 page;

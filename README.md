@@ -278,8 +278,7 @@ selection are untouched, and the whole thing is desktop-only — phones keep a
 clean hero. The demo is a client island (`app/islands/cors-demo.tsx`) and needs
 the `HasIslands` client script, which the landing's own full document includes.
 Scroll is plain native scrolling (the page-flip scroller was removed); anchors
-use `scroll-margin-top` so the sticky nav (plus the mobile section-chip row)
-never covers a heading.
+use `scroll-margin-top` so the sticky nav never covers a heading.
 
 **Accessibility:** UI red is `#E10600` rather than the logo's #FD0700, so
 white-on-red buttons and small red text clear WCAG AA (the brand mark keeps the
@@ -308,7 +307,15 @@ the public HTML is `Cache-Control: private` + `Vary: Accept-Language, Cookie`
 so no intermediary caches one reader's language.
 
 The nav has a zh / EN switch plus a GitHub link to the source repo (the footer
-repeats it as a text link). All UI copy lives in `app/lib/i18n/messages.ts`
+repeats it as a text link). Below `md` those two, the section links and the
+console CTA all move into a full-screen menu sheet — the top row is just the
+logo and the menu button, and the CTA is full-width above the sheet's rule.
+Opening and closing both animate (a fade and an 8px slide); the close half needs
+the script, because `<details>` hides its content the moment `open` goes away.
+It is a native `<details>` with a few lines of inline script (scroll lock, close
+on link tap or outside tap), not an island, because the same nav renders on
+`/terms`, the 404 and the 5xx documents. All UI copy lives in
+`app/lib/i18n/messages.ts`
 (en + zh dictionaries) and is looked up through the typed `t()` from
 `app/lib/i18n/locale.ts`. API error messages are intentionally **not**
 translated (developer-facing wire format).

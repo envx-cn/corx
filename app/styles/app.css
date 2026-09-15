@@ -116,17 +116,15 @@
 
 /* --- Accessibility ---------------------------------------------------------- */
 
-/* Smooth in-page scrolling, offset by the sticky nav (plus the mobile chip row). */
+/* Smooth in-page scrolling, offset by the sticky nav. One value at every
+   width: the nav is a single 64px row now that the section links collapse into
+   the disclosure below md (the old mobile chip row made it ~116px, which is
+   why this had a 7.25rem override). */
 html {
   scroll-behavior: smooth;
 }
 section[id] {
   scroll-margin-top: 5rem;
-}
-@media (max-width: 767px) {
-  section[id] {
-    scroll-margin-top: 7.25rem;
-  }
 }
 
 /* Respect the OS "reduce motion" setting: no rotating demo, no slide/shimmer
@@ -201,6 +199,54 @@ code:not(pre code) {
 }
 .lucide svg {
   @apply size-4;
+}
+
+/* Mobile nav disclosure (app/components/site.tsx). The summary swaps a
+   hamburger for an X: `[open]` is an attribute change on the element itself,
+   which style invalidation does handle (unlike the `:has()` and `<label for>`
+   cases the console sidebar had to work around). */
+.nav-menu .icon-close {
+  display: none;
+}
+.nav-menu[open] .icon-open {
+  display: none;
+}
+.nav-menu[open] .icon-close {
+  display: inline-flex;
+}
+
+/* The sheet's open/close animation. Opening is pure CSS; closing is not, because
+   <details> hides its content the instant `open` goes away and there would be
+   nothing left to animate — the script adds `.is-closing` and removes `open`
+   one animation later (its EXIT_MS must match this duration). The global
+   prefers-reduced-motion rule above collapses both. */
+@keyframes nav-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes nav-sheet-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+.nav-menu[open] > .nav-sheet {
+  animation: nav-sheet-in 0.22s ease both;
+}
+.nav-menu[open].is-closing > .nav-sheet {
+  animation: nav-sheet-out 0.2s ease both;
+  /* Still on screen while it fades: no taps landing on a dying menu. */
+  pointer-events: none;
 }
 
 /* --- Landing page ---------------------------------------------------------- */
