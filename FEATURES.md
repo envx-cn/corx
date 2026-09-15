@@ -261,6 +261,13 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
   decorative icons, and a `prefers-reduced-motion` block (the X panel's script
   bails out entirely). Mobile section navigation, `scroll-margin-top` anchors
   and `og:`/`description` meta tags.
+- **Geometry:** both themes carry 2px `--radius-*` tokens, so cards, buttons,
+  inputs, badges and the icon chips on them share one near-square corner
+  (Cloudflare's look) instead of mixing 2px cards with 8px controls. Pill CTAs
+  (`rounded-full`) are unaffected: a button shape, not a card corner. The
+  console uses the same tokens on purpose — one product, one shape language —
+  which is why the handful of explicit `rounded-lg`/`rounded-md` in the console
+  chrome were swept to `rounded-xs` too.
 - Bilingual resolution: URL prefix → `corx_lang` cookie → `Accept-Language`;
   landing, 404 and error pages translated; API errors are not.
 - 404 strategy: fallback `/*` decides proxy vs. non-proxy → branded 404 page;

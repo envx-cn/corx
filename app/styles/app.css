@@ -62,9 +62,13 @@
   --color-warning-content: #ffffff;
   --color-error: #b42318;
   --color-error-content: #ffffff;
-  --radius-selector: 0.5rem;
-  --radius-field: 0.5rem;
-  --radius-box: 0.75rem;
+  /* Cloudflare-style near-square geometry: cards, buttons, inputs and the icon
+     chips on them get a hairline 2px corner instead of a rounded box. The
+     console (`corx-dash`, below) uses the same tokens on purpose — one product,
+     one shape language. */
+  --radius-selector: 0.125rem;
+  --radius-field: 0.125rem;
+  --radius-box: 0.125rem;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
   --border: 1px;
@@ -100,9 +104,9 @@
   --color-warning-content: #ffffff;
   --color-error: #b42318;
   --color-error-content: #ffffff;
-  --radius-selector: 0.5rem;
-  --radius-field: 0.5rem;
-  --radius-box: 0.75rem;
+  --radius-selector: 0.125rem;
+  --radius-field: 0.125rem;
+  --radius-box: 0.125rem;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
   --border: 1px;
@@ -425,7 +429,7 @@ code:not(pre code) {
 /* shared by the feature grid and the landing's agent-entry file cards */
 .feature-item .feature-icon-sm,
 .agent-file .feature-icon-sm {
-  @apply size-9 shrink-0 rounded-lg bg-primary/10 text-primary inline-flex items-center justify-center;
+  @apply size-9 shrink-0 rounded-xs bg-primary/10 text-primary inline-flex items-center justify-center;
 }
 
 /* landing: the llms.txt / llms-full.txt entry cards (agent-facing) */
@@ -435,7 +439,7 @@ code:not(pre code) {
 
 /* highlight card icon (landing) */
 .feature-icon {
-  @apply size-10 rounded-lg bg-primary/10 text-primary inline-flex items-center justify-center;
+  @apply size-10 rounded-xs bg-primary/10 text-primary inline-flex items-center justify-center;
 }
 .highlight-card .feature-icon {
   @apply mb-0;
@@ -509,7 +513,7 @@ code:not(pre code) {
   @apply shrink-0 flex items-center gap-1 border-b border-base-300 bg-base-100 px-2;
 }
 .demo-tab {
-  @apply rounded-t px-3 py-1.5 text-xs font-medium text-base-content/75 hover:text-base-content;
+  @apply rounded-t-xs px-3 py-1.5 text-xs font-medium text-base-content/75 hover:text-base-content;
 }
 .demo-tab-active {
   @apply border-b-2 border-primary text-base-content;
@@ -623,7 +627,7 @@ main honox-island,
 
 /* nav item states: tint pill, exactly like the real sidebar */
 .nav-item {
-  @apply flex items-center gap-2.5 rounded-lg px-3 min-h-[34px] text-sm font-medium
+  @apply flex items-center gap-2.5 rounded-xs px-3 min-h-[34px] text-sm font-medium
     text-base-content/80 hover:bg-black/[0.045] transition-colors;
 }
 .nav-item[aria-current="page"] {

@@ -205,7 +205,9 @@ break out of the proxy — relative URLs (or subdomain mode) work fine.
 ## Landing page
 
 `/` is a branded marketing page (COR X palette: brand red #FD0700 for the
-logo, slate #3E454B ink, paper canvas): a two-column hero (~85svh so the demo
+logo, slate #3E454B ink, paper canvas; near-square 2px corners on cards and
+controls, Cloudflare-style, in the console too — one product, one shape
+language): a two-column hero (~85svh so the demo
 peeks in above the fold) — copy on the left, the animated **X panel** on the
 right, where it stays `sticky` through the next screen and only scrolls away
 when the Highlights band arrives. The try-it screen's heading, demo and hint
