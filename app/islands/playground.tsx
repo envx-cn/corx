@@ -605,7 +605,9 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
       </section>
 
       {/* ---------------- Response inspector ---------------- */}
-      <section class="bg-base-100 border border-base-300 rounded-box p-4">
+      {/* Flex column: the grid row is as tall as the request builder, so the
+          viewer below has to grow to fill the rest of the card. */}
+      <section class="flex flex-col bg-base-100 border border-base-300 rounded-box p-4">
         <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/75">{i18n.response}</h2>
           {result ? (
@@ -633,7 +635,7 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
             </span>
           </div>
         ) : result == null ? (
-          <p class="py-12 text-center text-sm text-base-content/75">{i18n.empty}</p>
+          <div class="flex grow items-center justify-center py-12 text-center text-sm text-base-content/75">{i18n.empty}</div>
         ) : (
           <>
             <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -714,9 +716,16 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
               ) : null}
             </div>
 
-            {/* A preview gets a definite height so a framed page, image or
-                player fills it; the inspector tabs stay content-sized. */}
-            <div class={tab === "preview" ? "mt-2 h-[52vh] overflow-auto" : "mt-2 max-h-[52vh] overflow-auto"}>
+            {/* One viewer box for every tab: a definite 52vh so a framed page,
+                image or player can fill it, then flex-grow to take whatever the
+                request card leaves over — the card has no dead strip at the
+                bottom, and a tall body still scrolls inside instead of
+                stretching the row. */}
+            <div
+              class={`mt-2 grow h-[52vh] overflow-auto rounded-box ${
+                tab === "preview" ? "bg-base-200/60" : ""
+              }`}
+            >
               {tab === "preview" ? (
                 <ResponsePreview
                   kind={responseKind}

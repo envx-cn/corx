@@ -1,6 +1,7 @@
 import userSvg from "lucide-static/icons/user.svg?raw";
 import { Lucide } from "../../components/lucide.js";
 import { ConfirmButton } from "./_confirm.js";
+import { LangSwitch } from "./_lang-switch.js";
 import type { Locale, TFunc } from "../../lib/i18n/locale.js";
 
 /**
@@ -12,7 +13,6 @@ import type { Locale, TFunc } from "../../lib/i18n/locale.js";
  */
 export function Topbar(props: { title: string; user: string; locale: Locale; t: TFunc }) {
   const { t } = props;
-  const langLink = (lang: Locale) => `${props.locale === lang ? "#" : `?lang=${lang}`}`;
   return (
     <div class="navbar bg-base-200 border-b border-base-300 sticky top-0 z-30 min-h-16 px-4 gap-2">
       <div class="flex-none lg:hidden">
@@ -35,25 +35,7 @@ export function Topbar(props: { title: string; user: string; locale: Locale; t: 
       </div>
 
       {/* Language switch: zh / EN, current one highlighted. */}
-      <div class="flex-none flex items-center gap-1 text-xs font-medium text-base-content/75">
-        <a
-          href={langLink("zh")}
-          lang="zh"
-          aria-current={props.locale === "zh" ? "true" : undefined}
-          class={`px-2 py-1 rounded-md hover:bg-black/[0.045] transition-colors ${props.locale === "zh" ? "text-primary" : ""}`}
-        >
-          {t("lang.zh")}
-        </a>
-        <span class="text-base-content/25">/</span>
-        <a
-          href={langLink("en")}
-          lang="en"
-          aria-current={props.locale === "en" ? "true" : undefined}
-          class={`px-2 py-1 rounded-md hover:bg-black/[0.045] transition-colors ${props.locale === "en" ? "text-primary" : ""}`}
-        >
-          {t("lang.en")}
-        </a>
-      </div>
+      <LangSwitch locale={props.locale} t={t} />
 
       <div class="flex-none">
         <div class="dropdown dropdown-end">
