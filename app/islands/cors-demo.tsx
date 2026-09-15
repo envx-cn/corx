@@ -97,7 +97,7 @@ function parseJson(text: string): unknown {
  * lib/preview.ts for the classification and components/response-preview.tsx
  * for the viewers.
  */
-export default function CorsDemo({ base, i18n, apiKey }: { base: string; i18n: CorsDemoI18n; apiKey?: string }) {
+export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI18n }) {
   const [url, setUrl] = useState<string>(EXAMPLES[0]!.url);
   const [auto, setAuto] = useState(true);
   const [idx, setIdx] = useState(0);
@@ -124,7 +124,10 @@ export default function CorsDemo({ base, i18n, apiKey }: { base: string; i18n: C
     setLoading(true);
     setTab("preview");
     const t0 = performance.now();
-    const rawUrl = `${base}/fetch?url=${encodeURIComponent(target)}${apiKey ? `&corx-key=${encodeURIComponent(apiKey)}` : ""}`;
+    // No key is attached on purpose: the demo is a same-origin GET, so the
+    // backend resolves the caller itself (keyless grant on this origin, else
+    // anonymous when REQUIRE_API_KEY=false, else a 401 the card reports).
+    const rawUrl = `${base}/fetch?url=${encodeURIComponent(target)}`;
     try {
       const res = await fetch(rawUrl, { headers: { Accept: "*/*" } });
       const latency = Math.round(performance.now() - t0);
@@ -334,7 +337,7 @@ export default function CorsDemo({ base, i18n, apiKey }: { base: string; i18n: C
               <a
                 href={result.rawUrl}
                 target="_blank"
-                rel="noopener noreferrer"
+                rel="noopener"
                 class="ml-auto inline-flex items-center gap-1 pr-1 text-xs text-base-content/75 hover:text-base-content"
               >
                 {i18n.openRaw}

@@ -136,6 +136,10 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
   const country = c.req.header("cf-ipcountry") ?? "";
   const authVia = c.get("authVia") ?? "";
   const origin = c.req.header("origin") ?? "";
+  // Keyless callers may be identified by Referer alone (same-origin GETs, no-cors
+  // embeds), so quota and logs use whatever the auth layer matched on — one
+  // caller, one bucket. `origin` stays raw: CORS echo semantics need the header.
+  const caller = c.get("callerOrigin") ?? normalizeOrigin(origin);
   let target = "";
   let host = "";
   let apiKeyId: string | null = null;
@@ -163,7 +167,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         reqBytes,
         resBytes,
         authVia,
-        origin,
+        origin: caller ?? "",
         injected,
       }),
     );
@@ -244,7 +248,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     if (isPublic && row) {
       const quota = await checkPublicQuota(c.env.DB, {
         keyId: row.id,
-        origin: normalizeOrigin(origin),
+        origin: caller,
         host,
         ip,
         row,
@@ -295,10 +299,9 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     // Rate limit per key (or per IP for anonymous) — cache misses only.
     // Keyless traffic is metered per origin+IP so one site's visitors can't
     // drain the whole key's quota.
-    const normalizedOrigin = normalizeOrigin(origin);
     const bucket =
-      authVia === "origin" && normalizedOrigin
-        ? `rl:origin:${normalizedOrigin}:ip:${ip || "unknown"}`
+      authVia === "origin" && caller
+        ? `rl:origin:${caller}:ip:${ip || "unknown"}`
         : // A public key is shared by every caller, so a per-key bucket would
           // put all of them in one bucket. Meter per IP instead.
           isPublic

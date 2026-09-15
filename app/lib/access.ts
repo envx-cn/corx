@@ -119,9 +119,37 @@ export function emailAllowed(env: Env, email: string): boolean {
     .includes(email.toLowerCase());
 }
 
+/**
+ * Access config is all-or-nothing, and one half of it moved to a secret: a
+ * deployment that sets only one of the pair used to fail silently (the login
+ * page just showed "no Access session detected"), which is easy to miss when
+ * `ACCESS_TEAM_DOMAIN` lives in `wrangler secret` rather than the config file.
+ */
+export function accessPairProblem(env: Env): string | null {
+  const team = (env.ACCESS_TEAM_DOMAIN ?? "").trim();
+  const aud = (env.ACCESS_AUD ?? "").trim();
+  if (team && !aud) return "ACCESS_TEAM_DOMAIN is set but ACCESS_AUD is not";
+  if (aud && !team) return "ACCESS_AUD is set but ACCESS_TEAM_DOMAIN is not";
+  return null;
+}
+
 /** True when an Access JWT is configured AND present on this request. */
 export function accessDetected(env: Env, req: Request): boolean {
   return Boolean((env.ACCESS_TEAM_DOMAIN ?? "").trim() && (env.ACCESS_AUD ?? "").trim() && req.headers.get("cf-access-jwt-assertion"));
+}
+
+/**
+ * Cloudflare's own logout endpoint for the team, or null when Access is off.
+ *
+ * The Access session is a cookie (and a signed JWT) issued by the edge: deleting
+ * `corx_session` is not enough, because the very next request is authenticated
+ * again by the still-valid JWT. Only this endpoint revokes it. The team-domain
+ * form is used because it always exists — the `<host>/cdn-cgi/access/logout`
+ * variant depends on the Access application's path matching that URL.
+ */
+export function accessLogoutUrl(env: Env): string | null {
+  const team = (env.ACCESS_TEAM_DOMAIN ?? "").trim().replace(/\/+$/, "");
+  return team ? `${team}/cdn-cgi/access/logout` : null;
 }
 
 /**
@@ -134,6 +162,8 @@ export async function getAdminUser(c: Ctx | Context<{ Bindings: Env }>): Promise
   const env = c.env;
   const team = (env.ACCESS_TEAM_DOMAIN ?? "").trim();
   const aud = (env.ACCESS_AUD ?? "").trim();
+  const pairProblem = accessPairProblem(env);
+  if (pairProblem) console.warn(`corx: Cloudflare Access login is off — ${pairProblem}`);
 
   const assertion = c.req.header("cf-access-jwt-assertion");
   if (assertion && team && aud) {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { verifyAccessJwt, emailAllowed } from "../app/lib/access.js";
+import { verifyAccessJwt, emailAllowed, accessPairProblem } from "../app/lib/access.js";
 import { signSession, verifySession } from "../app/lib/session.js";
 import type { Env } from "../app/lib/types.js";
 
@@ -61,8 +61,19 @@ describe("verifyAccessJwt", () => {
   });
 });
 
-describe("emailAllowed", () => {
-  it("open when unconfigured, enforced when set", () => {
+describe("accessPairProblem", () => {
+  it("flags a half-configured pair, since Access login needs both halves", () => {
+    expect(accessPairProblem({} as Env)).toBeNull();
+    const both = { ACCESS_TEAM_DOMAIN: "https://t.cloudflareaccess.com", ACCESS_AUD: "aud" } as Env;
+    expect(accessPairProblem(both)).toBeNull();
+    // ACCESS_TEAM_DOMAIN moved to `wrangler secret` — forgetting it is the
+    // silent-failure mode this warn exists for.
+    expect(accessPairProblem({ ACCESS_AUD: "aud" } as Env)).toMatch(/ACCESS_TEAM_DOMAIN/);
+    expect(accessPairProblem({ ACCESS_TEAM_DOMAIN: "https://t.cloudflareaccess.com" } as Env)).toMatch(/ACCESS_AUD/);
+  });
+});
+
+describe("emailAllowed", () => {  it("open when unconfigured, enforced when set", () => {
     expect(emailAllowed({} as Env, "anyone@x.com")).toBe(true);
     const env = { ADMIN_EMAILS: "Boss@X.com, ops@y.com" } as Env;
     expect(emailAllowed(env, "boss@x.com")).toBe(true);
