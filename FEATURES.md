@@ -17,7 +17,7 @@ map, not the manual.
 | Routing modes | `?url=` on any proxy route (canonical), `/proxy/<url>`, `/<url>` (bare path), path form of `/fetch/<url>`, and DNS subdomain mode `<encoded-host>.<zone>/…` (`PROXY_ZONE`, auto-detect when blank). Precedence: `?url=` → path → subdomain. |
 | Subdomain encoding | `.` → `-`, `-` → `--` (lossless), bare label gets `.com`, reserved labels (`www`, `admin`, `console`, `api`, `health`, `status`) never decode, 63-char DNS cap → 400. |
 | Methods | Any method (`/fetch`, `/proxy/*` and the `/*` fallback are `app.all`). `OPTIONS` is answered by the CORS preflight before the handler runs. |
-| Control params | `corx-ttl`, `corx-no-cache`, `corx-key`, `corx-callback`, `corx-scheme`, `corx-port` are consumed by corx and never forwarded to a target; an unknown `corx-*` name is a 400 (namespace, not a filter — `app/lib/control.ts`). Everything else belongs to the target: a caller-supplied `?url=` / path target keeps its own `key`/`ttl`/`callback`, and only subdomain mode strips the control names (there the proxy request's query *is* the target's). |
+| Control params | `corx-ttl`, `corx-no-cache`, `corx-key`, `corx-callback`, `corx-scheme`, `corx-port` are consumed by CORX and never forwarded to a target; an unknown `corx-*` name is a 400 (namespace, not a filter — `app/lib/control.ts`). Everything else belongs to the target: a caller-supplied `?url=` / path target keeps its own `key`/`ttl`/`callback`, and only subdomain mode strips the control names (there the proxy request's query *is* the target's). |
 | JSONP | `?corx-callback=fn` wraps an `application/json` response as `fn(<json>);` (`application/javascript`, `nosniff`, 2 MiB cap, body validated with `JSON.parse`). Errors are wrapped too, the name must be a JS identifier path, and the cache is always bypassed (the callback name lives in the body). |
 | Request hygiene | Hop-by-hop + proxy-owned headers stripped (`Host`, `Connection`, `Upgrade`, `TE`, `X-Forwarded-For`, `CF-*`, `Origin`, `Referer`, …); `X-Forwarded-For` + `X-Proxied-By: corx` added; upstream asked for `accept-encoding: identity`. |
 | Upstream request | Buffered body (early `Content-Length` check, then a buffered cap; a body that fails to read is a 400 — never forwarded empty), shared `AbortController` bounded by `TIMEOUT_MS`; one 300 ms retry on transient `fetch` failure for GET/HEAD only (idempotent methods). |
@@ -397,7 +397,7 @@ flagged has been fixed below.
   an orphaned table row, `/fetch/<url>` and `/health` undocumented, playground
   presets listed as five (there are six).
 - **`X-Api-Key` / `X-Admin-Token` no longer leak upstream.** The proxy used to
-  copy every non-stripped client header to the target, so a corx key ended up
+  copy every non-stripped client header to the target, so a CORX key ended up
   on whatever host the caller named. Both are now stripped, and public-tier
   requests additionally drop `Cookie` + `Authorization`.
 - **`X-RateLimit-*` (and the new quota headers) actually reach the wire.**
