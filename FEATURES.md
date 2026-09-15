@@ -248,6 +248,12 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
   `<iframe sandbox="">` (never `allow-same-origin`), and documents that refuse
   framing (`X-Frame-Options: DENY`, foreign `frame-ancestors`) are detected from
   the response headers and shown as an explanation card instead of a blank box.
+- **Agent entry** (`#agents`): two file cards for `/llms.txt` and
+  `/llms-full.txt`, a copy-to-clipboard prompt naming this instance's origin,
+  and links to the generated `robots.txt` / `sitemap.xml`. The llms files are
+  served by `app/server.ts` and described in README → SEO and GEO; the band is
+  the human-facing half, with the `<link rel="alternate" type="text/plain">`
+  in `SiteHead` and the footer link as the machine-discoverable halves.
 - Accessibility: WCAG AA theme tokens (UI red `#E10600` vs. the logo's
   #FD0700, darkened success/warning/info, muted text at `/75`), a visible
   focus ring on the demo URL bar, `aria-live` on the status line only (so a
