@@ -11,7 +11,7 @@ export function LangSwitch(props: { locale: Locale; t: TFunc }) {
   const { locale, t } = props;
   const href = (lang: Locale) => (locale === lang ? "#" : `?lang=${lang}`);
   const linkClass = (lang: Locale) =>
-    `px-2 py-1 rounded-md hover:bg-black/[0.045] transition-colors ${locale === lang ? "text-primary" : ""}`;
+    `px-2 py-1 rounded-xs hover:bg-black/[0.045] transition-colors ${locale === lang ? "text-primary" : ""}`;
   return (
     <div class="flex shrink-0 items-center gap-1 text-xs font-medium text-base-content/75">
       <a href={href("zh")} lang="zh" aria-current={locale === "zh" ? "true" : undefined} class={linkClass("zh")}>

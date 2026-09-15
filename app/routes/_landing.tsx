@@ -130,21 +130,21 @@ export function LandingPage(props: {
           t={t}
           links={
             <>
-              <a href="#try-it" class="px-3 py-2 rounded-lg hover:bg-base-200">
+              <a href="#try-it" class="block rounded-xs px-3 py-3.5 hover:bg-base-200 md:inline-block md:px-3 md:py-2">
                 {t("site.tryIt")}
               </a>
               {props.publicKey ? (
-                <a href="#public-key" class="px-3 py-2 rounded-lg hover:bg-base-200">
+                <a href="#public-key" class="block rounded-xs px-3 py-3.5 hover:bg-base-200 md:inline-block md:px-3 md:py-2">
                   {t("site.publicKey")}
                 </a>
               ) : null}
-              <a href="#highlights" class="px-3 py-2 rounded-lg hover:bg-base-200">
+              <a href="#highlights" class="block rounded-xs px-3 py-3.5 hover:bg-base-200 md:inline-block md:px-3 md:py-2">
                 {t("site.highlights")}
               </a>
-              <a href="#features" class="px-3 py-2 rounded-lg hover:bg-base-200">
+              <a href="#features" class="block rounded-xs px-3 py-3.5 hover:bg-base-200 md:inline-block md:px-3 md:py-2">
                 {t("site.features")}
               </a>
-              <a href="#faq" class="px-3 py-2 rounded-lg hover:bg-base-200">
+              <a href="#faq" class="block rounded-xs px-3 py-3.5 hover:bg-base-200 md:inline-block md:px-3 md:py-2">
                 {t("site.faq")}
               </a>
             </>

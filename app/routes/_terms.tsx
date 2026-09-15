@@ -39,7 +39,7 @@ export function TermsPage(props: { origin: string; locale: Locale; t: TFunc; ema
           t={t}
           langLinks={{ zh: "/terms?lang=zh", en: "/terms?lang=en" }}
           links={
-            <a href="/" class="px-3 py-2 rounded-lg hover:bg-base-200">
+            <a href="/" class="block rounded-xs px-3 py-3.5 hover:bg-base-200 md:inline-block md:px-3 md:py-2">
               {t("terms.back")}
             </a>
           }

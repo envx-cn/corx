@@ -679,7 +679,7 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
               ).map(([key, label]) => (
                 <button
                   type="button"
-                  class={`rounded-t px-3 py-1.5 text-xs font-medium ${
+                  class={`rounded-t-xs px-3 py-1.5 text-xs font-medium ${
                     tab === key ? "border-b-2 border-primary text-base-content" : "text-base-content/75 hover:text-base-content"
                   }`}
                   onClick={() => setTab(key)}

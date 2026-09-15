@@ -42,7 +42,7 @@ export function Topbar(props: { title: string; user: string; locale: Locale; t: 
             tabindex={0}
             role="button"
             aria-label={t("console.topbar.account")}
-            class="size-8.5 rounded-lg inline-flex items-center justify-center hover:bg-black/[0.045] cursor-pointer"
+            class="size-8.5 rounded-xs inline-flex items-center justify-center hover:bg-black/[0.045] cursor-pointer"
           >
             <span class="size-7 rounded-full bg-black/10 text-base-content/75 inline-flex items-center justify-center">
               <Lucide svg={userSvg} />
@@ -50,7 +50,7 @@ export function Topbar(props: { title: string; user: string; locale: Locale; t: 
           </div>
           <ul
             tabindex={0}
-            class="dropdown-content menu menu-sm bg-base-100 rounded-lg border border-base-300 shadow-lg w-60 p-1.5 z-50 mt-1"
+            class="dropdown-content menu menu-sm bg-base-100 rounded-xs border border-base-300 shadow-lg w-60 p-1.5 z-50 mt-1"
           >
             <li class="px-3 pt-2 pb-1 text-xs text-base-content/75 truncate" title={props.user}>
               {props.user}
@@ -65,9 +65,9 @@ export function Topbar(props: { title: string; user: string; locale: Locale; t: 
                 action="/console/logout"
                 label={t("console.topbar.logout")}
                 // Restate the menu-item metrics explicitly (menu-sm: px-2.5 py-1,
-                // radius-field = rounded-lg) so the trigger keeps them even if
+                // the theme's radius-field) so the trigger keeps them even if
                 // the markup around it changes.
-                triggerClass="w-full justify-start rounded-lg px-2.5 py-1 text-left hover:bg-black/[0.045]"
+                triggerClass="w-full justify-start rounded-xs px-2.5 py-1 text-left hover:bg-black/[0.045]"
                 i18n={{
                   title: t("console.topbar.logoutTitle"),
                   body: t("console.topbar.logoutBody"),

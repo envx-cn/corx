@@ -62,9 +62,13 @@
   --color-warning-content: #ffffff;
   --color-error: #b42318;
   --color-error-content: #ffffff;
-  --radius-selector: 0.5rem;
-  --radius-field: 0.5rem;
-  --radius-box: 0.75rem;
+  /* Cloudflare-style near-square geometry: cards, buttons, inputs and the icon
+     chips on them get a hairline 2px corner instead of a rounded box. The
+     console (`corx-dash`, below) uses the same tokens on purpose — one product,
+     one shape language. */
+  --radius-selector: 0.125rem;
+  --radius-field: 0.125rem;
+  --radius-box: 0.125rem;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
   --border: 1px;
@@ -100,9 +104,9 @@
   --color-warning-content: #ffffff;
   --color-error: #b42318;
   --color-error-content: #ffffff;
-  --radius-selector: 0.5rem;
-  --radius-field: 0.5rem;
-  --radius-box: 0.75rem;
+  --radius-selector: 0.125rem;
+  --radius-field: 0.125rem;
+  --radius-box: 0.125rem;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
   --border: 1px;
@@ -112,17 +116,15 @@
 
 /* --- Accessibility ---------------------------------------------------------- */
 
-/* Smooth in-page scrolling, offset by the sticky nav (plus the mobile chip row). */
+/* Smooth in-page scrolling, offset by the sticky nav. One value at every
+   width: the nav is a single 64px row now that the section links collapse into
+   the disclosure below md (the old mobile chip row made it ~116px, which is
+   why this had a 7.25rem override). */
 html {
   scroll-behavior: smooth;
 }
 section[id] {
   scroll-margin-top: 5rem;
-}
-@media (max-width: 767px) {
-  section[id] {
-    scroll-margin-top: 7.25rem;
-  }
 }
 
 /* Respect the OS "reduce motion" setting: no rotating demo, no slide/shimmer
@@ -181,14 +183,38 @@ code:not(pre code) {
   @apply bg-black/15 border-black/10 text-inherit;
 }
 
-/* daisyUI 5 outlines focused inputs/textareas with 2px of --color-base-content
-   (a black box in this theme). The console wants the quiet look: just the
-   darker focused border, no ring. */
+/* daisyUI 5 outlines focused controls with 2px of `--input-color` (the base
+   content ink — a near-black box here), drawn 2px *outside* the control. Two
+   different fixes, because the two groups need different things:
+
+   Text-entry controls (input, textarea, select) drop the ring entirely and keep
+   the darker focused border, which is the console's quiet look.
+
+   Controls with no border to darken (checkbox, radio, toggle, range, file
+   input) and buttons keep a ring, because the ring *is* their only focus
+   affordance — but in the brand red rather than near-black. daisyUI already
+   colours a `.btn-primary` ring with its variant; ghost/outline buttons fell
+   back to the base content ink and looked like the same bug. */
 .input:focus,
 .input:focus-within,
 .textarea:focus,
-.textarea:focus-within {
+.textarea:focus-within,
+.select:focus,
+.select:focus-within {
   outline: none;
+}
+/* A separate rule on purpose: `.select:open` (the native popup being open) has
+   its own daisyUI rule, and it is the state a *mouse* click produces —
+   `:focus`/`:focus-visible` are both false then, so the select beside a focused
+   text input was the one that still drew a box. Kept out of the list above
+   because an unsupported `:open` in a comma-separated selector invalidates the
+   whole rule, which would take the input and textarea fixes with it. */
+.select:open {
+  outline: none;
+}
+:where(.checkbox, .radio, .toggle, .range, .file-input):focus-visible,
+.btn:focus-visible {
+  outline-color: var(--color-primary);
 }
 
 /* lucide inline icons (console chrome) */
@@ -197,6 +223,54 @@ code:not(pre code) {
 }
 .lucide svg {
   @apply size-4;
+}
+
+/* Mobile nav disclosure (app/components/site.tsx). The summary swaps a
+   hamburger for an X: `[open]` is an attribute change on the element itself,
+   which style invalidation does handle (unlike the `:has()` and `<label for>`
+   cases the console sidebar had to work around). */
+.nav-menu .icon-close {
+  display: none;
+}
+.nav-menu[open] .icon-open {
+  display: none;
+}
+.nav-menu[open] .icon-close {
+  display: inline-flex;
+}
+
+/* The sheet's open/close animation. Opening is pure CSS; closing is not, because
+   <details> hides its content the instant `open` goes away and there would be
+   nothing left to animate — the script adds `.is-closing` and removes `open`
+   one animation later (its EXIT_MS must match this duration). The global
+   prefers-reduced-motion rule above collapses both. */
+@keyframes nav-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes nav-sheet-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+.nav-menu[open] > .nav-sheet {
+  animation: nav-sheet-in 0.22s ease both;
+}
+.nav-menu[open].is-closing > .nav-sheet {
+  animation: nav-sheet-out 0.2s ease both;
+  /* Still on screen while it fades: no taps landing on a dying menu. */
+  pointer-events: none;
 }
 
 /* --- Landing page ---------------------------------------------------------- */
@@ -425,7 +499,7 @@ code:not(pre code) {
 /* shared by the feature grid and the landing's agent-entry file cards */
 .feature-item .feature-icon-sm,
 .agent-file .feature-icon-sm {
-  @apply size-9 shrink-0 rounded-lg bg-primary/10 text-primary inline-flex items-center justify-center;
+  @apply size-9 shrink-0 rounded-xs bg-primary/10 text-primary inline-flex items-center justify-center;
 }
 
 /* landing: the llms.txt / llms-full.txt entry cards (agent-facing) */
@@ -435,7 +509,7 @@ code:not(pre code) {
 
 /* highlight card icon (landing) */
 .feature-icon {
-  @apply size-10 rounded-lg bg-primary/10 text-primary inline-flex items-center justify-center;
+  @apply size-10 rounded-xs bg-primary/10 text-primary inline-flex items-center justify-center;
 }
 .highlight-card .feature-icon {
   @apply mb-0;
@@ -509,7 +583,7 @@ code:not(pre code) {
   @apply shrink-0 flex items-center gap-1 border-b border-base-300 bg-base-100 px-2;
 }
 .demo-tab {
-  @apply rounded-t px-3 py-1.5 text-xs font-medium text-base-content/75 hover:text-base-content;
+  @apply rounded-t-xs px-3 py-1.5 text-xs font-medium text-base-content/75 hover:text-base-content;
 }
 .demo-tab-active {
   @apply border-b-2 border-primary text-base-content;
@@ -623,7 +697,7 @@ main honox-island,
 
 /* nav item states: tint pill, exactly like the real sidebar */
 .nav-item {
-  @apply flex items-center gap-2.5 rounded-lg px-3 min-h-[34px] text-sm font-medium
+  @apply flex items-center gap-2.5 rounded-xs px-3 min-h-[34px] text-sm font-medium
     text-base-content/80 hover:bg-black/[0.045] transition-colors;
 }
 .nav-item[aria-current="page"] {

@@ -222,6 +222,18 @@ also covers its subdomains.
 - WCAG AA contrast floor (`text-base-content/75`, plus overrides for daisyUI's
   own `/55–60` table-head and `.label-text` defaults), ≥24px form controls in
   the playground/logs filters.
+- **Focus treatment** (`app/styles/app.css`): daisyUI 5 rings focused controls
+  with 2px of `--input-color` offset 2px *outside* the control, which in this
+  palette is a near-black box. Text-entry controls (`.input`, `.textarea`,
+  `.select`) drop the ring and keep the darker focused border instead, so a
+  select sitting beside a text input looks the same on focus as it does. The
+  `.select:open` rule is separate and deliberate — that is the state a *mouse*
+  click produces (the popup being open, with `:focus` and `:focus-visible` both
+  false), and an unsupported `:open` in a comma-separated selector would
+  invalidate the whole rule, taking the input and textarea fixes with it.
+  Controls with no border to darken (`.checkbox`, `.radio`, `.toggle`,
+  `.range`, `.file-input`) and `.btn` keep a ring — it is their only focus
+  affordance — recoloured to the brand red.
 - Errors keep the shell for authenticated console requests; the login page and
   unauthenticated paths get the standalone branded document.
 
@@ -261,6 +273,36 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
   decorative icons, and a `prefers-reduced-motion` block (the X panel's script
   bails out entirely). Mobile section navigation, `scroll-margin-top` anchors
   and `og:`/`description` meta tags.
+- **Geometry:** both themes carry 2px `--radius-*` tokens, so cards, buttons,
+  inputs, badges and the icon chips on them share one near-square corner
+  (Cloudflare's look) instead of mixing 2px cards with 8px controls. Pill CTAs
+  (`rounded-full`) are unaffected: a button shape, not a card corner. The
+  console uses the same tokens on purpose — one product, one shape language —
+  which is why the handful of explicit `rounded-lg`/`rounded-md` in the console
+  chrome were swept to `rounded-xs` too.
+- **Footer:** one band, not two — the wordmark, tagline and the copyright +
+  instance origin sit in the brand column, and the four reader-facing links
+  (terms, `llms.txt`, source, console) each carry a lucide icon so the row
+  reads as four destinations rather than four similar words.
+- **Mobile nav:** below md the section links, the language switch, GitHub and
+  the console CTA collapse into a full-screen `<details>` sheet — no island,
+  because this nav also renders on `/terms`, the 404 and the 5xx documents,
+  which ship no client script. The summary swaps a hamburger for an X via
+  `[open]`. The sheet is `100svh - 4rem` with `overflow-y-auto`, so a short
+  landscape viewport scrolls rather than clipping the CTA; the CTA is
+  full-width above the rule, with the language/GitHub row under it as fine
+  print, and that also leaves the top row as just the logo and the menu button.
+  Opening animates from CSS (`[open]`); closing cannot, because `<details>`
+  hides its content the instant `open` goes away — the script adds
+  `.is-closing` and removes `open` one animation later (its `EXIT_MS` must match
+  the CSS duration). Three behaviours the element lacks come from a few lines
+  of inline script: body scroll is locked while the sheet is open, a section
+  link closes it without animating (the unlock has to happen **before** the
+  browser handles the hash navigation — `<details>` queues its `toggle` event
+  as a separate task, which is too late and leaves the page unscrollable), and
+  an outside tap closes it. The old second row of section chips is gone, so the
+  sticky nav is one 64px row at every width and the mobile `scroll-margin-top`
+  override went with it.
 - Bilingual resolution: URL prefix → `corx_lang` cookie → `Accept-Language`;
   landing, 404 and error pages translated; API errors are not.
 - 404 strategy: fallback `/*` decides proxy vs. non-proxy → branded 404 page;
