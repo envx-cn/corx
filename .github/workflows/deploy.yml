@@ -1,8 +1,7 @@
 # Deploy corx to Cloudflare Workers — manual trigger only (Actions → Deploy →
 # Run workflow). Nothing deploys on merge; the workflow is started by hand so a
-# push to `main` can never reach production on its own. Add
-# `push: { branches: [main] }` back under `on:` to deploy automatically on
-# every merge.
+# push to `main` can never reach production on its own. Merges are still gated
+# by `verify.yml`, which runs on every push and pull request.
 #
 # Needs two values on the `envx-cn` org (see README → Setup):
 #   secret CF_WORKER_TOKEN  → exported as CLOUDFLARE_API_TOKEN
@@ -45,23 +44,10 @@ env:
   WRANGLER_SEND_METRICS: "false"
 
 jobs:
+  # The same gate PRs run (typecheck, tests, contrast, build) — one definition,
+  # so the manual deploy can never drift from what a merge had to pass.
   verify:
-    name: check + test
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Typecheck
-        run: npm run check
-      - name: Tests
-        run: npm test
-      - name: Contrast check
-        run: npm run check:contrast
+    uses: ./.github/workflows/verify.yml
 
   deploy:
     name: build + deploy

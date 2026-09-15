@@ -1,0 +1,54 @@
+# Verify — the gate every push to `main` and every pull request runs.
+#
+# Read-only: typecheck, tests, the WCAG contrast guard, and a full production
+# build. The build earns its place because it has failure modes `tsc` cannot
+# see (islands/JSX, `?raw`/`?inline` asset imports, the client bundle), and
+# because a broken build is exactly what a merge should not be able to hide.
+#
+# It is also the reusable workflow `deploy.yml` calls as its `verify` job, so
+# the manual deploy cannot drift from the merge gate — there is one definition
+# of "verified".
+#
+# No secrets are needed: nothing here talks to Cloudflare.
+
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+# Least privilege: the job only reads the repository.
+permissions:
+  contents: read
+
+# Deliberately no `concurrency` key: this file is also the `verify` job of
+# deploy.yml, and a reusable workflow shares the caller's lifetime — a group
+# shared with standalone runs could cancel or preempt the deploy's own gate.
+# These checks are read-only and cheap, so letting them overlap is the safer
+# default.
+
+env:
+  WRANGLER_SEND_METRICS: "false"
+
+jobs:
+  verify:
+    name: check + test + contrast + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run check
+      - name: Tests
+        run: npm test
+      - name: Contrast check
+        run: npm run check:contrast
+      - name: Build
+        run: npm run build

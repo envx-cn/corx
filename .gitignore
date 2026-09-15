@@ -9,6 +9,8 @@ dist/
 .env
 .env.*
 !.env.example
+# Committed, value-free examples (the real files above are ignore-listed).
+!.env.production.template
 .wrangler/
 .wrangler/*
 worker-configuration.d.ts

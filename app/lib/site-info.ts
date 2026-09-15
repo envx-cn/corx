@@ -25,6 +25,8 @@ export const REPO_DOCS = {
   readmeRaw: `${GITHUB_URL}/raw/main/README.md`,
   features: `${GITHUB_URL}/blob/main/FEATURES.md`,
   featuresRaw: `${GITHUB_URL}/raw/main/FEATURES.md`,
+  contributing: `${GITHUB_URL}/blob/main/CONTRIBUTING.md`,
+  security: `${GITHUB_URL}/blob/main/SECURITY.md`,
   license: `${GITHUB_URL}/blob/main/LICENSE`,
 } as const;
 
