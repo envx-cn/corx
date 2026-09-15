@@ -1,7 +1,14 @@
 node_modules/
 dist/
 .ssr/
+# wrangler's dev secrets — the example stays committable.
 .dev.vars
+.dev.vars.*
+!.dev.vars.example
+# `wrangler deploy --secrets-file` reads one of these; never commit it.
+.env
+.env.*
+!.env.example
 .wrangler/
 .wrangler/*
 worker-configuration.d.ts

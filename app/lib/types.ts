@@ -1,7 +1,12 @@
 export interface Env {
   DB: D1Database;
   CACHE_BUCKET: R2Bucket;
-  /** Suffix for subdomain mode ("corx.com"). Empty = auto-detect from Host. */
+  /**
+   * Suffix for subdomain mode ("corx.com"). Empty = auto-detect from Host.
+   * Deployment-specific, so it is set via `wrangler secret put PROXY_ZONE` —
+   * losing it silently flips the Worker back to auto-detect (a host like
+   * `corx.envx.cn` would then decode as target `corx.com`).
+   */
   PROXY_ZONE?: string;
   /** Comma-separated origins allowed to use the proxy, or "*" (default). */
   ALLOWED_ORIGINS?: string;
@@ -27,12 +32,12 @@ export interface Env {
   /** Cloudflare Access team domain, e.g. https://myteam.cloudflareaccess.com */
   ACCESS_TEAM_DOMAIN?: string;
   /** Access application AUD tag. */
-  ACCESS_AUD?: string;
-  /** Optional comma-separated email allowlist for console/API access. */
+  ACCESS_AUD?: string;  /** Optional comma-separated email allowlist for console/API access. */
   ADMIN_EMAILS?: string;
   /**
-   * Raw value of the public-tier key, shown on the landing page (it is public
-   * by design — D1 only stores its hash). Empty = no public key on the site.
+   * Raw value of the public-tier key, shown on the landing page. Public by
+   * design (D1 only stores its hash) — it is a secret so the committed config
+   * stays free of one deployment's values. Empty = no public key on the site.
    */
   PUBLIC_KEY?: string;
   /** Default R2 TTL for public-tier GETs, in seconds. Public keys reject corx-ttl. */

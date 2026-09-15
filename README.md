@@ -139,17 +139,25 @@ forwarding — the browser never holds the upstream secret:
 Turn on `keyless` and browsers from the key's **allowed origins** can call the
 proxy without sending the key at all:
 
-- `Origin` is matched exactly against the origins the key already declares;
-  blank and `*` are rejected (keyless needs an explicit list), and an origin
+- The caller's origin is matched exactly against the origins the key already
+  declares — `Origin` when the browser sends one, otherwise the `Referer`'s
+  origin (`app/lib/auth.ts` → `callerOrigin`). The fallback matters: browsers
+  omit `Origin` on same-origin GETs (the landing page's live demo) and on
+  no-cors subresource loads (plain `<img>`/`<script>`, JSONP), which is exactly
+  where a key cannot be attached conveniently. Keep an eye on
+  `Referrer-Policy: no-referrer` callers — they send neither header, fall
+  through to anonymous, and need `?corx-key=` instead.
+- Blank and `*` are rejected (keyless needs an explicit list), and an origin
   can be granted to exactly one key — the second save fails naming the holder.
 - The SSRF opt-outs (`ipCheck`/`dnsCheck` off) cannot be combined with keyless.
 - Keyless requests are rate-limited per `origin + IP` (not per key), and logs
-  record `auth_via = origin` plus the request `Origin`.
+  record `auth_via = origin` plus the matched origin (the console's Logs table
+  shows both as **Via** and **Caller**).
 - **Honest caveat:** this is quota attribution, not authentication. Browsers
-  cannot forge `Origin`, but non-browser clients can — it is exactly as strict
-  as shipping the key in a frontend, which is the model corx targets. Anyone
-  who can forge a granted origin can do whatever the key may do (including
-  injected variables), so keep the allowed hosts tight.
+  cannot forge `Origin`/`Referer`, but non-browser clients can — it is exactly
+  as strict as shipping the key in a frontend, which is the model corx targets.
+  Anyone who can forge a granted origin can do whatever the key may do
+  (including injected variables), so keep the allowed hosts tight.
 
 **Cache safety:** requests carrying `Authorization` / `Cookie` headers never
 read or write the cache (the key is the URL only, so user-specific responses
@@ -194,7 +202,10 @@ share the same left column (identical 168px left edge at 1440px). Below:
 a **live "Try it" demo** (a mockup-browser that rotates example URLs — every
 10 s in view, every 30 s as an off-screen ambient tick so the X keeps
 generating the odd spark, paused on a hidden tab or for reduced motion; type
-any URL to take over), a **Highlights** band with real config snippets (upstream
+any URL to take over; it sends **no key** — the request works anonymously
+(`REQUIRE_API_KEY=false`) or through a keyless grant for the page's own origin,
+and simply reports the 401 otherwise), a **Highlights** band with real config
+snippets (upstream
 secret injection, keyless browser access, playground introspection), a compact
 nine-item feature list and a dark footer.
 
@@ -310,9 +321,11 @@ month), or by trimming writes (log sampling, edge rate limiting) — not by
 simply raising the number.
 
 **Enabling it:** create a normal key in the console, tick **Public tier**, set
-the caps (the total is required), copy the raw value into `vars.PUBLIC_KEY` in
-`wrangler.jsonc`, and deploy. `PUBLIC_KEY` is a plain var on purpose — the key
-is public and the landing page renders it, while D1 still stores only its hash.
+the caps (the total is required), copy the raw value into the `PUBLIC_KEY`
+secret (`npx wrangler secret put PUBLIC_KEY`, or `--secrets-file`), and deploy.
+It is a secret rather than a config var because the config file is committed —
+not because the value is secret: the key is public by design and the landing
+page renders it, while D1 still stores only its hash.
 
 **Seeing it locally** takes both halves, which is the easy thing to get wrong:
 `PUBLIC_KEY` set (in `.dev.vars` for local dev) **and** a matching row in the
@@ -354,19 +367,39 @@ npm run dev              # vite on :5173 (set PORT to change)
 # 3. Deploy (always through the vite build — wrangler serves ./dist)
 npm run db:migrate
 npx wrangler secret put ADMIN_TOKEN
-npx wrangler secret put INJECTION_KEK   # optional: encrypt injected secrets at rest
+npx wrangler secret put INJECTION_KEK          # optional: encrypt injected secrets at rest
+# deployment values (also fine to bootstrap once with:
+#   npx wrangler deploy --secrets-file .env.production)
+npx wrangler secret put PROXY_ZONE             # subdomain mode suffix
+npx wrangler secret put PUBLIC_KEY             # optional: public-tier key
+npx wrangler secret put ACCESS_TEAM_DOMAIN     # optional: Access login
+npx wrangler secret put ACCESS_AUD
+npx wrangler secret put ADMIN_EMAILS           # optional: admin allowlist
 npm run deploy           # = vite build (client + worker) && wrangler deploy
 ```
+
+Secrets are never touched by `wrangler deploy` (only `wrangler secret delete`
+removes them), so they survive every deploy — while plain-text `vars` are
+rewritten from `wrangler.jsonc` on each one. That split is why everything that
+isn't a random identifier lives in a secret: the repository stays free of
+personal data, and the deployed values can't be clobbered by a config edit.
 
 Dev notes: `npm run dev:worker` runs the production bundle via
 `wrangler dev` (closest to prod). Under `vite` dev, its HMR client script is
 appended to proxied HTML pages — dev-only artifact, production is untouched.
 
-## Config (`wrangler.jsonc` → `vars`)
+## Config
+
+Non-secret knobs live in `wrangler.jsonc` → `vars`. Rows marked **(secret)**
+live in `wrangler secret put` (or `.dev.vars` locally) instead: they describe
+this one deployment, so keeping them out of the committed config keeps the
+repository free of one deployment's values — and of anything personal. Secrets
+survive every deploy (only `wrangler secret delete` removes them), while plain
+vars are rewritten from the config file each time.
 
 | Var | Default | Meaning |
 | --- | --- | --- |
-| `PROXY_ZONE` | `""` | Suffix for subdomain mode (`example.corx.com` → `example.com`); empty = auto-detect from the request Host |
+| `PROXY_ZONE` (secret) | `""` | Suffix for subdomain mode (`example.corx.com` → `example.com`); empty = auto-detect from the request Host |
 | `ALLOWED_ORIGINS` | `*` | `*` or comma-separated origins allowed to use the **proxy routes only** (console/API never get CORS headers) |
 | `REQUIRE_API_KEY` | `false` | `"true"` to require an API key |
 | `CACHE_TTL_SECONDS` | `3600` | Default R2 TTL for GET 200s; also caps per-request `?corx-ttl=` |
@@ -376,10 +409,10 @@ appended to proxied HTML pages — dev-only artifact, production is untouched.
 | `ADMIN_TOKEN` (secret) | — | Bearer token for `/api/*`; legacy HMAC key for console sessions |
 | `SESSION_SECRET` (secret) | — | HMAC key for console session cookies (falls back to `ADMIN_TOKEN`) |
 | `INJECTION_KEK` (secret) | — | Encrypts injected variable values at rest (AES-256-GCM via HKDF). Empty = plaintext. Losing it makes stored secrets unreadable |
-| `ACCESS_TEAM_DOMAIN` | `""` | Cloudflare Access team domain (enables Access login) |
-| `ACCESS_AUD` | `""` | Access application AUD tag |
-| `ADMIN_EMAILS` | `""` | Optional comma-separated allowlist for admin access |
-| `PUBLIC_KEY` | `""` | Raw value of the public-tier key, rendered on the landing page (public by design; D1 stores only its hash). Empty = no public key advertised |
+| `ACCESS_TEAM_DOMAIN` (secret) | `""` | Cloudflare Access team domain (enables Access login) |
+| `ACCESS_AUD` (secret) | `""` | Access application AUD tag |
+| `ADMIN_EMAILS` (secret) | `""` | Optional comma-separated allowlist for admin access |
+| `PUBLIC_KEY` (secret) | `""` | Raw value of the public-tier key, rendered on the landing page (public by design — a secret only to keep deployment values out of the repo; D1 stores only its hash). Empty = no public key advertised |
 | `PUBLIC_CACHE_TTL_SECONDS` | `300` | Default R2 TTL for public-tier GETs; public keys reject `corx-ttl` |
 
 ## Admin console (SSR + Cloudflare login)
@@ -402,8 +435,9 @@ limiting, caching and `request_logs` all apply, while stored keys never expose
 their raw value; one-click presets cover cache, SSRF blocks, the metadata
 host, CORS preflight, Range and POST echo, and recent runs stay in
 localStorage) ·
-Logs (per-request size, with a 1h–7d lookback **Window** slider that re-filters
-on release) · Host
+Logs (per-request size, plus the **Via** — presented key / keyless / anon — and
+**Caller** origin that authorized it, with a 1h–7d lookback **Window** slider
+that re-filters on release) · Host
 blocklist (add inline — blocking a domain also covers its subdomains — remove behind a confirm dialog; logout confirms too) ·
 Profile · Billing.
 
@@ -436,11 +470,19 @@ Login is Cloudflare Access (Zero Trust):
 
 1. In Zero Trust, create an Access application in front of your admin host
    (e.g. `admin.corx.com` → this Worker) or the `/console/*` + `/api/*` paths.
-2. Configure the Worker (vars in `wrangler.jsonc`, token via secret):
-   - `ACCESS_TEAM_DOMAIN=https://<team>.cloudflareaccess.com`
-   - `ACCESS_AUD=<application AUD tag>`
-   - `ADMIN_EMAILS=you@company.com` (optional allowlist)
+2. Configure the Worker:
+   - `ACCESS_AUD=<application AUD tag>` → **secret**
+     (`npx wrangler secret put ACCESS_AUD`)
+   - `ACCESS_TEAM_DOMAIN=https://<team>.cloudflareaccess.com` → **secret**
+     (`npx wrangler secret put ACCESS_TEAM_DOMAIN`): it names your login
+     endpoint, and keeping it out of the repository also keeps the team name
+     (often a personal handle) out of the git history
+   - `ADMIN_EMAILS=you@company.com` → **secret** (optional allowlist; PII)
    - `npx wrangler secret put ADMIN_TOKEN`
+   - Set the Access pair or neither: a deployment with only one of
+     `ACCESS_TEAM_DOMAIN` / `ACCESS_AUD` logs `Cloudflare Access login is off`
+     and falls back to token login (see `access.ts`).
+   - Local dev keeps all three in `.dev.vars` (gitignored).
 3. Visit `/console/` → Continue with Cloudflare. The Worker verifies the
    Access JWT itself (RS256 against the team JWKS, issuer, audience, expiry).
    Access login no longer depends on `ADMIN_TOKEN`; if neither `SESSION_SECRET`
@@ -452,6 +494,13 @@ with `ADMIN_TOKEN` from `.dev.vars` — it sets a signed 12h session cookie.
 The same identity check guards the `/api/*` JSON API (Access JWT, session
 cookie, or `ADMIN_TOKEN` bearer).
 
+Logging out clears the `corx_session` cookie, and — when `ACCESS_TEAM_DOMAIN` is
+set — also hands the browser to `https://<team>.cloudflareaccess.com/cdn-cgi/access/logout`.
+Without that hand-off the Access session would survive the logout and the next
+request would be re-authenticated by the still-valid JWT (the user lands back in
+the console and it looks like logout did nothing). Our own endpoint can't revoke
+an Access session: only the edge can.
+
 ## Admin API
 
 All `/api/*` need `Authorization: Bearer <ADMIN_TOKEN>`.
@@ -462,6 +511,8 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" https://corx.<you>.workers.dev/api/
 curl -H "Authorization: Bearer $ADMIN_TOKEN" 'https://corx.<you>.workers.dev/api/logs?limit=20'
 # same endpoint, but only the last 24h (1–168 = 7 days):
 curl -H "Authorization: Bearer $ADMIN_TOKEN" 'https://corx.<you>.workers.dev/api/logs?limit=50&hours=24'
+# each row carries api_key_id / auth_via (“key” | “origin” | “”) / origin,
+# i.e. which credential (if any) authorized the request
 
 # create a key (raw key shown once!; "name" is required)
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
