@@ -546,7 +546,11 @@ vars are rewritten from the config file each time.
 
 Open `https://<your-host>/console/`. Server-rendered pages with islands only
 where needed (stats tabs):
-Dashboard (24h requests, traffic in/out, cache bandwidth saved, Requests per
+Dashboard (a **Trend** strip comparing the current 7/28/90-day period with the
+previous one — distinct origins and distinct keys first, because a single
+crawler can dominate requests, plus a daily bar chart split at the period
+boundary; the window ends yesterday so both periods are complete. Below it,
+the 24h requests, traffic in/out, cache bandwidth saved, Requests per
 hour chart, a **Breakdown** selector with vertical bar charts for status /
 method / country, top hosts/keys, recent errors) · API keys (create and edit
 in a modal panel — name, rate limit, per-key origins/cache policy, keyless
@@ -641,6 +645,13 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" 'https://corx.<you>.workers.dev/api
 # each row carries api_key_id / auth_via (“key” | “origin” | “”) / origin,
 # i.e. which credential (if any) authorized the request
 
+# period over period (1–365 complete UTC days): current vs previous, with
+# requests / distinct origins / distinct keys / errors and their deltas, a
+# daily series, and whether it came from raw logs or the daily rollup. Read
+# origins and keys first — request counts are noise. The window ends
+# yesterday, so both periods are complete and directly comparable.
+curl -H "Authorization: Bearer $ADMIN_TOKEN" 'https://corx.<you>.workers.dev/api/stats?days=28'
+
 # create a key (raw key shown once!; "name" is required)
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"name":"my-app","rateLimitPerMin":120,"allowedOrigins":"https://app.example"}' \
@@ -697,14 +708,15 @@ browser ──► CORX (Worker)
               ├─ rate limit (misses only) ──► D1 rate_windows (fixed window)
               ├─ fetch upstream (timeout, size caps, header filtering,
               │    manual redirects when the key injects/bounds hosts)
-              └─ log ──► D1 request_logs (waitUntil, pruned after 30d by cron)
+              └─ log ──► D1 request_logs (waitUntil; the cron rolls each day
+                           into stats_daily before pruning raw rows > 30d)
 ```
 
 ## Project layout
 
 ```
 wrangler.jsonc          bindings (D1, R2), vars, cron
-migrations/       numbered D1 migrations (0001…0008)
+migrations/       numbered D1 migrations (0001…0009)
 app/              HonoX frontend (entry + console UI + API routes)
   server.ts     worker entry: createApp + manual mounts (proxy only).
                 File routes register at createApp time, so the manual /*

@@ -171,6 +171,7 @@ All `/api/*` accept a Cloudflare Access JWT, the console session cookie, or
 | --- | --- |
 | `GET /health` | Liveness probe (public): `{ ok, service, time }`. |
 | `GET /api/stats` | 24 h totals, status/method/country breakdowns, hourly series, top hosts/keys, recent errors. |
+| `GET /api/stats?days=` | Current vs previous N complete UTC days (1–365): requests, distinct origins, distinct keys and errors per period, their deltas, a daily series, and whether it was read from raw logs or the daily rollup. |
 | `GET /api/logs?limit=&hours=` | Request log (limit ≤ 200, window 1–168 h). |
 | `POST /api/keys` | Create a key (raw key returned once). |
 | `PATCH /api/keys/:id` | Partial update — policy, injection, keyless. |
@@ -188,7 +189,10 @@ Files: `app/routes/api/**`, `app/lib/admin.ts`, `app/lib/access.ts`.
   (collapsible icon rail on desktop, hover-float menu, pin in `localStorage`),
   mobile hamburger drawer, topbar language switch + user menu, responsive
   tables (columns hide, hosts truncate, horizontal scroll).
-- **Overview**: 24 h request/traffic/cache-saved/error cards, requests-per-hour
+- **Overview**: a trend strip (current vs previous 7/28/90 days, led by
+  distinct origins and distinct keys rather than request counts, plus a daily
+  bar chart split at the period boundary), then 24 h
+  request/traffic/cache-saved/error cards, requests-per-hour
   chart, Breakdown tabs (status / method / country), top hosts, top keys,
   recent errors.
 - **Keys**: create/edit modal panel (native `<dialog>`, state-less island so
@@ -340,7 +344,9 @@ Files: `app/lib/access.ts`, `app/lib/session.ts`,
 
 ## 11. Operations & tooling
 
-- Cron `0 3 * * *`: prune `request_logs` > 30 days, `rate_windows` > 2 h,
+- Cron `0 3 * * *`: aggregate `request_logs` into `stats_daily` **before** the
+  prune (the rollup is the trend's long memory; the raw rows are not), then
+  prune `request_logs` > 30 days, `rate_windows` > 2 h,
   `quota_counters` older than yesterday, and a 100-object batch of expired R2
   entries.
 - Observability enabled in `wrangler.jsonc`; `npm run tail` for live logs.
@@ -359,9 +365,9 @@ Files: `app/lib/access.ts`, `app/lib/session.ts`,
   quotas, CORS origins, subdomain encoding, media/Range, playground, stats
   bucketing, i18n, the terms page and the assembled app (error pages, JSON
   wire format, body caps, `/fetch` CORS, credential stripping).
-- 8 numbered D1 migrations in `migrations/` (keys → per-key origins/cache →
+- 9 numbered D1 migrations in `migrations/` (keys → per-key origins/cache →
   log bytes → guard toggles → injection → keyless/audit → public tier +
-  quota counters).
+  quota counters → daily stats rollup).
 
 ---
 
