@@ -698,6 +698,42 @@ describe("proxy wiring (integration)", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ logs: [] });
   });
+
+  it("stats API keeps the bare call as the 24h detail", async () => {
+    const res = await call("/api/stats", { headers: { authorization: "Bearer test-token" } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { window: string; hourly: unknown[] };
+    expect(body.window).toBe("24h");
+    expect(body.hourly).toBeInstanceOf(Array);
+  });
+
+  it("stats API returns a week-over-week comparison for ?days=28", async () => {
+    const res = await call("/api/stats?days=28", { headers: { authorization: "Bearer test-token" } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      window: string;
+      days: number;
+      daily: unknown[];
+      current: Record<string, number>;
+      previous: Record<string, number>;
+      delta: { origins: unknown };
+    };
+    expect(body.window).toBe("28d");
+    expect(body.days).toBe(28);
+    expect(body.daily).toHaveLength(56); // current + previous period
+    // Both periods are on screen at once — the whole point of the endpoint.
+    expect(body.current).toMatchObject({ requests: 0, origins: 0, keys: 0 });
+    expect(body.previous).toMatchObject({ requests: 0, origins: 0, keys: 0 });
+    expect(body.delta.origins).toEqual({ current: 0, previous: 0, abs: 0, pct: 0 });
+  });
+
+  it("stats API clamps ?days= to 1…365", async () => {
+    const res = await call("/api/stats?days=9999", { headers: { authorization: "Bearer test-token" } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { window: string; daily: unknown[] };
+    expect(body.window).toBe("365d");
+    expect(body.daily).toHaveLength(730);
+  });
 });
 
 describe("JSONP (integration)", () => {

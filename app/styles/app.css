@@ -879,3 +879,13 @@ main honox-island,
 .bar-error {
   background-color: var(--color-error);
 }
+
+/* the previous comparison period in the daily trend chart: same shape, dimmed,
+   so the current period reads as the foreground without a separate legend */
+.bar-prev {
+  background-color: var(--color-base-content);
+  opacity: 0.3;
+}
+.bar-prev:hover {
+  opacity: 0.5;
+}

@@ -4,6 +4,7 @@ import { hashKey, newRawKey } from "./auth.js";
 import { decryptRowInjection, decryptVarsForEdit, encryptVars } from "./crypto.js";
 import { normalizeOriginsInput, parseOrigins } from "../proxy/cors.js";
 import { normalizeCacheTtlInput } from "../proxy/cache.js";
+import { utcDay } from "../proxy/quota.js";
 import {
   assertInjectionParts,
   collectVarRefs,
@@ -147,6 +148,231 @@ export async function queryStats(db: D1Database): Promise<Stats> {
     byCountry,
     hourly: fillHourly(hourlyRows),
     recentErrors,
+  };
+}
+
+// --- Daily rollup + period-over-period comparison -------------------------
+
+/** Raw request_logs are pruned after this many days (keep in sync with server.ts). */
+export const LOG_RETENTION_DAYS = 30;
+
+/**
+ * A calendar day that is at least this recent may still have raw rows, so it
+ * is read from request_logs; older days come from the rollup. 29, not 30,
+ * because the prune deletes by timestamp: the 30th day back can be half gone
+ * while its calendar day is still nominally in range.
+ */
+const RAW_TRUST_DAYS = LOG_RETENTION_DAYS - 1;
+
+/** Shift a "YYYY-MM-DD" UTC day string by n days. */
+export function shiftDay(day: string, n: number): string {
+  const t = Date.parse(`${day}T00:00:00.000Z`);
+  return new Date(t + n * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** One day of aggregated traffic (a stats_daily row, or a gap filled with zeros). */
+export interface DailyPoint {
+  day: string;
+  requests: number;
+  origins: number;
+  keys: number;
+  errors: number;
+  req_bytes: number;
+  res_bytes: number;
+}
+
+/**
+ * The per-day aggregate, shared by the rollup INSERT and the raw-log read so
+ * the two sources can never drift in what they measure.
+ *
+ * `origins`/`keys` are COUNT(DISTINCT …) *within the day*; summing days in a
+ * reader therefore yields origin-days / key-days, not distinct-over-window.
+ * That is the price of a compact rollup (see the migration's note) and is
+ * comparable period over period, which is what the trend needs.
+ */
+const DAILY_COLUMNS = `substr(created_at, 1, 10) AS day,
+       COUNT(*) AS requests,
+       COUNT(DISTINCT NULLIF(origin, '')) AS origins,
+       COUNT(DISTINCT api_key_id) AS keys,
+       SUM(CASE WHEN status >= 500 OR error != '' THEN 1 ELSE 0 END) AS errors,
+       COALESCE(SUM(req_bytes), 0) AS req_bytes,
+       COALESCE(SUM(res_bytes), 0) AS res_bytes`;
+
+async function allOrEmptyBound<T>(db: D1Database, sql: string, ...values: unknown[]): Promise<T[]> {
+  return db
+    .prepare(sql)
+    .bind(...values)
+    .all<T>()
+    .then((r) => r.results)
+    .catch(() => [] as T[]);
+}
+
+/**
+ * Aggregate every raw day still in request_logs into stats_daily.
+ *
+ * Called by the nightly cron *before* the prune, so a day is written at least
+ * once before its rows are deleted. Idempotent (INSERT OR REPLACE): a missed
+ * run is repaired by the next one while the raw rows survive. Bounded to 31
+ * days — older days are already complete in the rollup and have no raw rows
+ * left to aggregate.
+ */
+export async function rollupDailyStats(db: D1Database): Promise<void> {
+  await db
+    .prepare(
+      `INSERT OR REPLACE INTO stats_daily
+         (day, requests, origins, keys, errors, req_bytes, res_bytes, updated_at)
+       SELECT ${DAILY_COLUMNS},
+              strftime('%Y-%m-%dT%H:%M:%fZ', 'now') AS updated_at
+       FROM request_logs
+       WHERE created_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-31 days')
+       GROUP BY day`,
+    )
+    .run();
+}
+
+/**
+ * Daily points for the inclusive UTC-day range [startDay, endDay], gaps filled
+ * with zeros. Recent days come from request_logs (authoritative and fresh —
+ * the rollup only catches up at the 03:00 cron), older days from stats_daily.
+ * The two sources partition the range, so a day is never counted twice. Days
+ * older than the raw horizon with no rollup row (i.e. before the migration)
+ * read as zero.
+ */
+export async function queryDailyStats(
+  db: D1Database,
+  startDay: string,
+  endDay: string,
+  nowMs = Date.now(),
+): Promise<DailyPoint[]> {
+  const rawSince = shiftDay(utcDay(nowMs), -RAW_TRUST_DAYS);
+  const rawStart = startDay > rawSince ? startDay : rawSince;
+  const rollupEnd = shiftDay(rawSince, -1);
+  const [rawRows, rollupRows] = await Promise.all([
+    rawStart <= endDay
+      ? allOrEmptyBound<DailyPoint>(
+          db,
+          `SELECT ${DAILY_COLUMNS} FROM request_logs
+           WHERE created_at >= ? AND created_at < ?
+           GROUP BY day ORDER BY day`,
+          `${rawStart}T00:00:00.000Z`,
+          `${shiftDay(endDay, 1)}T00:00:00.000Z`,
+        )
+      : Promise.resolve([] as DailyPoint[]),
+    startDay <= rollupEnd
+      ? allOrEmptyBound<DailyPoint>(
+          db,
+          `SELECT day, requests, origins, keys, errors, req_bytes, res_bytes
+           FROM stats_daily WHERE day BETWEEN ? AND ? ORDER BY day`,
+          startDay,
+          rollupEnd,
+        )
+      : Promise.resolve([] as DailyPoint[]),
+  ]);
+
+  const byDay = new Map<string, DailyPoint>();
+  for (const r of rollupRows) byDay.set(r.day, r);
+  for (const r of rawRows) byDay.set(r.day, r);
+  const out: DailyPoint[] = [];
+  for (let day = startDay; day <= endDay; day = shiftDay(day, 1)) {
+    out.push(byDay.get(day) ?? { day, requests: 0, origins: 0, keys: 0, errors: 0, req_bytes: 0, res_bytes: 0 });
+  }
+  return out;
+}
+
+/** A metric in the two windows plus their difference. */
+export interface MetricDelta {
+  current: number;
+  previous: number;
+  abs: number;
+  /** Fractional change (0.5 = +50%). null when previous is 0 and current is not. */
+  pct: number | null;
+}
+
+/** Totals for one period. */
+export interface PeriodMetrics {
+  from: string;
+  to: string;
+  requests: number;
+  origins: number;
+  keys: number;
+  errors: number;
+  req_bytes: number;
+  res_bytes: number;
+}
+
+export interface StatsComparison {
+  days: number;
+  current: PeriodMetrics;
+  previous: PeriodMetrics;
+  delta: Record<"requests" | "origins" | "keys" | "errors", MetricDelta>;
+  /** The previous period followed by the current one, oldest → newest. */
+  daily: DailyPoint[];
+  source: "raw" | "rollup" | "mixed";
+}
+
+/** Clamp ?days= to 1…365 (default 7 on garbage). */
+export function clampStatsDays(value: number): number {
+  if (!Number.isFinite(value)) return 7;
+  return Math.min(Math.max(Math.round(value), 1), 365);
+}
+
+function metricDelta(current: number, previous: number): MetricDelta {
+  return {
+    current,
+    previous,
+    abs: current - previous,
+    pct: previous === 0 ? (current === 0 ? 0 : null) : (current - previous) / previous,
+  };
+}
+
+function sumPeriod(daily: Map<string, DailyPoint>, from: string, to: string): PeriodMetrics {
+  const m: PeriodMetrics = { from, to, requests: 0, origins: 0, keys: 0, errors: 0, req_bytes: 0, res_bytes: 0 };
+  for (let day = from; day <= to; day = shiftDay(day, 1)) {
+    const p = daily.get(day);
+    if (!p) continue;
+    m.requests += p.requests;
+    m.origins += p.origins;
+    m.keys += p.keys;
+    m.errors += p.errors;
+    m.req_bytes += p.req_bytes;
+    m.res_bytes += p.res_bytes;
+  }
+  return m;
+}
+
+/**
+ * Current vs previous N *complete* UTC days. The window ends yesterday, not
+ * today: including a partial day would understate the current period and turn
+ * a genuinely flat week into an apparent decline.
+ */
+export async function queryStatsComparison(db: D1Database, days = 7, nowMs = Date.now()): Promise<StatsComparison> {
+  const n = clampStatsDays(days);
+  const today = utcDay(nowMs);
+  const end = shiftDay(today, -1);
+  const start = shiftDay(end, -(n - 1));
+  const prevEnd = shiftDay(start, -1);
+  const prevStart = shiftDay(prevEnd, -(n - 1));
+
+  const points = await queryDailyStats(db, prevStart, end, nowMs);
+  const byDay = new Map(points.map((p) => [p.day, p]));
+  const current = sumPeriod(byDay, start, end);
+  const previous = sumPeriod(byDay, prevStart, prevEnd);
+
+  const rawSince = shiftDay(today, -RAW_TRUST_DAYS);
+  const usesRaw = end >= rawSince;
+  const usesRollup = prevStart < rawSince;
+  return {
+    days: n,
+    current,
+    previous,
+    delta: {
+      requests: metricDelta(current.requests, previous.requests),
+      origins: metricDelta(current.origins, previous.origins),
+      keys: metricDelta(current.keys, previous.keys),
+      errors: metricDelta(current.errors, previous.errors),
+    },
+    daily: points,
+    source: usesRaw && usesRollup ? "mixed" : usesRollup ? "rollup" : "raw",
   };
 }
 
