@@ -72,6 +72,8 @@ const en = {
       noDeploy: "No deploy? Use the public key",
       tryLive: "Try it live",
       openConsole: "Open console",
+      trustNote: "Don't trust a proxy with secrets — not even this one. CORX is open source and free to self-host.",
+      trustCta: "Read the trust model",
     },
     publicKey: {
       title: "Use it without deploying",
@@ -109,6 +111,20 @@ const en = {
         title: "Inspect every hop",
         desc: "Run any request through the real pipeline from the console playground — auth, SSRF guards, injection, cache — and read the full response plus a masked injection preview.",
       },
+    },
+    trust: {
+      title: "You trust someone. Choose who.",
+      sub: "A CORS proxy is a man in the middle by design: whoever runs it can read, change and replay everything that passes through. CORX does not hide that. It is built so the honest answer to “can I trust it?” is not “yes” — it is “you don't have to”.",
+      hosted: {
+        title: "The hosted instance — free, public, best-effort",
+        desc: "A shared demo of the public tier: no sign-up, daily quotas, revocable without notice. Fine for public data, demos and prototypes — not for secrets, credentials or private data. The public tier strips Cookie and Authorization, serves from a shared cache and logs requests for 30 days; those reduce exposure, they are not a guarantee.",
+      },
+      self: {
+        title: "Your own deployment — free, private",
+        desc: "One MIT-licensed Cloudflare Worker with D1 + R2. Deploy it to your own account on the free tier and the whole data path stays inside it: your keys, your logs, your limits, no third party in the middle. Read the source, fork it, change it — that is the point.",
+        cta: "Get the source",
+      },
+      note: "No accounts, seats or bills from us. Where trust matters, self-hosting is the intended way to run CORX.",
     },
     features: {
       title: "Everything you need at the edge",
@@ -172,6 +188,8 @@ const en = {
       a5: "You get 429 with a Retry-After header. Requests are counted per calling site, per target host, per instance and per minute, and cached responses count too — the quota is about requests, not upstream load.",
       q6: "Can I self-host it?",
       a6: "Yes. CORX is MIT-licensed TypeScript for Cloudflare Workers, D1 and R2: deploy it to your own account and the quotas, limits and logs are yours. The repository README covers the whole deployment.",
+      q7: "Can I trust the hosted instance with my traffic?",
+      a7: "Only with data you would hand to a stranger. A proxy sees — and can change — everything passing through it, and on a hosted instance the operator is that stranger. Use the public key for public data, demos and prototypes; when the traffic matters, self-host CORX and the only operator left in the path is you.",
     },
     // The agent entry. This instance already publishes llms.txt /
     // llms-full.txt (app/lib/seo.ts); the section is where a *human* finds out.
@@ -603,6 +621,8 @@ const zh: Messages = {
       noDeploy: "不想部署？直接使用公共 key",
       tryLive: "在线体验",
       openConsole: "打开控制台",
+      trustNote: "别把机密交给代理——包括这一个。CORX 开源、免费，可以自己部署。",
+      trustCta: "了解信任模型",
     },
     publicKey: {
       title: "无需部署，直接使用",
@@ -640,6 +660,20 @@ const zh: Messages = {
         title: "每一步都可检视",
         desc: "在控制台演练场把请求跑过真实链路——鉴权、SSRF 防护、注入、缓存——并查看完整响应与打码后的注入预览。",
       },
+    },
+    trust: {
+      title: "你总得信任某一方——不如自己选",
+      sub: "CORS 代理本质上就是中间人：谁运行它，谁就能读取、修改并重放经过它的每一个请求和响应。CORX 不掩饰这一点——它被设计成让“能信任它吗？”的诚实答案不是“能”，而是“你不需要信任”。",
+      hosted: {
+        title: "托管实例——免费、公开、尽力而为",
+        desc: "公共档位的共享演示：无需注册、每日配额、可随时撤销。适合公开数据、演示和原型——不要用于机密、凭证或隐私数据。公共档位会剥离 Cookie 与 Authorization、从共享缓存返回，并保留 30 天日志；这些只是降低暴露面，不是保证。",
+      },
+      self: {
+        title: "自己部署——免费、私密",
+        desc: "一个 MIT 许可的 Cloudflare Worker，配 D1 + R2。用免费额度部署到你自己的账号，整条数据链路就都在你手里：你的密钥、你的日志、你的限额，中间没有第三方。读源码、fork、随意改——这正是它的意义。",
+        cta: "获取源码",
+      },
+      note: "我们不收账号费、席位费或账单。在信任重要的场合，自托管才是运行 CORX 的预期方式。",
     },
     features: {
       title: "边缘所需，一应俱全",
@@ -703,6 +737,8 @@ const zh: Messages = {
       a5: "会返回 429 和 Retry-After 头。限额按调用站点、目标站点、整个实例以及每分钟分别计算，命中缓存的请求也计入——配额算的是请求数，而不是上游压力。",
       q6: "可以自托管吗？",
       a6: "可以。CORX 是 MIT 许可的 TypeScript 项目，运行在 Cloudflare Workers + D1 + R2 上：部署到你自己的账号，配额、限额和日志都归你所有。仓库 README 覆盖了完整部署流程。",
+      q7: "可以把流量托付给托管实例吗？",
+      a7: "只适合你愿意交给陌生人的数据。代理能看到——也能修改——经过它的所有内容，而托管实例的运营方就是那个陌生人。公开数据、演示和原型可以用公共 key；一旦流量重要，就自托管 CORX，那时链路上唯一的运营方就是你自己。",
     },
     agents: {
       title: "为 agent 而写",

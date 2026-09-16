@@ -270,6 +270,13 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
   served by `app/server.ts` and described in README → SEO and GEO; the band is
   the human-facing half, with the `<link rel="alternate" type="text/plain">`
   in `SiteHead` and the footer link as the machine-discoverable halves.
+- **Trust band** (`#trust`): a two-card, plainly worded statement of the proxy's
+  man-in-the-middle reality — the hosted public instance (free, shared,
+  best-effort, not for secrets) next to self-hosting (MIT, free tier, the whole
+  data path in your own account), the self-host card carrying the primary border
+  and a link to the source. The hero carries a callout link to it, and the same
+  message is FAQ q7 and the `## Trust model`
+  section of `llms-full.txt`, so page, schema and machine file agree.
 - Accessibility: WCAG AA theme tokens (UI red `#E10600` vs. the logo's
   #FD0700, darkened success/warning/info, muted text at `/75`), a visible
   focus ring on the demo URL bar, `aria-live` on the status line only (so a

@@ -14,8 +14,9 @@ Worker on your own Cloudflare account, under your own hostname, with your own
 keys. The repository deliberately carries no deployment's values — hostnames,
 keys and admin addresses are `wrangler secret`s, not config
 ([`.env.production.template`](./.env.production.template) is the committed
-example). A public instance exists as a demo of the public tier; nothing in
-this repository depends on it.
+example). A free, public instance exists as a shared, best-effort demo of the
+public tier — for public data, demos and prototypes, not for secrets or private
+data; nothing in this repository depends on it.
 
 See [FEATURES.md](./FEATURES.md) for the complete, code-mapped feature list,
 [CONTRIBUTING.md](./CONTRIBUTING.md) for the dev setup and repo conventions,
@@ -25,6 +26,27 @@ issue.
 - **Hono** — routing, CORS, upstream fetch
 - **D1** — API keys, rate-limit windows, request logs, host blocklist
 - **R2** — GET response cache
+
+## Trust model
+
+A CORS proxy is a man in the middle by design: whoever operates it can read,
+change and replay every request and response that passes through it. No
+configuration makes that untrue, so CORX is built to be forked rather than
+trusted.
+
+- **The hosted instance is public.** Free, shared, best-effort and revocable
+  without notice. It is meant for public data, demos and prototypes. The public
+  tier strips `Cookie`/`Authorization`, serves from a shared cache and logs
+  requests for 30 days — that reduces exposure, it is not a guarantee. Do not
+  send secrets, credentials or personal data through it.
+- **Your own deployment is private.** CORX is one MIT-licensed Cloudflare
+  Worker (Hono + D1 + R2) that deploys to your own account on the free tier.
+  The whole data path — keys, cache, logs, quotas — then stays inside an account
+  you control, and the only operator you are trusting is yourself.
+
+That trade is the product: open source, free, and honest about when not to
+trust someone else's instance. The landing page says so in the hero itself,
+with a pointer to the dedicated trust section.
 
 ## Usage
 

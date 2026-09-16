@@ -316,6 +316,9 @@ through uncached.
   daily quotas. GET and HEAD only on the public tier.
 - Safety: SSRF guard (private ranges, DNS rebinding, D1 blocklist), 30-day request logs, no
   credentials forwarded on the public tier.
+- Trust: a CORS proxy is a man in the middle by design. CORX is MIT-licensed and meant to be
+  self-hosted — a hosted instance is a free, shared, best-effort demo, not a place for secrets or
+  private data.
 - Contact: ${ABUSE_EMAIL} for abuse, security or content reports.
 
 ## Optional
@@ -415,6 +418,19 @@ Every \`corx-*\` parameter is namespaced, so it can never collide with the targe
 - Requests are logged (IP, country, method, target URL, status, latency, caller origin, key), rolled
   into a per-day aggregate by a nightly cron, and the raw rows pruned after 30 days — the aggregate
   keeps the long-term trend (\`/api/stats?days=\`).
+
+## Trust model
+
+A CORS proxy is a man in the middle by construction: its operator sees — and can change — every
+request and response that passes through it. That is not a vulnerability to patch, it is what a
+proxy is, so CORX is built to be forked rather than trusted. It is one MIT-licensed Cloudflare
+Worker (Hono + D1 + R2) that deploys to a single account on the free tier; after that the only
+operator in the data path is you.
+
+A hosted instance (such as ${origin}) is free, shared, best-effort and revocable without notice. It
+suits public data, demos and prototypes — not secrets, credentials or private data. The public tier
+strips \`Cookie\`/\`Authorization\`, serves from a shared cache and logs requests for 30 days; those
+reduce exposure, they are not a guarantee. When the traffic matters, self-host.
 
 ## Console and admin API
 
