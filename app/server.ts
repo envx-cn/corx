@@ -7,6 +7,7 @@ import type { Env } from "./lib/types.js";
 import { ProxyError } from "./lib/types.js";
 import type { ProxyVariables } from "./lib/auth.js";
 import { apiKeyMiddleware } from "./lib/auth.js";
+import { rollupDailyStats } from "./lib/admin.js";
 import { cors, withProxyCors } from "./proxy/cors.js";
 import { proxyHandler } from "./proxy/handler.js";
 import { utcDay } from "./proxy/quota.js";
@@ -222,9 +223,19 @@ export default {
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(
       (async () => {
-        await env.DB.prepare("DELETE FROM request_logs WHERE created_at < datetime('now', '-30 days')")
-          .run()
-          .catch(() => undefined);
+        // Aggregate first: the rollup is the only record that survives the
+        // prune below, and a day must be written before its rows are gone. If
+        // the rollup fails, skip the prune too — losing raw rows we failed to
+        // archive is worse than a day of extra retention.
+        const rolled = await rollupDailyStats(env.DB).then(
+          () => true,
+          () => false,
+        );
+        if (rolled) {
+          await env.DB.prepare("DELETE FROM request_logs WHERE created_at < datetime('now', '-30 days')")
+            .run()
+            .catch(() => undefined);
+        }
         await env.DB.prepare("DELETE FROM rate_windows WHERE window_min < ?")
           .bind(Math.floor(Date.now() / 60_000) - 120)
           .run()

@@ -412,8 +412,9 @@ Every \`corx-*\` parameter is namespaced, so it can never collide with the targe
   ranges, DNS-resolution checks against rebinding, per-key opt-outs and a D1 blocklist.
 - Hop-by-hop headers are stripped on the way in and out; \`Set-Cookie\` is not forwarded; the public
   tier strips credentials.
-- Requests are logged (IP, country, method, target URL, status, latency, caller origin, key) and
-  pruned after 30 days by a nightly cron.
+- Requests are logged (IP, country, method, target URL, status, latency, caller origin, key), rolled
+  into a per-day aggregate by a nightly cron, and the raw rows pruned after 30 days — the aggregate
+  keeps the long-term trend (\`/api/stats?days=\`).
 
 ## Console and admin API
 
