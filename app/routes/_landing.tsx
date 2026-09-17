@@ -262,11 +262,17 @@ export function LandingPage(props: {
                   {t("landing.tryit.hint", { origin: props.origin })}
                 </p>
                 {/* The integration path, one click from the demo that just
-                    proved the call works. Deliberately a body link, not a
+                    proved the call works. Deliberately body links, not a
                     seventh nav item: the nav is already full at md. */}
-                <p class="mt-3 text-xs text-center lg:text-left">
+                <p class="mt-3 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs lg:justify-start">
                   <a href="/snippets" class="link link-primary">
                     {t("landing.tryit.snippets")}
+                  </a>
+                  <span class="text-base-content/75" aria-hidden="true">
+                    ·
+                  </span>
+                  <a href="/tools/cors-tester" class="link link-primary">
+                    {t("landing.tryit.tester")}
                   </a>
                 </p>
               </div>

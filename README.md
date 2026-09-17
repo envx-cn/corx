@@ -320,7 +320,8 @@ The FAQ is not decoration: it is the content answer engines quote, and the same
 strings feed its `FAQPage` JSON-LD (see [SEO and GEO](#seo-and-geo)). The sticky
 nav links the section anchors, the **Docs** page (the rendered manual at
 `/docs` — the one public link in the nav) and the console; the try-it hint links
-`/snippets` for the framework examples.
+`/snippets` for the framework examples and `/tools/cors-tester` for testing a
+URL the demo did not cover.
 
 Below the public-key card sits the **agent entry** (`id="agents"`): two file
 cards (`/llms.txt`, `/llms-full.txt`), a copy-to-clipboard prompt that names
@@ -565,9 +566,9 @@ instance publishes one.
 
 `app/lib/cors-check.ts` holds the testable half: input validation, the
 probe→finding mapping (`corsFindings`) and the generated calls, covered by
-`test/cors-tester.test.ts`. Linked from `/docs` and every compare page, in the
-sitemap with its own hreflang cluster, and described as a free `WebApplication`
-in JSON-LD.
+`test/cors-tester.test.ts`. Linked from the landing's try-it line, `/docs` and
+every compare page, in the sitemap with its own hreflang cluster, and described
+as a free `WebApplication` in JSON-LD.
 
 ## Public tier (the hosted instance)
 
