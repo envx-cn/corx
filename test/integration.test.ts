@@ -310,6 +310,8 @@ describe("upstream injection + keyless access (integration)", () => {
   interface UpstreamCall {
     url: string;
     headers: Headers;
+    method: string;
+    body: unknown;
   }
 
   /** fetch stub: answers DoH, records (and answers) upstream calls. */
@@ -322,7 +324,12 @@ describe("upstream injection + keyless access (integration)", () => {
         if (url.includes("cloudflare-dns.com")) {
           return new Response(JSON.stringify({ Answer: [{ type: 1, data: "1.2.3.4" }] }), { status: 200 });
         }
-        const call: UpstreamCall = { url, headers: new Headers(init?.headers) };
+        const call: UpstreamCall = {
+          url,
+          headers: new Headers(init?.headers),
+          method: init?.method ?? "GET",
+          body: init?.body ?? undefined,
+        };
         calls.push(call);
         return handler(url, call);
       }),
@@ -427,6 +434,44 @@ describe("upstream injection + keyless access (integration)", () => {
     expect(calls).toHaveLength(2);
     expect(calls[1]?.url).toBe("https://api.vendor.com/next?api_key=sk-live-1");
     expect(calls[1]?.headers.get("authorization")).toBe("Bearer sk-live-1");
+  });
+
+  it("303 rewrites any non-GET/HEAD method to GET and drops the body", async () => {
+    let hop = 0;
+    const calls = stubFetch(() => {
+      hop++;
+      if (hop === 1) return new Response(null, { status: 303, headers: { location: "/next" } });
+      return new Response("done", { status: 200 });
+    });
+    const { env: keyed } = envForKey(injectingRow);
+    const res = await call(
+      "/fetch?url=https://api.vendor.com/data",
+      { method: "PUT", body: "payload", headers: { "x-api-key": "corx_k" } },
+      keyed,
+    );
+    expect(res.status).toBe(200);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.method).toBe("PUT");
+    expect(calls[1]?.method).toBe("GET");
+    expect(calls[1]?.body).toBeUndefined();
+  });
+
+  it("302 keeps a non-POST method and re-sends its body", async () => {
+    let hop = 0;
+    const calls = stubFetch(() => {
+      hop++;
+      if (hop === 1) return new Response(null, { status: 302, headers: { location: "/next" } });
+      return new Response("done", { status: 200 });
+    });
+    const { env: keyed } = envForKey(injectingRow);
+    await call(
+      "/fetch?url=https://api.vendor.com/data",
+      { method: "PUT", body: "payload", headers: { "x-api-key": "corx_k" } },
+      keyed,
+    );
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.method).toBe("PUT");
+    expect(new TextDecoder().decode(calls[1]?.body as ArrayBuffer)).toBe("payload");
   });
 
   it("header rules keep the key out of the shared cache", async () => {

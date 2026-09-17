@@ -180,6 +180,8 @@ forwarding — the browser never holds the upstream secret:
   per the fetch spec, which would leak secrets. In-scope redirects are followed
   with the rules re-applied per hop; a redirect that leaves the allowed hosts
   is returned to the caller with an absolute `Location` and never fetched.
+  Methods and bodies follow the fetch spec: 301/302 rewrite `POST` to `GET`,
+  303 rewrites every method but `GET`/`HEAD`, both dropping the body.
 - Secrets stay out of logs and errors: `target_url` in `request_logs` is the
   pre-injection URL, `X-Corx-Target` carries only the host, and variable values
   are masked on every read path (`GET /api/keys` returns names only).

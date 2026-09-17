@@ -437,7 +437,13 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         if (row?.dns_check !== 0) await assertPublicHost(next.hostname);
 
         if (next.origin !== currentUrl.origin) dropClientAuth = true;
-        if ((method === "POST" && (upstream.status === 301 || upstream.status === 302 || upstream.status === 303))) {
+        // fetch spec: 301/302 rewrite only POST to GET; 303 rewrites every
+        // method except GET/HEAD. Both drop the body — re-sending it would
+        // double-apply a side effect the upstream already handled.
+        if (
+          (method === "POST" && (upstream.status === 301 || upstream.status === 302)) ||
+          (upstream.status === 303 && method !== "GET" && method !== "HEAD")
+        ) {
           method = "GET";
           hopBody = undefined;
         }
