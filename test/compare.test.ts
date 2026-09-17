@@ -121,6 +121,9 @@ describe("compare page contract", () => {
 
     // The honest half of the table is rendered, not just stored.
     expect(html).toContain("They win this row");
+    // The CORX column names the capability that closed the response-header gap
+    // (#52), so the page cannot quietly understate the repo again.
+    expect(html).toContain("response header rules");
 
     // Sources: links out to the competitor's own documentation, with the date.
     expect(html).toContain('href="https://corsproxy.io/docs/header-rewrites/"');
@@ -171,6 +174,7 @@ describe("compare page contract", () => {
     expect(zhHtml).toContain('<html lang="zh"');
     expect(zhHtml).toContain("CORX 对比 AllOrigins");
     expect(zhHtml).toContain("这一项它更好");
+    expect(zhHtml).toContain("响应头规则");
     expect(zhHtml).toContain('<link rel="canonical" href="https://corx.test/zh/compare/allorigins"/>');
   });
 
