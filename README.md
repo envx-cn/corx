@@ -291,6 +291,35 @@ and follows the live demo instead. Its
 machine-discoverable halves are a `<link rel="alternate" type="text/plain">` in
 `<head>` and an `llms.txt` link in the footer.
 
+### See secret injection work
+
+The try-it demo's footer carries one button that runs the whole product in a
+single click: **See a key get injected**. It sends one request through the
+public demo key to `/demo/echo` — an echo endpoint on this same Worker — and the
+response shows `x-corx-demo-secret` and `?demo_key=` arriving at the upstream
+while the page itself only ever held the demo key. That is the difference
+between CORX and a pass-through proxy, shown instead of claimed.
+
+Nothing about it is special-cased in the proxy: the demo key is an ordinary key
+row whose host allowlist is this deployment and whose header/query rules inject
+a deliberately fake value (`app/lib/demo.ts`, `scripts/seed-demo-key.mjs`). The
+button only renders when both exist *and* the allowlist covers the host being
+served — otherwise the demo would be a button that always 403s, so it hides
+itself instead (that is the normal state in local dev: the key was seeded for
+the deployed host). The compare pages link to it from the same reasoning.
+
+Seeding it locally:
+
+```bash
+# .dev.vars: DEMO_KEY = "corx_dev_demo_key"
+npm run db:seed:demo -- --host localhost
+```
+
+Deployed instances: create the key in the console instead (host allowlist = the
+deployment, same two rules) or run the script against the remote DB, then set
+`DEMO_KEY` with `wrangler secret put DEMO_KEY`. The endpoint is a machine
+surface, not a page: JSON, `no-store`, `noindex`, `Disallow: /demo`.
+
 The demo renders the response **by content type** instead of dumping every
 body into a `<pre>` (`app/lib/preview.ts` classifies, `app/islands/cors-demo.tsx`
 drives it, `app/components/response-preview.tsx` renders): JSON becomes a
@@ -610,6 +639,7 @@ vars are rewritten from the config file each time.
 | `ADMIN_EMAILS` (secret) | `""` | Optional comma-separated allowlist for admin access |
 | `PUBLIC_KEY` (secret) | `""` | Raw value of the public-tier key, rendered on the landing page (public by design — a secret only to keep deployment values out of the repo; D1 stores only its hash). Empty = no public key advertised |
 | `PUBLIC_CACHE_TTL_SECONDS` | `300` | Default R2 TTL for public-tier GETs; public keys reject `corx-ttl` |
+| `DEMO_KEY` (secret) | `""` | Raw value of the injection-demo key shown on the landing page. Its host allowlist must cover this deployment (that is also the check that hides the demo), and its rules inject a fake credential into `/demo/echo` — see [See secret injection work](#see-secret-injection-work) |
 
 ## Admin console (SSR + Cloudflare login)
 
@@ -823,6 +853,9 @@ app/              HonoX frontend (entry + console UI + API routes)
                 own document, no islands/session/D1. "terms" is in the
                 subdomain RESERVED_LABELS so terms.<zone> never decodes
                 as a proxy target.
+  routes/demo/echo.ts the injection demo's echo upstream: returns the
+                method, path, query and headers it received, so the
+                landing demo can show the credential CORX attached.
   routes/compare/     /compare/<name> comparison pages: [name].tsx plus the
                 en/ and zh/ variants call _compare.tsx (page + handler),
                 which reads the registry in lib/compare.ts. Not in the nav:
@@ -869,7 +902,9 @@ app/              HonoX frontend (entry + console UI + API routes)
                 sitemap.xml, llms.txt, llms-full.txt; site-info: the
                 origin-independent facts those all quote; compare: the
                 /compare registry — competitor name, source URLs and the
-                day each claim was read)
+                day each claim was read; demo: the injection demo — the
+                echo endpoint's path/header names and the "should the
+                landing show the button" check)
 test/           vitest suites (guard, ip, dns-check, cache, inject,
                 admin, origins, subdomain, media, playground, preview,
                 stats, i18n, nav, access, quota, public tier, error
@@ -882,6 +917,7 @@ test/           vitest suites (guard, ip, dns-check, cache, inject,
 | --- | --- |
 | `npm run dev` | vite dev with local D1/R2 (needs `.dev.vars`) |
 | `npm run db:seed:public` | seed the local D1 with a public-tier key (`PUBLIC_KEY` from `.dev.vars`), so `/` renders the public-key card |
+| `npm run db:seed:demo` | seed the local D1 with the injection-demo key (host allowlist = this deployment), so `/` renders the "See a key get injected" button — `-- --host <host>`, see [See secret injection work](#see-secret-injection-work) |
 | `npm run dev:worker` | production bundle via `wrangler dev` |
 | `npm run build` | client (islands) + worker bundles into `./dist` |
 | `npm run deploy` | build + deploy to Cloudflare |

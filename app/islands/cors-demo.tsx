@@ -17,6 +17,8 @@ import searchSvg from "lucide-static/icons/search.svg?raw";
 import pauseSvg from "lucide-static/icons/pause.svg?raw";
 import playSvg from "lucide-static/icons/play.svg?raw";
 import arrowUpRightSvg from "lucide-static/icons/arrow-up-right.svg?raw";
+import keyRoundSvg from "lucide-static/icons/key-round.svg?raw";
+import { DEMO_HEADER } from "../lib/demo.js";
 
 /** Demo sites shown in the rotating examples (CORS-friendly public APIs, no keys). */
 const EXAMPLES = [
@@ -45,6 +47,11 @@ export interface CorsDemoI18n {
   tabPreview: string;
   tabRaw: string;
   tabHeaders: string;
+  /** Injection demo: the button that runs it, its explanation, and the badge on
+      the injected header row. */
+  injectBtn: string;
+  injectNote: string;
+  injectBadge: string;
   openRaw: string;
   imageAlt: string;
   mediaHint: string;
@@ -97,13 +104,25 @@ function parseJson(text: string): unknown {
  * lib/preview.ts for the classification and components/response-preview.tsx
  * for the viewers.
  */
-export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI18n }) {
+export default function CorsDemo({
+  base,
+  i18n,
+  demo,
+}: {
+  base: string;
+  i18n: CorsDemoI18n;
+  /** The injection demo, when this instance has one configured (app/lib/demo.ts). */
+  demo?: { key: string; target: string };
+}) {
   const [url, setUrl] = useState<string>(EXAMPLES[0]!.url);
   const [auto, setAuto] = useState(true);
   const [idx, setIdx] = useState(0);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DemoResult | null>(null);
   const [tab, setTab] = useState<ResultTab>("preview");
+  // True while the shown result is the injection demo's, so the explanation
+  // and the header highlight belong to that run and not to the next example.
+  const [demoRan, setDemoRan] = useState(false);
   // Pause the rotation when the demo is off-screen or the tab is hidden.
   const [inView, setInView] = useState(true);
   const [visible, setVisible] = useState(true);
@@ -115,21 +134,26 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
   // the same example repeatedly.
   const lastLoad = useRef<{ url: string; at: number } | null>(null);
 
-  async function load(target: string) {
+  async function load(target: string, opts: { key?: string; tab?: ResultTab; injected?: boolean } = {}) {
     const now = Date.now();
     if (lastLoad.current && lastLoad.current.url === target && now - lastLoad.current.at < 1500) {
       return; // same URL requested twice in quick succession — ignore the burst
     }
     lastLoad.current = { url: target, at: now };
     setLoading(true);
-    setTab("preview");
+    setTab(opts.tab ?? "preview");
+    setDemoRan(opts.injected === true);
     const t0 = performance.now();
-    // No key is attached on purpose: the demo is a same-origin GET, so the
-    // backend resolves the caller itself (keyless grant on this origin, else
-    // anonymous when REQUIRE_API_KEY=false, else a 401 the card reports).
+    // No key for the rotating examples on purpose: the demo is a same-origin
+    // GET, so the backend resolves the caller itself (keyless grant on this
+    // origin, else anonymous when REQUIRE_API_KEY=false, else a 401). The
+    // injection demo is the one run that carries a key — and it is the public
+    // demo key, not the credential that ends up upstream.
     const rawUrl = `${base}/fetch?url=${encodeURIComponent(target)}`;
+    const reqHeaders: Record<string, string> = { Accept: "*/*" };
+    if (opts.key) reqHeaders["x-api-key"] = opts.key;
     try {
-      const res = await fetch(rawUrl, { headers: { Accept: "*/*" } });
+      const res = await fetch(rawUrl, { headers: reqHeaders });
       const latency = Math.round(performance.now() - t0);
       const type = res.headers.get("content-type") ?? "";
       const headers: Array<[string, string]> = [];
@@ -245,6 +269,19 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
     void load(url);
   }
 
+  /**
+   * Run the injection demo: one request through the public demo key to the
+   * echo endpoint, which answers with the credential CORX attached on the way
+   * out. Opens the headers tab — that is where the difference is visible.
+   */
+  function runInjectDemo() {
+    if (!demo) return;
+    setAuto(false);
+    setUrl(demo.target);
+    setFlipKey((k) => k + 1);
+    void load(demo.target, { key: demo.key, tab: "headers", injected: true });
+  }
+
   const statusCls = result == null ? "text-base-content/75" : result.ok ? "text-success" : "text-error";
   const showRawTab = result != null && isTextKind(result.kind);
 
@@ -301,6 +338,14 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
           </div>
         ) : result ? (
           <>
+            {demoRan && (
+              <div class="mx-4 mt-4 rounded-box border border-success/40 bg-success/10 px-3 py-2 text-xs leading-relaxed">
+                {/* Says exactly what the browser did and did not hold — the
+                    demo key is public and on this page; the injected value is
+                    not. */}
+                {i18n.injectNote.replace("{header}", DEMO_HEADER)}
+              </div>
+            )}
             {/* Live region on the status line only — the viewer below may hold
                 an iframe/video whose content must not be announced. */}
             <div role="status" aria-live="polite" class="demo-meta">
@@ -370,12 +415,22 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
                 <div class="p-4">
                   <table class="table table-xs">
                     <tbody>
-                      {result.headers.map(([name, value]) => (
-                        <tr>
-                          <td class="w-56 align-top font-mono text-xs text-base-content/75">{name}</td>
-                          <td class="break-all font-mono text-xs">{value}</td>
-                        </tr>
-                      ))}
+                      {result.headers.map(([name, value]) => {
+                        // The demo's whole point, made visible: this arrived from
+                        // the proxy, not from the page.
+                        const injected = demoRan && name.toLowerCase() === DEMO_HEADER;
+                        return (
+                          <tr class={injected ? "bg-success/10" : undefined}>
+                            <td class="w-56 align-top font-mono text-xs text-base-content/75">{name}</td>
+                            <td class="break-all font-mono text-xs">
+                              {value}
+                              {injected && (
+                                <span class="badge badge-success badge-sm ml-2 align-middle">{i18n.injectBadge}</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -386,7 +441,7 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
           <div class="py-20 text-center text-sm text-base-content/75">{i18n.waiting}</div>
         )}
       </div>
-      <div class="flex items-center justify-between px-4 py-2 border-t border-base-300 text-xs text-base-content/75 bg-base-100">
+      <div class="flex items-center justify-between gap-2 px-4 py-2 border-t border-base-300 text-xs text-base-content/75 bg-base-100">
         <span>
           {auto ? (
             <>
@@ -399,10 +454,18 @@ export default function CorsDemo({ base, i18n }: { base: string; i18n: CorsDemoI
             <span>{i18n.manualMode}</span>
           )}
         </span>
-        <button type="button" onClick={() => setAuto((a) => !a)} class="btn btn-ghost btn-xs gap-1 rounded-full!">
-          <Lucide svg={auto ? pauseSvg : playSvg} />
-          {auto ? i18n.pause : i18n.resume}
-        </button>
+        <span class="flex shrink-0 items-center gap-1">
+          {demo && (
+            <button type="button" onClick={runInjectDemo} class="btn btn-ghost btn-xs gap-1 rounded-full!">
+              <Lucide svg={keyRoundSvg} />
+              {i18n.injectBtn}
+            </button>
+          )}
+          <button type="button" onClick={() => setAuto((a) => !a)} class="btn btn-ghost btn-xs gap-1 rounded-full!">
+            <Lucide svg={auto ? pauseSvg : playSvg} />
+            {auto ? i18n.pause : i18n.resume}
+          </button>
+        </span>
       </div>
     </div>
   );

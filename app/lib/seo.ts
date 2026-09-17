@@ -224,7 +224,7 @@ export function compareJsonLd(opts: {
  * content — and an open proxy indexed under our hostname is exactly the SEO
  * pollution this file exists to prevent), the admin console and its API.
  */
-const DISALLOW = ["/console", "/api", "/fetch", "/proxy", "/health"] as const;
+const DISALLOW = ["/console", "/api", "/fetch", "/proxy", "/health", "/demo"] as const;
 
 /**
  * Answer engines allowed on purpose. `User-agent: *` already covers them, but
@@ -532,9 +532,19 @@ for automation, authenticated with the admin token: \`/api/keys\`, \`/api/keys/:
 \`/api/keys/:id/revoke\`, \`/api/logs\`, \`/api/stats\`, \`/api/blocked-hosts\`, \`/api/block-host\`,
 \`/health\`.
 
+## Injection demo
+
+The landing page runs one live demonstration of the thing that separates CORX from a plain pass-through
+proxy: a public demo key, allowlisted to this Worker's own echo endpoint, proxies to
+\`${absUrl(origin, "/demo/echo")}\` — an endpoint that returns the method, path, query and headers it
+received. The response therefore shows the credential CORX injected on the way out, while the browser
+only ever held the public demo key. The demo key is ordinary key data (\`DEMO_KEY\` plus
+\`scripts/seed-demo-key.mjs\`), and the injected value is deliberately fake. The echo endpoint is a
+machine surface: JSON, \`no-store\`, \`noindex\`, excluded from robots.txt.
+
 ## Public pages
 
-- ${root} — landing page, live demo, public key card, FAQ.
+- ${root} — landing page, live demo (including the injection demo, below), public key card, FAQ.
 - ${absUrl(origin, "/en")} and ${absUrl(origin, "/zh")} — explicit English and Chinese URLs.
 - ${absUrl(origin, "/terms")} — terms of use, quotas and prohibited uses.
 - ${COMPARISONS.map((c) => `${absUrl(origin, `/compare/${c.slug}`)} (vs ${c.name})`).join(", ")} —

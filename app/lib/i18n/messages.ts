@@ -76,6 +76,7 @@ const en = {
     },
     cta: "Both are about a line of code away. Try the public key on the landing page first, and self-host when the traffic matters.",
     ctaLink: "Back to the landing page",
+    demo: "See it live: run a real injection from the landing demo.",
     back: "Back to home",
     row: {
       auth: "Auth model",
@@ -697,6 +698,12 @@ const en = {
     tabPreview: "Preview",
     tabRaw: "Raw",
     tabHeaders: "Headers",
+    // Injection demo (app/lib/demo.ts): the button sits in the demo's footer,
+    // the note explains the run, the badge marks the header CORX attached.
+    injectBtn: "See a key get injected",
+    injectNote:
+      "Two credentials, one request: the browser sent the public demo key, and CORX attached `{header}` from its own encrypted storage before the request left the edge. The echo upstream shows it arrived — the browser never held it. (The value is fake; it exists to make the mechanism visible.)",
+    injectBadge: "injected by CORX",
   },
   /** Shared response-viewer copy (landing demo + console playground). */
   preview: {
@@ -818,6 +825,7 @@ const zh: Messages = {
     },
     cta: "两者都只差一行代码。先在首页用公共 key 试试；流量重要时再自托管。",
     ctaLink: "回到首页",
+    demo: "看它跑起来：在首页演示里真实执行一次注入。",
     back: "返回首页",
     row: {
       auth: "鉴权模型",
@@ -1408,6 +1416,12 @@ const zh: Messages = {
     tabPreview: "预览",
     tabRaw: "原始",
     tabHeaders: "响应头",
+    // 注入演示（app/lib/demo.ts）：按钮在演示框底部，说明解释这次请求，
+    // 徽标标出由 CORX 注入的那个 header。
+    injectBtn: "看一次密钥注入",
+    injectNote:
+      "一次请求，两个凭证：浏览器只带了公开的演示 key，`{header}` 是 CORX 在请求离开边缘前从自己的加密存储中取出并注入的。echo 上游证明它确实到达——浏览器从未持有这个值。（这个值是假的，存在的意义只是让机制可见。）",
+    injectBadge: "由 CORX 注入",
   },
   /** Shared response-viewer copy (landing demo + console playground). */
   preview: {

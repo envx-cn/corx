@@ -5,6 +5,7 @@ import type { ProxyVariables } from "../lib/auth.js";
 import { lookupApiKey } from "../lib/auth.js";
 import { proxyHandler } from "../proxy/handler.js";
 import { resolveRawTarget } from "../proxy/subdomain.js";
+import { demoKeyInfo } from "../lib/demo.js";
 import { detectLocale, makeT, type Locale } from "../lib/i18n/locale.js";
 import { setLangCookie } from "../lib/i18n/hono.js";
 import { LandingPage } from "./_landing.js";
@@ -88,6 +89,9 @@ function landing(locale?: Locale): Handler<{ Bindings: Env; Variables: ProxyVari
         locale: lang,
         t: makeT(lang),
         publicKey: await publicKeyInfo(c.env),
+        // The injection demo: present only when this instance has a demo key
+        // whose allowlist covers this host (app/lib/demo.ts).
+        demo: await demoKeyInfo(c.env, reqUrl.hostname),
       })}`,
     );
   };
