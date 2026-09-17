@@ -274,6 +274,15 @@ describe("landing page metadata", () => {
     expect(full).toContain("man in the middle");
   });
 
+  it("sells the console as part of the product, not just the endpoint", async () => {
+    const en = decode(await (await call("/en")).text());
+    expect(en).toContain("A console, not just an endpoint");
+    expect(en).toContain("Does CORX come with an admin console?");
+
+    const zh = await (await call("/zh")).text();
+    expect(zh).toContain("不只是接口，还有控制台");
+  });
+
   it("locks the structured data against a </script> injection", async () => {
     const html = await (await call("/en")).text();
     const match = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);

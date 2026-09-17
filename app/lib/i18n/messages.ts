@@ -111,6 +111,10 @@ const en = {
         title: "Inspect every hop",
         desc: "Run any request through the real pipeline from the console playground — auth, SSRF guards, injection, cache — and read the full response plus a masked injection preview.",
       },
+      console: {
+        title: "A console, not just an endpoint",
+        desc: "Most self-hosted proxies hand you a URL and stop there. CORX ships the product around it: a bilingual dashboard for usage and a period-over-period trend, per-key policy, request logs, a host blocklist and a playground that runs through the real pipeline.",
+      },
     },
     trust: {
       title: "You trust someone. Choose who.",
@@ -190,6 +194,8 @@ const en = {
       a6: "Yes. CORX is MIT-licensed TypeScript for Cloudflare Workers, D1 and R2: deploy it to your own account and the quotas, limits and logs are yours. The repository README covers the whole deployment.",
       q7: "Can I trust the hosted instance with my traffic?",
       a7: "Only with data you would hand to a stranger. A proxy sees — and can change — everything passing through it, and on a hosted instance the operator is that stranger. Use the public key for public data, demos and prototypes; when the traffic matters, self-host CORX and the only operator left in the path is you.",
+      q8: "Does CORX come with an admin console?",
+      a8: "Yes — a bilingual (English/中文) console with a usage dashboard and a period-over-period trend, per-key policy (rate limits, allowed origins, cache TTL, keyless grants, upstream injection, public-tier quotas), request logs, a host blocklist and a playground that runs requests through the real pipeline. Most self-hosted proxies are just a fetch endpoint; this is the product around it, in the same Worker.",
     },
     // The agent entry. This instance already publishes llms.txt /
     // llms-full.txt (app/lib/seo.ts); the section is where a *human* finds out.
@@ -660,6 +666,10 @@ const zh: Messages = {
         title: "每一步都可检视",
         desc: "在控制台演练场把请求跑过真实链路——鉴权、SSRF 防护、注入、缓存——并查看完整响应与打码后的注入预览。",
       },
+      console: {
+        title: "不只是接口，还有控制台",
+        desc: "多数自托管代理只给你一个 URL 就结束了。CORX 把围绕它的产品也一并给你：中英双语仪表盘（用量与周期对比趋势）、按 key 的策略、请求日志、主机黑名单，以及跑真实链路的演练场。",
+      },
     },
     trust: {
       title: "你总得信任某一方——不如自己选",
@@ -739,6 +749,8 @@ const zh: Messages = {
       a6: "可以。CORX 是 MIT 许可的 TypeScript 项目，运行在 Cloudflare Workers + D1 + R2 上：部署到你自己的账号，配额、限额和日志都归你所有。仓库 README 覆盖了完整部署流程。",
       q7: "可以把流量托付给托管实例吗？",
       a7: "只适合你愿意交给陌生人的数据。代理能看到——也能修改——经过它的所有内容，而托管实例的运营方就是那个陌生人。公开数据、演示和原型可以用公共 key；一旦流量重要，就自托管 CORX，那时链路上唯一的运营方就是你自己。",
+      q8: "CORX 带管理控制台吗？",
+      a8: "带。它是一个中英双语控制台：用量仪表盘与周期对比趋势、按 key 的策略（频率限制、允许来源、缓存 TTL、免密钥授权、上游注入、公共档位配额）、请求日志、主机黑名单，以及跑真实链路的演练场。多数自托管代理只是一个 fetch 接口，而这里是围绕它的一整套产品，全部包含在同一个 Worker 中。",
     },
     agents: {
       title: "为 agent 而写",
