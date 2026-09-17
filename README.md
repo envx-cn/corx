@@ -370,6 +370,16 @@ deployment, same two rules) or run the script against the remote DB, then set
 `DEMO_KEY` with `wrangler secret put DEMO_KEY`. The endpoint is a machine
 surface, not a page: JSON, `no-store`, `noindex`, `Disallow: /demo`.
 
+One routing detail is load-bearing for the demo on a custom domain: by default a
+Worker's `fetch()` to a hostname in **its own zone** goes to that zone's origin,
+not back through the Worker — and a Workers Custom Domain has no origin, so the
+proxied `/demo/echo` call answers `522`. `wrangler.jsonc` enables
+`global_fetch_strictly_public`, which restores public-internet routing for
+same-zone subrequests: the self-call reaches the Worker, and CORX proxying
+another host in its own zone sees the edge (cache/WAF) instead of bypassing it.
+`*.workers.dev` hosts route publicly already — the flag makes both paths
+identical.
+
 The demo renders the response **by content type** instead of dumping every
 body into a `<pre>` (`app/lib/preview.ts` classifies, `app/islands/cors-demo.tsx`
 drives it, `app/components/response-preview.tsx` renders): JSON becomes a

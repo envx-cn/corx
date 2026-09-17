@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../app/server.js";
 import type { Env } from "../app/lib/types.js";
 import { DEMO_ECHO_PATH, DEMO_HEADER, DEMO_PARAM } from "../app/lib/demo.js";
+import wranglerConfig from "../wrangler.jsonc?raw";
 
 /**
  * The injection demo (issue #53): the echo endpoint, the seeded demo key's
@@ -10,7 +11,9 @@ import { DEMO_ECHO_PATH, DEMO_HEADER, DEMO_PARAM } from "../app/lib/demo.js";
  *
  * The end-to-end case runs the whole path against the assembled app: the
  * outbound `fetch` is stubbed to re-enter `worker.fetch`, so the "upstream" is
- * the real echo route — exactly what happens in production, minus the network.
+ * the real echo route — what production does on a *.workers.dev host, and on a
+ * custom domain only because `global_fetch_strictly_public` is set (see the
+ * config assertion at the bottom).
  */
 
 const DEMO_KEY = "corx_demo_test";
@@ -216,5 +219,15 @@ describe("demo exposure", () => {
     const full = await (await call("/llms-full.txt")).text();
     expect(full).toContain("## Injection demo");
     expect(full).toContain("https://corx.test/demo/echo");
+  });
+});
+
+describe("deployment routing", () => {
+  it("makes same-zone subrequests public, so the demo reaches the Worker on a custom domain", () => {
+    // Without this flag a Worker's fetch() to its own zone goes to the zone's
+    // origin — and a Workers Custom Domain has none, which is the 522 the demo
+    // shows on a custom domain. It cannot be exercised in-process (miniflare
+    // does not implement the zone-origin shortcut), so it is pinned here.
+    expect(wranglerConfig).toContain('"global_fetch_strictly_public"');
   });
 });

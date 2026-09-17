@@ -20,7 +20,17 @@
 	"main": "./dist/index.js",
 	"compatibility_date": "2026-08-01",
 	"compatibility_flags": [
-		"nodejs_compat"
+		"nodejs_compat",
+		// A Worker's fetch() to a hostname in its own zone is routed to that
+		// zone's origin by default. A Workers Custom Domain has no origin (its
+		// DNS target is a placeholder), so the injection demo — which proxies to
+		// /demo/echo on its own hostname — surfaces that as a 522. This flag
+		// makes same-zone subrequests behave like a request from the public
+		// internet: they loop back through the front door, so the demo reaches
+		// the Worker, and CORX proxying another host in its own zone sees the
+		// edge (cache/WAF) instead of bypassing it. *.workers.dev hosts already
+		// route publicly; the flag keeps both paths identical.
+		"global_fetch_strictly_public"
 	],
 	"workers_dev": true,
 	"assets": {
