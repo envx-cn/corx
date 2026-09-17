@@ -317,7 +317,8 @@ needed and the answers are plain text in the initial HTML) and a dark footer.
 The FAQ is not decoration: it is the content answer engines quote, and the same
 strings feed its `FAQPage` JSON-LD (see [SEO and GEO](#seo-and-geo)). The sticky
 nav links the section anchors, the **Docs** page (the rendered manual at
-`/docs` — the one public link that leaves the landing) and the console.
+`/docs` — the one public link in the nav) and the console; the try-it hint links
+`/snippets` for the framework examples.
 
 Below the public-key card sits the **agent entry** (`id="agents"`): two file
 cards (`/llms.txt`, `/llms-full.txt`), a copy-to-clipboard prompt that names
@@ -453,7 +454,7 @@ one deployment's URL.
 | Surface | What it is |
 | --- | --- |
 | `robots.txt` | Public pages open, machine surfaces closed (`/console`, `/api`, `/fetch`, `/proxy`, `/health`), absolute `Sitemap:` line. The main answer engines (GPTBot, ClaudeBot, PerplexityBot, …) are named and allowed on purpose: CORX *wants* to be read and cited, and saying so in the file makes a future "block the bots" edit argue with the list. |
-| `sitemap.xml` | Every indexable URL with `lastmod`, and an `xhtml:link` hreflang cluster (`en`, `zh`, `x-default`) on each landing URL, each comparison URL and each docs URL. |
+| `sitemap.xml` | Every indexable URL with `lastmod`, and an `xhtml:link` hreflang cluster (`en`, `zh`, `x-default`) on each landing URL, each comparison URL, each docs URL and each snippets URL. |
 | `llms.txt` | The [llmstxt.org](https://llmstxt.org) index: title, blockquote summary, `## Docs` / `## Facts` link sections, `## Optional` tail. |
 | `llms-full.txt` | The whole behaviour of the instance in one Markdown fetch — calling shapes, the `corx-*` namespace, auth tiers, caching, limits, security, console + admin API, self-hosting. |
 
@@ -526,6 +527,23 @@ advertise a parameter the proxy does not consume — or forget one it does. The
 page is linked from the landing nav (not the hero), sits in the sitemap with
 its own hreflang cluster, is linked from `llms.txt` and `llms-full.txt`, and
 emits a dated `TechArticle` in its JSON-LD.
+
+### Framework and platform snippets (`/snippets`)
+
+`/snippets` (plus `/en/snippets` and `/zh/snippets`) is the code-shaped half of
+the docs: `fetch`, axios and ky examples built from the request's own origin,
+the two browser-safe patterns (a keyless origin grant, or a server route that
+holds the key), the environment-variable rule that keeps a key out of a Vite /
+Next.js build, and platform notes for Cloudflare Pages, Vercel and Netlify. It
+ends with the honest half of the public tier — GET/HEAD, daily quotas, no
+injection, shared cache — so nobody pastes a snippet the shared key cannot run.
+
+Snippet code lives in `app/lib/snippets.ts`, and `test/snippets.test.ts` asserts
+every block is built from the deployment's own origin (never a hard-coded
+hostname), that any block carrying `X-Api-Key` says it is server-side, and that
+the public-key link only renders when the instance has one. The page is linked
+from the landing's try-it section and from `/docs`, and ships the same
+canonical + hreflang + sitemap treatment as the other public documents.
 
 ## Public tier (the hosted instance)
 
@@ -983,8 +1001,13 @@ app/              HonoX frontend (entry + console UI + API routes)
                 calling _docs.tsx (page + handler), which renders the call
                 shapes and corx-* table from lib/docs.ts. Linked from the
                 landing nav, the sitemap and the llms files.
+  routes/snippets.ts  /snippets code examples (+ snippets under en/ and zh/),
+                all three calling _snippets.tsx (page + handler), which
+                renders lib/snippets.ts. Linked from the landing try-it and
+                from /docs; own sitemap cluster.
   components/   shared presentational primitives (badges, chart, lucide,
-                table, logo) plus the response viewers (response-preview,
+                table, logo, prose — Section/SubSection for the long-form
+                public documents) plus the response viewers (response-preview,
                 json-tree) used by both the landing demo and the playground —
                 console-only chrome lives in routes/console/ instead
                 (interactive bits in islands/)
@@ -1027,13 +1050,14 @@ app/              HonoX frontend (entry + console UI + API routes)
                 /compare registry — competitor name, source URLs and the
                 day each claim was read; docs: the /docs page's code-coupled
                 half — call shapes and the corx-* table the test checks
-                against control.ts; demo: the injection demo — the
+                against control.ts; snippets: the /snippets code samples,
+                built from the request origin; demo: the injection demo — the
                 echo endpoint's path/header names and the "should the
                 landing show the button" check)
 test/           vitest suites (guard, ip, dns-check, cache, inject,
                 admin, origins, subdomain, media, playground, preview,
                 stats, i18n, nav, access, quota, public tier, error
-                pages, seo, compare, docs, integration)
+                pages, seo, compare, docs, snippets, integration)
 ```
 
 ## Scripts

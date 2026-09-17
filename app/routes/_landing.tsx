@@ -261,6 +261,14 @@ export function LandingPage(props: {
                 <p class="mt-4 text-xs text-base-content/75 text-center lg:text-left leading-relaxed">
                   {t("landing.tryit.hint", { origin: props.origin })}
                 </p>
+                {/* The integration path, one click from the demo that just
+                    proved the call works. Deliberately a body link, not a
+                    seventh nav item: the nav is already full at md. */}
+                <p class="mt-3 text-xs text-center lg:text-left">
+                  <a href="/snippets" class="link link-primary">
+                    {t("landing.tryit.snippets")}
+                  </a>
+                </p>
               </div>
             </div>
           </section>

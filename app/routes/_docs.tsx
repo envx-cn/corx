@@ -1,4 +1,3 @@
-import type { Child } from "hono/jsx";
 import type { Handler } from "hono";
 import { HasIslands } from "honox/server";
 import type { Env } from "../lib/types.js";
@@ -12,6 +11,7 @@ import { OG_IMAGE, docsAlternates, docsJsonLd } from "../lib/seo.js";
 import { CONTENT_UPDATED, REPO_DOCS } from "../lib/site-info.js";
 import { DOCS_KEY_FORMS, DOCS_PARAMS, DOCS_SHAPES, docsShapeExample } from "../lib/docs.js";
 import CopyButton, { type CopyButtonLabels } from "../islands/copy-button.js";
+import { Section, SubSection } from "../components/prose.js";
 
 /**
  * /docs — the human-readable usage page.
@@ -164,6 +164,11 @@ export function DocsPage(props: {
               );
             })}
             <p class="mt-4 text-sm text-base-content/75 leading-relaxed">{t("docs.call.note")}</p>
+            <p class="mt-3 text-sm">
+              <a href="/snippets" class="link link-primary">
+                {t("docs.call.snippets")}
+              </a>
+            </p>
           </Section>
 
           <Section id="params" title={t("docs.params.title")}>
@@ -256,25 +261,5 @@ export function DocsPage(props: {
         <SiteFooter origin={props.origin} t={t} />
       </body>
     </html>
-  );
-}
-
-/** One H2 section, with the scroll margin the sticky nav needs. */
-function Section(props: { id: string; title: string; children: Child }) {
-  return (
-    <section id={props.id} class="mt-12 scroll-mt-24">
-      <h2 class="text-xl font-semibold tracking-tight">{props.title}</h2>
-      {props.children}
-    </section>
-  );
-}
-
-/** One H3 step inside a section. */
-function SubSection(props: { title: string; body: string }) {
-  return (
-    <div class="mt-6">
-      <h3 class="text-base font-semibold">{props.title}</h3>
-      <p class="mt-1.5 text-sm text-base-content/75 leading-relaxed">{props.body}</p>
-    </div>
   );
 }
