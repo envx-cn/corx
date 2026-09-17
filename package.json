@@ -8,11 +8,11 @@
     "dev": "vite",
     "dev:worker": "npm run build && wrangler dev",
     "build": "rm -rf dist && vite build --mode client && vite build",
-    "deploy": "npm run build && wrangler deploy",
+    "deploy": "npm run build && wrangler d1 migrations apply DB --remote && wrangler deploy",
     "tail": "wrangler tail",
     "db:create": "wrangler d1 create corx-db",
-    "db:migrate": "wrangler d1 migrations apply corx-db --remote",
-    "db:migrate:local": "wrangler d1 migrations apply corx-db --local",
+    "db:migrate": "wrangler d1 migrations apply DB --remote",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:seed:public": "node scripts/seed-public-key.mjs",
     "db:seed:demo": "node scripts/seed-demo-key.mjs",
     "kek:rotate": "node scripts/rotate-kek.mjs",
@@ -40,5 +40,42 @@
     "vite": "^7.3.6",
     "vitest": "^3.2.4",
     "wrangler": "^4.37.0"
+  },
+  "cloudflare": {
+    "bindings": {
+      "DB": {
+        "description": "D1 database: API keys, request logs, quotas and the blocklist. Cloudflare provisions it during deploy."
+      },
+      "CACHE_BUCKET": {
+        "description": "R2 bucket for the GET response cache. Cloudflare provisions it during deploy."
+      },
+      "ADMIN_TOKEN": {
+        "description": "Required. Bearer token for `/api/*` and the console login — generate one with `openssl rand -base64 32`."
+      },
+      "SESSION_SECRET": {
+        "description": "Optional. HMAC key for console session cookies; falls back to `ADMIN_TOKEN`."
+      },
+      "INJECTION_KEK": {
+        "description": "Optional. Encrypts injected variable values at rest; rotate with `npm run kek:rotate` instead of changing it."
+      },
+      "PROXY_ZONE": {
+        "description": "Optional. Subdomain-mode suffix (`example.corx.com` → `example.com`); empty auto-detects the request host."
+      },
+      "PUBLIC_KEY": {
+        "description": "Optional. Raw value of the public-tier key rendered on the landing page (the hosted-instance demo)."
+      },
+      "DEMO_KEY": {
+        "description": "Optional. Raw value of the landing page's injection-demo key; only for the hosted demo."
+      },
+      "ACCESS_TEAM_DOMAIN": {
+        "description": "Optional. Cloudflare Access team domain; set together with `ACCESS_AUD`."
+      },
+      "ACCESS_AUD": {
+        "description": "Optional. Cloudflare Access application AUD tag; set together with `ACCESS_TEAM_DOMAIN`."
+      },
+      "ADMIN_EMAILS": {
+        "description": "Optional. Comma-separated email allowlist for admin access."
+      }
+    }
   }
 }
