@@ -15,7 +15,7 @@ describe("the control namespace", () => {
   it("is a single prefixed namespace", () => {
     for (const name of CONTROL_PARAMS) expect(name.startsWith("corx-")).toBe(true);
     expect(new Set(CONTROL_PARAMS).size).toBe(CONTROL_PARAMS.length);
-    expect(CONTROL_PARAMS).toHaveLength(6);
+    expect(CONTROL_PARAMS).toHaveLength(8);
   });
 });
 
@@ -25,6 +25,8 @@ describe("readControl", () => {
     expect(readControl(url("&corx-no-cache=1"), "no-cache")).toBe("1");
     expect(readControl(url("&corx-key=corx_abc"), "key")).toBe("corx_abc");
     expect(readControl(url("&corx-callback=cb"), "callback")).toBe("cb");
+    expect(readControl(url("&corx-charset=utf-8"), "charset")).toBe("utf-8");
+    expect(readControl(url("&corx-wrap=json"), "wrap")).toBe("json");
     expect(readControl(url("&corx-scheme=http"), "scheme")).toBe("http");
     expect(readControl(url("&corx-port=8080"), "port")).toBe("8080");
   });
@@ -35,6 +37,8 @@ describe("readControl", () => {
       ["no-cache=1", "no-cache"],
       ["key=abc", "key"],
       ["callback=cb", "callback"],
+      ["charset=utf-8", "charset"],
+      ["wrap=json", "wrap"],
       ["scheme=http", "scheme"],
       ["port=8080", "port"],
     ];

@@ -55,6 +55,8 @@ export const DOCS_PARAMS: readonly DocsParam[] = [
   { name: "corx-no-cache", example: "corx-no-cache=1", desc: "docs.param.noCache" },
   { name: "corx-key", example: "corx-key=corx_…", desc: "docs.param.key" },
   { name: "corx-callback", example: "corx-callback=handleData", desc: "docs.param.callback" },
+  { name: "corx-charset", example: "corx-charset=utf-8", desc: "docs.param.charset" },
+  { name: "corx-wrap", example: "corx-wrap=json", desc: "docs.param.wrap" },
   { name: "corx-scheme", example: "corx-scheme=http", desc: "docs.param.scheme" },
   { name: "corx-port", example: "corx-port=8443", desc: "docs.param.port" },
 ];

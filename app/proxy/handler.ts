@@ -9,6 +9,13 @@ import { resolveRawTarget } from "./subdomain.js";
 import { assertPublicHost } from "./dns-check.js";
 import { JSONP_MAX_BYTES, isJsonContentType, jsonpCallback, jsonpHeaders, wrapJsonp } from "./jsonp.js";
 import {
+  applyTextTransforms,
+  isTextualContentType,
+  isTransforming,
+  readTextTransforms,
+  transformFingerprint,
+} from "./transform.js";
+import {
   applyHeaderRules,
   applyParamRules,
   assertHostAllowed,
@@ -202,6 +209,12 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       throw new ProxyError(400, "JSONP only supports GET and HEAD");
     }
 
+    // Body transforms (`corx-charset`, `corx-wrap`) are validated up front, so
+    // an unknown label is a 400 before any upstream request. Whether the
+    // *response* is text is only knowable after the fetch (below).
+    const transform = readTextTransforms(reqUrl);
+    const transforming = isTransforming(transform);
+
     // Per-key SSRF opt-outs (api_keys.ip_check / dns_check, both default on).
     // Read the row before the guards so a key can skip them.
     const row = c.get("apiKey");
@@ -284,8 +297,14 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     // header rules are excluded by shouldBypassCache (personalized requests).
     // Response rules do not bypass the cache — they change what the caller
     // receives, so they go into the cache key instead (two keys with different
-    // rules must never share an entry).
-    const responseFingerprint = responseRulesFingerprint(injection.responseHeaders, vars);
+    // rules must never share an entry). The body transforms go in for the same
+    // reason: the same URL yields different bytes and content-type.
+    const responseFingerprint = [
+      responseRulesFingerprint(injection.responseHeaders, vars),
+      transformFingerprint(transform),
+    ]
+      .filter(Boolean)
+      .join("\n");
     const bypass = shouldBypassCache(c.req.raw, reqUrl, row);
     let cacheKey: string | null = null;
     if (!bypass) {
@@ -458,6 +477,18 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       }
       if (!upstream) throw new ProxyError(502, "Upstream fetch failed");
 
+      // Transforms only apply to text, JSON and XML — check the upstream's
+      // content type before touching the body, so a binary response is a 400
+      // instead of a corrupted one.
+      if (transforming && !isTextualContentType(upstream.headers.get("content-type"))) {
+        throw new ProxyError(
+          400,
+          `corx-charset/corx-wrap need a text, JSON or XML response (got ${
+            upstream.headers.get("content-type") ?? "no content-type"
+          })`,
+        );
+      }
+
       // Response rules are scoped by the host that actually answered (the last
       // hop), not by the URL the caller asked for.
       const finalHost = currentUrl.hostname;
@@ -517,7 +548,9 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       // Non-cacheable responses (Range/206, non-GET, bypassed, no-store/private,
       // vary-dependent) stream untouched — no OOM, no wrong cache sharing.
       if (jsonpName) {
-        if (!isJsonContentType(upstream.headers.get("content-type"))) {
+        // `corx-wrap=json` turns any textual body into JSON, so it satisfies
+        // JSONP's requirement; otherwise the upstream itself must be JSON.
+        if (!transform.wrap && !isJsonContentType(upstream.headers.get("content-type"))) {
           throw new ProxyError(
             400,
             `JSONP needs a JSON response (got ${upstream.headers.get("content-type") ?? "no content-type"})`,
@@ -535,33 +568,47 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         if ("stream" in bounded) {
           throw new ProxyError(413, `JSONP response exceeds ${JSONP_MAX_BYTES} bytes — use fetch instead`);
         }
+        let bytes = bounded.bytes;
+        if (transforming) {
+          // Transform before parsing: the wrapped envelope is what the script
+          // receives, and JSON.parse then validates exactly those bytes.
+          bytes = applyTextTransforms(bytes, new Headers(upstream.headers), transform);
+        }
         try {
-          JSON.parse(new TextDecoder().decode(bounded.bytes));
+          JSON.parse(new TextDecoder().decode(bytes));
         } catch {
           throw new ProxyError(502, "Upstream returned invalid JSON");
         }
-        resBytes = bounded.bytes.byteLength;
+        resBytes = bytes.byteLength;
         finish(upstream.status);
         return withPending(
-          new Response(wrapJsonp(jsonpName, bounded.bytes), { status: upstream.status, headers: jsonpResHeaders }),
+          new Response(wrapJsonp(jsonpName, bytes), { status: upstream.status, headers: jsonpResHeaders }),
         );
       }
 
       const cacheable = c.req.method === "GET" && !bypass && upstream.status === 200 && responseCacheable(upstream);
       const contentLength = Number(upstream.headers.get("content-length") ?? NaN);
+      const tooLarge = Number.isFinite(contentLength) && contentLength > CACHE_MAX_BYTES;
 
-      // Known-huge bodies stream without ever buffering.
-      if (!cacheable || (Number.isFinite(contentLength) && contentLength > CACHE_MAX_BYTES)) {
+      // A transform needs the whole body, so it buffers a response that would
+      // otherwise stream (an uncacheable one included). Too large is a 413 —
+      // never a silently untransformed body.
+      if (transforming) {
+        if (tooLarge) throw new ProxyError(413, `Response too large to transform (>${CACHE_MAX_BYTES} bytes)`);
+      } else if (!cacheable || tooLarge) {
+        // Known-huge bodies stream without ever buffering.
         return streamIt(upstream.body);
       }
 
       // Bounded read: small/chunked bodies buffer for the R2 cache;
       // overflow re-emits everything as a stream (no OOM).
       const bounded = await readBounded(upstream.body, CACHE_MAX_BYTES);
-      if ("stream" in bounded) return streamIt(bounded.stream);
+      if ("stream" in bounded) {
+        if (transforming) throw new ProxyError(413, `Response too large to transform (>${CACHE_MAX_BYTES} bytes)`);
+        return streamIt(bounded.stream);
+      }
 
-      const resBody = bounded.bytes;
-      resBytes = resBody.byteLength;
+      let resBody = bounded.bytes;
       const resHeaders = new Headers();
       upstream.headers.forEach((value, key) => {
         if (!STRIP_RESPONSE.has(key.toLowerCase())) resHeaders.set(key, value);
@@ -569,6 +616,11 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       if (stoppedRedirect) resHeaders.set("location", stoppedRedirect);
       rewriteSubdomainLocation(resHeaders);
       applyResponseRules(resHeaders);
+      // Transform after the response rules, so an explicit charset/wrap request
+      // always wins over a key's header rules on content-type.
+      if (transforming) resBody = applyTextTransforms(resBody, resHeaders, transform);
+      // A HEAD response has no body, even though the transform above ran on one.
+      resBytes = c.req.method === "HEAD" ? 0 : resBody.byteLength;
       resHeaders.set("X-Corx-Cache", "MISS");
       resHeaders.set("X-Corx-Target", host);
       resHeaders.set("X-Corx-Latency-Ms", String(Date.now() - started));
@@ -584,7 +636,11 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       }
 
       finish(upstream.status);
-      return withPending(new Response(resBody, { status: upstream.status, headers: resHeaders }));
+      // HEAD reaches this path only when a transform was requested; it has no
+      // body, and the transform already corrected the headers above.
+      return withPending(
+        new Response(c.req.method === "HEAD" ? null : resBody, { status: upstream.status, headers: resHeaders }),
+      );
     } finally {
       clearTimeout(timer);
     }

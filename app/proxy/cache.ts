@@ -26,11 +26,13 @@ function pickCacheable(headers: Headers): Record<string, string> {
 }
 
 /**
- * Cache key for a GET. `fingerprint` is the resolved form of the key's response
- * header rules (see inject.ts → `responseRulesFingerprint`): two callers whose
- * rules produce different headers must not share an entry, or one key's
- * stripped `X-Frame-Options` would be served as another key's response. Empty
- * (no response rules) keeps the historical key shape.
+ * Cache key for a GET. `fingerprint` is the resolved form of everything that
+ * changes the response without changing the URL: the key's response header
+ * rules (see inject.ts → `responseRulesFingerprint`) and the body transforms
+ * (transform.ts → `transformFingerprint`). Two callers whose rules or
+ * transforms differ must not share an entry — one key's stripped
+ * `X-Frame-Options` or re-encoded body must never be served as another's.
+ * Empty (no rules, no transforms) keeps the historical key shape.
  */
 export async function cacheKeyForUrl(target: string, fingerprint = ""): Promise<string> {
   const material = fingerprint ? `GET:${target}\nresponse:${fingerprint}` : `GET:${target}`;
