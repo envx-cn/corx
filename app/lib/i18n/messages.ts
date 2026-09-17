@@ -104,7 +104,7 @@ const en = {
       hosting:
         "MIT, one Cloudflare Worker with D1 and R2, deployed to your own account; the free plan covers small deployments.",
       caching:
-        "R2 GET cache, adjusted per request with `corx-ttl` / `corx-no-cache`, capped per key, and never shared by keys that inject headers.",
+        "R2 GET cache, adjusted per request with `corx-ttl` / `corx-no-cache` and capped per key; keys that inject request headers never share it, and a key's resolved response header rules are part of the cache key.",
       logging:
         "Every request lands in your D1 — target, host, status, latency, caller origin, key, IP, country. The raw window is yours to set (30 days by default, `LOG_RETENTION_DAYS`) and logging can be switched off entirely (`LOG_REQUESTS=false`); the daily aggregate keeps the trend.",
       limits:
@@ -112,7 +112,7 @@ const en = {
       price: "Free and MIT-licensed. You pay Cloudflare for what the Worker serves; there is no subscription and no seat count.",
       setup:
         "Deploy a Worker to your own account (about ten minutes), or copy a hosted instance's public key and send GET/HEAD inside its daily quota.",
-      extras: "Proxying only: fetch, cache, inject, log, text re-encoding (`corx-charset`) and a JSON envelope (`corx-wrap`), plus a public CORS tester. No image transforms, scraping or file conversion.",
+      extras: "Proxying only: fetch, cache, inject, log, response header rules (strip `X-Frame-Options` / CSP for hosts you control), text re-encoding (`corx-charset`) and a JSON envelope (`corx-wrap`), plus a public CORS tester. No image transforms, scraping or file conversion.",
       availability:
         "Self-hosted: as available as your own Cloudflare account. The public instance is best-effort, with no SLA and no support commitment.",
     },
@@ -1201,13 +1201,13 @@ const zh: Messages = {
         "上游 header / query 规则存放在 D1（设置 `INJECTION_KEK` 后为 AES-256-GCM 密文），在服务端按白名单主机注入。浏览器始终拿不到密钥值。",
       hosting: "MIT 许可，单个 Cloudflare Worker 配 D1 与 R2，部署到你自己的账号；小规模使用免费套餐即可。",
       caching:
-        "R2 GET 缓存，可用 `corx-ttl` / `corx-no-cache` 按请求调整，按 key 封顶；带 header 注入规则的 key 不与他人共享缓存。",
+        "R2 GET 缓存，可用 `corx-ttl` / `corx-no-cache` 按请求调整、按 key 封顶；注入请求头的 key 不与他人共享缓存，解析后的响应头规则也是缓存键的一部分。",
       logging:
         "每个请求都写入你自己的 D1：目标、主机、状态码、延迟、调用方 Origin、key、IP、国家。保留窗口由你决定（默认 30 天，`LOG_RETENTION_DAYS`），也可以完全关闭（`LOG_REQUESTS=false`）；按天聚合保留趋势。",
       limits: "按 key 的频率限制与每日配额由你自己设定，或使用公共档位的共享配额；自托管时上限就是你 Cloudflare 套餐的上限。",
       price: "免费、MIT 许可。只为 Worker 的实际用量向 Cloudflare 付费，没有订阅，也不按席位计费。",
       setup: "把 Worker 部署到自己的账号（约十分钟）；或复制托管实例的公共 key，在每日配额内发 GET/HEAD。",
-      extras: "只做代理：转发、缓存、注入、日志，外加文本重编码（`corx-charset`）、JSON 包装（`corx-wrap`）与公开的 CORS 测试器。不做图片处理、网页抓取/提取或文件转换。",
+      extras: "只做代理：转发、缓存、注入、日志、响应头规则（为你控制的主机去掉 `X-Frame-Options` / CSP），外加文本重编码（`corx-charset`）、JSON 包装（`corx-wrap`）与公开的 CORS 测试器。不做图片处理、网页抓取/提取或文件转换。",
       availability: "自托管：可用性取决于你自己的 Cloudflare 账号。公共实例是尽力而为，没有 SLA，也没有支持承诺。",
     },
     "corsproxy-io": {
