@@ -275,6 +275,8 @@ const en = {
         "Every shape below resolves to the same request through the same pipeline — auth, SSRF guards, upstream injection, cache, logging. CORS preflight (`OPTIONS`) is answered before the proxy runs, so browser `fetch` just works.",
       note:
         "GET and HEAD responses are cached and counted; every other method passes straight through, uncached. A caller-supplied target keeps its own query string: the target's own `key`, `ttl` or `callback` parameters are forwarded untouched, and CORX only consumes names it owns.",
+      snippets:
+        "Copy-paste examples for fetch, axios and ky — and for Cloudflare Pages, Vercel and Netlify — live on the snippets page.",
       query: {
         title: "Query parameter (recommended)",
         desc:
@@ -388,6 +390,88 @@ const en = {
       contributing: "Contributing guide",
     },
   },
+  // The /snippets page: copy-paste code for the frameworks and platforms users
+  // actually arrive from. Snippet code lives in app/lib/snippets.ts; only prose
+  // lives here, and both locales must carry the same keys.
+  snippets: {
+    title: "Framework and platform snippets",
+    back: "Back to home",
+    updated: "Last updated {date}",
+    lead:
+      "The same endpoint from the code you actually write: `fetch`, axios and ky, the browser-safe patterns (keyless grant, server route), and what to do on Cloudflare Pages, Vercel and Netlify. Every example runs against {origin} — point the base URL at your own deployment and the rest still holds.",
+    toc: {
+      aria: "On this page",
+      libraries: "Client libraries",
+      browser: "Browser code",
+      server: "Server route",
+      risk: "Key safety",
+      platforms: "Deploy platforms",
+      public: "Public tier",
+    },
+    group: {
+      libraries: {
+        title: "Client libraries",
+        lead:
+          "The proxy is one URL prefix, so any HTTP client works; these are the three most people reach for. All three examples run server-side, where the key belongs — in a browser, use the keyless pattern below instead.",
+      },
+      browser: {
+        title: "Browser code — with no credential",
+        lead:
+          "A key in a browser bundle is a published key. These two patterns are the safe ones: an origin grant on the server's key, and the environment-variable rule that keeps the key out of the build.",
+      },
+      server: {
+        title: "A server route that holds the key",
+        lead:
+          "When the browser needs private data it asks your own backend, and your backend asks CORX. This is the BFF pattern, and it is the same code on every platform below.",
+      },
+    },
+    block: {
+      fetch: {
+        title: "fetch (Node, Bun, Deno)",
+        desc: "One request, one header. On the server the key is an environment variable, not a build-time constant.",
+      },
+      axios: { title: "axios", desc: "The target goes in `params`, so axios URL-encodes it for you." },
+      ky: { title: "ky", desc: "Small, fetch-based and promise-first; `.json()` parses the response." },
+      keyless: {
+        title: "Keyless origin grant",
+        desc:
+          "Grant the page's origin on a key in the console and the browser calls the proxy with no credential at all. Metering follows the visitor IP, so one embedded site cannot drain the key.",
+      },
+      viteEnv: {
+        title: "Vite / React environment variables",
+        desc:
+          "Only `VITE_*` values are public — which is exactly what decides what may live in one. Next.js's `NEXT_PUBLIC_*` and SvelteKit's `PUBLIC_*` are the same rule under different names.",
+      },
+      serverRoute: {
+        title: "Next.js route handler (adapts to any server)",
+        desc:
+          "Put the key in `CORX_KEY` on the server only. The response streams through, so a large file is never buffered twice.",
+      },
+    },
+    risk: {
+      title: "Where the key must not go",
+      body:
+        "In a browser bundle, a `VITE_*` / `NEXT_PUBLIC_*` variable, a public repository, a page source, a mobile app binary — anywhere a visitor can read it. A leaked key spends your quota and reaches every host and origin it allows, under your identity. Browser code gets a keyless grant or talks to your own server; nothing else.",
+      docs: "Authentication, in detail",
+    },
+    platforms: {
+      title: "Deploy platforms",
+      lead: "CORX is a plain HTTPS endpoint, so every platform reaches it the same way. What differs is only where the secret lives.",
+      pages:
+        "Cloudflare Pages — a Pages Function (`functions/api/corx.ts`) reads the key from `context.env.CORX_KEY`; `npx wrangler pages secret put CORX_KEY` stores it. Pages and a self-hosted CORX are the same account, and the browser can call the Worker directly when a keyless grant covers the site.",
+      vercel:
+        "Vercel — a Serverless or Edge Function (or the Next.js route above) reads `process.env.CORX_KEY` from Project → Environment Variables. Never put it in `NEXT_PUBLIC_*`: those values are inlined into the browser bundle.",
+      netlify:
+        "Netlify — a Function reads the key from Site configuration → Environment variables. No adapter, no plugin: it is one `fetch` to a URL.",
+    },
+    public: {
+      title: "When the public tier is enough",
+      body:
+        "The shared key a hosted instance publishes on its landing page is meant for this: public data, demos, prototypes. It is GET and HEAD only, with daily quotas, no TTL control, no injection and a shared cache — and because it is public by design, inlining it in a page is fine. Anything private, credentialed or quota-sensitive belongs on your own deployment with your own key.",
+      landing: "Get the public key",
+      selfhost: "How to self-host",
+    },
+  },
   landing: {
     title: "CORX — CORS proxy on Cloudflare",
     meta: {
@@ -425,6 +509,7 @@ const en = {
       title: "Try it live",
       sub: "Examples rotate every 10s and load straight through the proxy. Type any URL to take over.",
       hint: "Same as GET {origin}/fetch?url=…. Every request goes through the edge proxy — watch the status, latency, size and cache HIT/MISS badges update as examples rotate.",
+      snippets: "Using React, Vue, axios or ky? Copy-paste snippets",
     },
     highlights: {
       title: "Built for real apps, not toy demos",
@@ -1148,6 +1233,7 @@ const zh: Messages = {
         "下面四种写法最终都会走同一条链路：鉴权、SSRF 防护、上游注入、缓存、日志。CORS 预检（`OPTIONS`）在进入代理前就已应答，浏览器的 `fetch` 可以直接用。",
       note:
         "GET 和 HEAD 响应会被缓存并计入配额，其他方法一律直接透传、不缓存。调用方自带的目标会完整保留自己的查询串：目标自己的 `key`、`ttl`、`callback` 参数原样转发，CORX 只消费属于自己的名字。",
+      snippets: "fetch、axios、ky 以及 Cloudflare Pages、Vercel、Netlify 的可复制示例，都在代码示例页。",
       query: {
         title: "查询参数（推荐）",
         desc: "本文档统一使用的写法：目标 URL 经过百分号编码后放进 `?url=`。`/fetch` 和任何其他代理路由都支持。",
@@ -1256,6 +1342,76 @@ const zh: Messages = {
       contributing: "贡献指南",
     },
   },
+  // /snippets 页面：给真正在写代码的人用的可复制片段。片段代码在
+  // app/lib/snippets.ts；这里只有文案，两个语言必须保持相同的键。
+  snippets: {
+    title: "框架与平台代码示例",
+    back: "返回首页",
+    updated: "最后更新 {date}",
+    lead:
+      "把同一个端点写进你真正在写的代码：`fetch`、axios、ky，浏览器安全模式（免密钥授权、服务端路由），以及 Cloudflare Pages、Vercel、Netlify 各自怎么接。本页所有示例都以 {origin} 为基址——换成你自己的部署地址，规则不变。",
+    toc: {
+      aria: "本页目录",
+      libraries: "客户端库",
+      browser: "浏览器代码",
+      server: "服务端路由",
+      risk: "密钥安全",
+      platforms: "部署平台",
+      public: "公共档位",
+    },
+    group: {
+      libraries: {
+        title: "客户端库",
+        lead: "代理就是一个 URL 前缀，任何 HTTP 客户端都能用；下面是最常用的三个。三个示例都跑在服务端——那才是 key 该在的地方；浏览器里请改用下面的免密钥写法。",
+      },
+      browser: {
+        title: "浏览器代码——不携带任何凭证",
+        lead: "打进浏览器包的 key 等于已经公开。下面两种模式才是安全的：用服务端 key 做来源授权，以及把 key 挡在构建产物之外的环境变量规则。",
+      },
+      server: {
+        title: "在服务端持有 key 的路由",
+        lead: "浏览器需要私有数据时，先问自己的后端，后端再去问 CORX。这就是 BFF 模式，对下面所有平台都是同一段代码。",
+      },
+    },
+    block: {
+      fetch: {
+        title: "fetch（Node、Bun、Deno）",
+        desc: "一次请求、一个请求头。在服务端，key 是环境变量，而不是构建期常量。",
+      },
+      axios: { title: "axios", desc: "目标放进 `params`，axios 会替你完成 URL 编码。" },
+      ky: { title: "ky", desc: "基于 fetch 的轻量 Promise 客户端；`.json()` 直接解析响应。" },
+      keyless: {
+        title: "免密钥来源授权",
+        desc: "在控制台把页面的来源授权给某个 key，浏览器调用代理时完全不用携带凭证。计量按访客 IP 计，因此单个嵌入站点不会耗尽 key。",
+      },
+      viteEnv: {
+        title: "Vite / React 环境变量",
+        desc: "只有 `VITE_*` 是公开的——这恰好决定了什么能放进去。Next.js 的 `NEXT_PUBLIC_*`、SvelteKit 的 `PUBLIC_*` 只是换了名字的同一条规则。",
+      },
+      serverRoute: {
+        title: "Next.js route handler（任何服务端都能改）",
+        desc: "把 key 只放进服务端的 `CORX_KEY`。响应是流式透传的，大文件不会被缓冲两次。",
+      },
+    },
+    risk: {
+      title: "key 绝不能放在哪",
+      body: "浏览器包、`VITE_*` / `NEXT_PUBLIC_*` 变量、公开仓库、页面源码、移动 App 二进制——任何访客能读到的地方。泄露的 key 会以你的身份消耗配额，并触达它允许的每一个主机和来源。浏览器代码只有两条路：免密钥授权，或走你自己的服务端。",
+      docs: "鉴权细节",
+    },
+    platforms: {
+      title: "部署平台",
+      lead: "CORX 只是一个普通 HTTPS 端点，所有平台的调用方式完全一样；区别只有密钥放在哪。",
+      pages: "Cloudflare Pages——Pages Function（`functions/api/corx.ts`）从 `context.env.CORX_KEY` 读取 key，用 `npx wrangler pages secret put CORX_KEY` 写入。Pages 和自托管 CORX 在同一个账号里；如果 key 的来源授权覆盖了站点，浏览器也可以直接调用 Worker。",
+      vercel: "Vercel——Serverless/Edge Function（或上面的 Next.js 路由）从 Project → Environment Variables 读取 `process.env.CORX_KEY`。绝不要放进 `NEXT_PUBLIC_*`：那些值会被内联进浏览器包。",
+      netlify: "Netlify——Function 从 Site configuration → Environment variables 读取 key。不需要适配器或插件：就是对 URL 的一次 `fetch`。",
+    },
+    public: {
+      title: "什么时候公共档位就够了",
+      body: "托管实例在落地页公开的共享 key 就是为这类场景准备的：公开数据、演示、原型。它仅支持 GET/HEAD，有每日配额，不能控制 TTL、不能注入，且使用共享缓存——因为它在设计上就是公开的，内联到页面里没有问题。任何私有、带凭证或对配额敏感的需求，都请用自己的部署和自己的 key。",
+      landing: "获取公共 key",
+      selfhost: "如何自托管",
+    },
+  },
   landing: {
     title: "CORX — Cloudflare 上的 CORS 代理",
     meta: {
@@ -1293,6 +1449,7 @@ const zh: Messages = {
       title: "在线体验",
       sub: "示例每 10 秒轮换，直接通过代理加载。输入任意 URL 即可接管。",
       hint: "等价于 GET {origin}/fetch?url=…。每个请求都经过边缘代理——观察状态码、延迟、体积和缓存 HIT/MISS 徽标随示例实时更新。",
+      snippets: "在用 React、Vue、axios 或 ky？这里有可复制的代码示例",
     },
     highlights: {
       title: "为真实应用而建，而非玩具演示",

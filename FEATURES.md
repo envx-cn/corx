@@ -304,6 +304,17 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
   that every fact exists in both dictionaries. Linked from the landing nav
   (not the hero), the sitemap (own hreflang cluster) and both llms files, with
   a dated `TechArticle` node in the JSON-LD graph.
+- **Snippets** (`/snippets`, with `/en/` and `/zh/` URLs): the code-shaped
+  half of the docs — `fetch`, axios and ky examples built from the request's
+  own origin, a keyless browser example, the Vite/Next.js env-var rule
+  (wrong/right in one block), a server route that holds the key, and platform
+  notes for Cloudflare Pages, Vercel and Netlify. Ends with when the public
+  tier is enough and what it cannot do. Snippet code lives in
+  `app/lib/snippets.ts`; `test/snippets.test.ts` asserts every block is built
+  from this deployment's origin, any block with `X-Api-Key` says it is
+  server-side, and the public-key CTA only renders when the instance has one.
+  Linked from the landing try-it section and `/docs`, in the sitemap with its
+  own hreflang cluster.
 - **Injection demo**: the try-it demo's footer grows a "See a key get
   injected" button that runs one real request through a public demo key to
   `/demo/echo` — an echo endpoint on this Worker (`app/routes/demo/echo.ts`)
@@ -376,9 +387,9 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
   `corx` (public) and `corx-dash` (console) built around the brand palette.
 
 Files: `app/routes/index.ts`, `_landing.tsx`, `_docs.tsx`, `docs.ts`,
-`_not-found.tsx`, `_error-page.tsx`, `app/components/site.tsx`,
-`status-page.tsx`, `app/lib/docs.ts`, `app/lib/i18n/**`, `app/styles/app.css`,
-`app/assets/**`.
+`_snippets.tsx`, `snippets.ts`, `_not-found.tsx`, `_error-page.tsx`,
+`app/components/site.tsx`, `prose.tsx`, `status-page.tsx`, `app/lib/docs.ts`,
+`app/lib/snippets.ts`, `app/lib/i18n/**`, `app/styles/app.css`, `app/assets/**`.
 
 ## 10. Console authentication
 

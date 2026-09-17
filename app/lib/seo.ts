@@ -78,6 +78,15 @@ export function docsAlternates(origin: string): Array<{ hreflang: string; href: 
   ];
 }
 
+/** The hreflang cluster for /snippets: the same three-URL shape as /docs. */
+export function snippetsAlternates(origin: string): Array<{ hreflang: string; href: string }> {
+  return [
+    { hreflang: "en", href: absUrl(origin, "/en/snippets") },
+    { hreflang: "zh", href: absUrl(origin, "/zh/snippets") },
+    { hreflang: "x-default", href: absUrl(origin, "/snippets") },
+  ];
+}
+
 /**
  * Serialise a JSON-LD document for a <script type="application/ld+json"> tag.
  * `<` is escaped so a `</script>` inside any string can't close the tag early
@@ -260,6 +269,35 @@ export function docsJsonLd(opts: {
   ];
 }
 
+/**
+ * The /snippets page's structured data: a dated TechArticle like /docs, but
+ * `about` the endpoint's practical use — frameworks and deploy platforms.
+ */
+export function snippetsJsonLd(opts: {
+  origin: string;
+  locale: Locale;
+  /** Canonical path of this document ("/snippets", "/en/snippets", "/zh/snippets"). */
+  path: string;
+  title: string;
+  description: string;
+}): unknown[] {
+  const url = absUrl(opts.origin, opts.path);
+  return [
+    {
+      "@type": "TechArticle",
+      "@id": `${url}#article`,
+      url,
+      headline: opts.title,
+      description: opts.description,
+      inLanguage: opts.locale,
+      dateModified: CONTENT_UPDATED,
+      isPartOf: { "@id": `${absUrl(opts.origin, "/")}#website` },
+      publisher: { "@id": `${absUrl(opts.origin, "/")}#organization` },
+      about: { "@id": `${absUrl(opts.origin, "/")}#software` },
+    },
+  ];
+}
+
 // --- Crawler files ---------------------------------------------------------
 
 /**
@@ -300,8 +338,9 @@ function robotsGroup(agent: string): string {
 export function robotsTxt(origin: string): string {
   return [
     `# CORX — ${origin}`,
-    "# Public pages (/, /en, /zh, /docs, /en/docs, /zh/docs, /terms, /compare/*,",
-    "# /llms.txt) are open to every crawler.",
+    "# Public pages (/, /en, /zh, /docs, /en/docs, /zh/docs, /snippets,",
+    "# /en/snippets, /zh/snippets, /terms, /compare/*, /llms.txt) are open to",
+    "# every crawler.",
     "# The proxy is a machine surface, not content: keep it, the console and the",
     "# admin API out of the index and out of the crawl budget.",
     "",
@@ -339,6 +378,12 @@ function sitemapPages(origin: string): SitemapPage[] {
     priority: "0.8",
     alternates: docsAlternates(origin),
   });
+  const snippets = (path: string): SitemapPage => ({
+    path,
+    changefreq: "monthly",
+    priority: "0.7",
+    alternates: snippetsAlternates(origin),
+  });
   return [
     landing("/", "1.0"),
     landing("/en", "0.9"),
@@ -348,6 +393,10 @@ function sitemapPages(origin: string): SitemapPage[] {
     docs("/docs"),
     docs("/en/docs"),
     docs("/zh/docs"),
+    // The long-tail entry point for "corx + framework": real code per language.
+    snippets("/snippets"),
+    snippets("/en/snippets"),
+    snippets("/zh/snippets"),
     // Long-tail entry points: not featured anywhere, but real documents with a
     // real cluster — a "vs" search should land on the sourced version.
     ...COMPARISONS.flatMap((c) =>
@@ -427,6 +476,9 @@ every URL below is absolute and current for that instance.
 - [Usage guide](${absUrl(origin, "/docs")}): the human-readable manual for this instance — the
   four call shapes, the \`corx-*\` parameter table, the three auth tiers, caching, limits and the
   security summary. Also at /en/docs and /zh/docs.
+- [Framework and platform snippets](${absUrl(origin, "/snippets")}): copy-paste \`fetch\`/axios/ky
+  examples, the key-hygiene rules for browser code, and how to call this instance from Cloudflare
+  Pages, Vercel and Netlify. Also at /en/snippets and /zh/snippets.
 - [Landing page](${absUrl(origin, "/")}): the pitch, a live demo that proxies real URLs from the
   browser, the shared public key and its daily quotas, the feature list and the FAQ.
 - [Terms of use](${absUrl(origin, "/terms")}): quotas, prohibited uses, logging and liability for
@@ -614,6 +666,9 @@ machine surface: JSON, \`no-store\`, \`noindex\`, excluded from robots.txt.
 - ${absUrl(origin, "/docs")} — the human-readable usage guide (also ${absUrl(origin, "/en/docs")}
   and ${absUrl(origin, "/zh/docs")}): call shapes, the \`corx-*\` table, auth tiers, caching,
   limits, security and self-hosting.
+- ${absUrl(origin, "/snippets")} — framework and platform snippets (also
+  ${absUrl(origin, "/en/snippets")} and ${absUrl(origin, "/zh/snippets")}): fetch, axios and ky
+  examples, browser key hygiene, and Cloudflare Pages / Vercel / Netlify notes.
 - ${absUrl(origin, "/terms")} — terms of use, quotas and prohibited uses.
 - ${COMPARISONS.map((c) => `${absUrl(origin, `/compare/${c.slug}`)} (vs ${c.name})`).join(", ")} —
   dated comparisons against other hosted CORS proxies, every competitor claim linked to its source.
