@@ -507,7 +507,8 @@ through uncached.
 - \`GET ${absUrl(origin, "/proxy/")}<target>\` and \`GET ${absUrl(origin, "/")}<target>\` — path style.
 - Subdomain mode, when the deployment has a wildcard zone: \`api-example-com.<zone>/path\`.
 - Options are namespaced \`corx-*\` (\`corx-ttl\`, \`corx-no-cache\`, \`corx-callback\`, \`corx-key\`,
-  \`corx-scheme\`, \`corx-port\`); unknown names are rejected with 400, never forwarded upstream.
+  \`corx-charset\`, \`corx-wrap\`, \`corx-scheme\`, \`corx-port\`); unknown names are rejected with 400, never
+  forwarded upstream.
 
 ## Facts
 
@@ -577,6 +578,8 @@ Every \`corx-*\` parameter is namespaced, so it can never collide with the targe
 | \`corx-ttl=<seconds>\` | R2 cache TTL for this GET, capped by the deployment max |
 | \`corx-no-cache=1\` | Bypass the cache for this response |
 | \`corx-callback=<fn>\` | JSONP: wrap a JSON body as \`fn(<json>);\` for a <script> tag |
+| \`corx-charset=<label>\` | Re-decode a text/JSON/XML body with this label and re-emit it as UTF-8 |
+| \`corx-wrap=json\` | Wrap a text body as \`{"contents":"…"}\` with application/json |
 | \`corx-key=<key>\` | API key for this request (headers work too) |
 | \`corx-scheme=http\\|https\` | Subdomain mode: force the target scheme |
 | \`corx-port=<n>\` | Subdomain mode: target port |

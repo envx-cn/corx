@@ -94,6 +94,8 @@ Options:
 | `?corx-ttl=300` | R2 cache TTL in seconds for this GET (capped at the global `CACHE_TTL_SECONDS` so anonymous callers can't pin entries for 24h) |
 | `?corx-no-cache=1` | Bypass R2 cache |
 | `?corx-callback=cb` | JSONP: wrap the JSON body as `cb(<json>);` for a `<script>` tag (see below) |
+| `?corx-charset=utf-8` | Re-decode a text/JSON/XML response with this label and re-emit it as UTF-8 — the fix for a mislabelled upstream charset (unknown labels are a 400) |
+| `?corx-wrap=json` | Wrap the text body as `{"contents":"…"}` with `application/json`, so `r.json()` works for HTML too (binary responses are a 400) |
 
 Pass an API key with `X-Api-Key`, `Authorization: Bearer …`, or `?corx-key=…`
 (required when `REQUIRE_API_KEY=true`).
@@ -105,12 +107,12 @@ you are reading. This README remains the source of truth for deploying your
 own copy.
 
 **Control params** — `corx-ttl`, `corx-no-cache`, `corx-key`, `corx-callback`,
-`corx-scheme`, `corx-port` — are consumed by the proxy and never reach the
-target. `corx-*` is CORX's namespace, so an unknown name (a typo like
-`corx-tt1`) is a 400 rather than a param quietly forwarded upstream. Everything
-else belongs to the target: a target's own `?key=`, `?ttl=` or `?callback=` is
-passed through untouched, and JSONP only happens when `corx-callback` is
-present.
+`corx-charset`, `corx-wrap`, `corx-scheme`, `corx-port` — are consumed by the
+proxy and never reach the target. `corx-*` is CORX's namespace, so an unknown
+name (a typo like `corx-tt1`) is a 400 rather than a param quietly forwarded
+upstream. Everything else belongs to the target: a target's own `?key=`,
+`?ttl=` or `?callback=` is passed through untouched, and JSONP only happens
+when `corx-callback` is present.
 
 Subdomain mode is the one place where the two queries are the same one (the
 proxy request's query *is* the target's query), so the `corx-*` names are

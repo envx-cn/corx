@@ -14,7 +14,7 @@
 import { ProxyError } from "./types.js";
 
 /** Logical control names; the wire name is always `corx-<name>`. */
-export type ControlName = "ttl" | "no-cache" | "key" | "callback" | "scheme" | "port";
+export type ControlName = "ttl" | "no-cache" | "key" | "callback" | "charset" | "wrap" | "scheme" | "port";
 
 /** Every control param, in documentation order. */
 export const CONTROL_PARAMS: readonly string[] = [
@@ -22,6 +22,8 @@ export const CONTROL_PARAMS: readonly string[] = [
   "corx-no-cache",
   "corx-key",
   "corx-callback",
+  "corx-charset",
+  "corx-wrap",
   "corx-scheme",
   "corx-port",
 ];
@@ -32,6 +34,8 @@ const WIRE: Record<ControlName, string> = {
   "no-cache": "corx-no-cache",
   key: "corx-key",
   callback: "corx-callback",
+  charset: "corx-charset",
+  wrap: "corx-wrap",
   scheme: "corx-scheme",
   port: "corx-port",
 };

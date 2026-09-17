@@ -314,6 +314,10 @@ const en = {
       key: "The API key for this request. Equivalent to `X-Api-Key` or `Authorization: Bearer`. Public-tier keys cannot control the cache.",
       callback:
         "JSONP: wrap an `application/json` body as `fn(<json>);` (max 2 MiB) for a `<script>` tag when CSP blocks `fetch`. JSONP never caches.",
+      charset:
+        "Re-decode a text, JSON or XML response with this label and re-emit it as UTF-8 — the fix when an upstream mislabels its charset. An unknown label is a 400.",
+      wrap:
+        "Wrap a text body as `{\"contents\":\"…\"}` with `application/json`, so `r.json()` works for HTML too. Binary responses are refused with a 400; the wrapper is part of the cache key.",
       scheme: "Subdomain mode: the target scheme. Defaults to `https`; `http` is the only other accepted value.",
       port: "Subdomain mode: the target port (1–65535), appended unless it is the scheme's default (80 for http, 443 for https).",
     },
@@ -1267,6 +1271,10 @@ const zh: Messages = {
       key: "本次请求使用的 API key，等价于 `X-Api-Key` 或 `Authorization: Bearer`。公共档位不能控制缓存。",
       callback:
         "JSONP：当 CSP 拦住 `fetch` 时，把 `application/json` 响应包成 `fn(<json>);`（上限 2 MiB）供 `<script>` 使用。JSONP 永不缓存。",
+      charset:
+        "用指定编码重新解码文本、JSON 或 XML 响应，并以 UTF-8 重新输出——上游把编码标错时的救命参数。未知编码名返回 400。",
+      wrap:
+        "把文本响应包成 `{\"contents\":\"…\"}`（`application/json`），让 HTML 也能用 `r.json()`。二进制响应会直接 400；包装方式属于缓存键的一部分。",
       scheme: "子域名模式：目标协议。默认 `https`，另一个可选值是 `http`。",
       port: "子域名模式：目标端口（1–65535），若不是该协议的默认端口（http 为 80、https 为 443）则拼接在主机名之后。",
     },
