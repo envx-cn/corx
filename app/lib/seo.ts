@@ -87,6 +87,15 @@ export function snippetsAlternates(origin: string): Array<{ hreflang: string; hr
   ];
 }
 
+/** The hreflang cluster for the CORS tester: the same three-URL shape. */
+export function corsTesterAlternates(origin: string): Array<{ hreflang: string; href: string }> {
+  return [
+    { hreflang: "en", href: absUrl(origin, "/en/tools/cors-tester") },
+    { hreflang: "zh", href: absUrl(origin, "/zh/tools/cors-tester") },
+    { hreflang: "x-default", href: absUrl(origin, "/tools/cors-tester") },
+  ];
+}
+
 /**
  * Serialise a JSON-LD document for a <script type="application/ld+json"> tag.
  * `<` is escaped so a `</script>` inside any string can't close the tag early
@@ -298,6 +307,41 @@ export function snippetsJsonLd(opts: {
   ];
 }
 
+/**
+ * The CORS tester's structured data: a free WebApplication, not another
+ * article — the page's value is the tool, and the tool is what a search result
+ * should describe.
+ */
+export function corsTesterJsonLd(opts: {
+  origin: string;
+  locale: Locale;
+  /** Canonical path of this document. */
+  path: string;
+  title: string;
+  description: string;
+}): unknown[] {
+  const url = absUrl(opts.origin, opts.path);
+  return [
+    {
+      "@type": "WebApplication",
+      "@id": `${url}#tool`,
+      url,
+      name: opts.title,
+      description: opts.description,
+      inLanguage: opts.locale,
+      applicationCategory: "DeveloperApplication",
+      operatingSystem: "Any",
+      browserRequirements: "Requires JavaScript",
+      isAccessibleForFree: true,
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      dateModified: CONTENT_UPDATED,
+      isPartOf: { "@id": `${absUrl(opts.origin, "/")}#website` },
+      publisher: { "@id": `${absUrl(opts.origin, "/")}#organization` },
+      about: { "@id": `${absUrl(opts.origin, "/")}#software` },
+    },
+  ];
+}
+
 // --- Crawler files ---------------------------------------------------------
 
 /**
@@ -338,9 +382,8 @@ function robotsGroup(agent: string): string {
 export function robotsTxt(origin: string): string {
   return [
     `# CORX — ${origin}`,
-    "# Public pages (/, /en, /zh, /docs, /en/docs, /zh/docs, /snippets,",
-    "# /en/snippets, /zh/snippets, /terms, /compare/*, /llms.txt) are open to",
-    "# every crawler.",
+    "# Public pages (/, /en, /zh, /docs, /snippets, /tools/cors-tester,",
+    "# /terms, /compare/*, and the llms files) are open to every crawler.",
     "# The proxy is a machine surface, not content: keep it, the console and the",
     "# admin API out of the index and out of the crawl budget.",
     "",
@@ -384,6 +427,12 @@ function sitemapPages(origin: string): SitemapPage[] {
     priority: "0.7",
     alternates: snippetsAlternates(origin),
   });
+  const tester = (path: string): SitemapPage => ({
+    path,
+    changefreq: "monthly",
+    priority: "0.7",
+    alternates: corsTesterAlternates(origin),
+  });
   return [
     landing("/", "1.0"),
     landing("/en", "0.9"),
@@ -397,6 +446,10 @@ function sitemapPages(origin: string): SitemapPage[] {
     snippets("/snippets"),
     snippets("/en/snippets"),
     snippets("/zh/snippets"),
+    // The tool page: the "cors tester" / "cors check" query both competitors mine.
+    tester("/tools/cors-tester"),
+    tester("/en/tools/cors-tester"),
+    tester("/zh/tools/cors-tester"),
     // Long-tail entry points: not featured anywhere, but real documents with a
     // real cluster — a "vs" search should land on the sourced version.
     ...COMPARISONS.flatMap((c) =>
@@ -479,6 +532,9 @@ every URL below is absolute and current for that instance.
 - [Framework and platform snippets](${absUrl(origin, "/snippets")}): copy-paste \`fetch\`/axios/ky
   examples, the key-hygiene rules for browser code, and how to call this instance from Cloudflare
   Pages, Vercel and Netlify. Also at /en/snippets and /zh/snippets.
+- [CORS tester](${absUrl(origin, "/tools/cors-tester")}): paste a URL and see why a cross-origin
+  request fails (the verdict is inferred from browser probes), then run it through this instance
+  and copy the call that works. Also at /en/tools/cors-tester and /zh/tools/cors-tester.
 - [Landing page](${absUrl(origin, "/")}): the pitch, a live demo that proxies real URLs from the
   browser, the shared public key and its daily quotas, the feature list and the FAQ.
 - [Terms of use](${absUrl(origin, "/terms")}): quotas, prohibited uses, logging and liability for
@@ -672,6 +728,9 @@ machine surface: JSON, \`no-store\`, \`noindex\`, excluded from robots.txt.
 - ${absUrl(origin, "/snippets")} — framework and platform snippets (also
   ${absUrl(origin, "/en/snippets")} and ${absUrl(origin, "/zh/snippets")}): fetch, axios and ky
   examples, browser key hygiene, and Cloudflare Pages / Vercel / Netlify notes.
+- ${absUrl(origin, "/tools/cors-tester")} — the public CORS tester (also
+  ${absUrl(origin, "/en/tools/cors-tester")} and ${absUrl(origin, "/zh/tools/cors-tester")}):
+  browser-side probes, a diagnosis of what is missing, and the proxied call to paste.
 - ${absUrl(origin, "/terms")} — terms of use, quotas and prohibited uses.
 - ${COMPARISONS.map((c) => `${absUrl(origin, `/compare/${c.slug}`)} (vs ${c.name})`).join(", ")} —
   dated comparisons against other hosted CORS proxies, every competitor claim linked to its source.

@@ -316,6 +316,16 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
   server-side, and the public-key CTA only renders when the instance has one.
   Linked from the landing try-it section and `/docs`, in the sitemap with its
   own hreflang cluster.
+- **CORS tester** (`/tools/cors-tester`, with `/en/` and `/zh/` URLs): the
+  account-free diagnosis tool both competitors mine for traffic. Browser probes
+  (plain `fetch`, credentials, forced preflight, opaque `no-cors`) feed a pure
+  mapping (`app/lib/cors-check.ts`) that names what is missing — no
+  `Access-Control-Allow-Origin`, credential/wildcard mismatch, failed
+  preflight, mixed content, unreachable host — then the URL is fetched through
+  this instance and rendered with the shared preview, with copyable calls
+  (public key inlined when configured). The page is honest that a browser does
+  not reveal *why* a fetch was blocked. Linked from `/docs` and every compare
+  page, in the sitemap with its own hreflang cluster, `WebApplication` JSON-LD.
 - **Injection demo**: the try-it demo's footer grows a "See a key get
   injected" button that runs one real request through a public demo key to
   `/demo/echo` — an echo endpoint on this Worker (`app/routes/demo/echo.ts`)
@@ -388,9 +398,11 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
   `corx` (public) and `corx-dash` (console) built around the brand palette.
 
 Files: `app/routes/index.ts`, `_landing.tsx`, `_docs.tsx`, `docs.ts`,
-`_snippets.tsx`, `snippets.ts`, `_not-found.tsx`, `_error-page.tsx`,
-`app/components/site.tsx`, `prose.tsx`, `status-page.tsx`, `app/lib/docs.ts`,
-`app/lib/snippets.ts`, `app/lib/i18n/**`, `app/styles/app.css`, `app/assets/**`.
+`_snippets.tsx`, `snippets.ts`, `_cors-tester.tsx`, `tools/cors-tester.ts`,
+`_not-found.tsx`, `_error-page.tsx`, `app/components/site.tsx`, `prose.tsx`,
+`status-page.tsx`, `app/lib/docs.ts`, `app/lib/snippets.ts`,
+`app/lib/cors-check.ts`, `app/islands/cors-tester.tsx`, `app/lib/i18n/**`,
+`app/styles/app.css`, `app/assets/**`.
 
 ## 10. Console authentication
 
