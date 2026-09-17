@@ -381,7 +381,7 @@ one deployment's URL.
 | Surface | What it is |
 | --- | --- |
 | `robots.txt` | Public pages open, machine surfaces closed (`/console`, `/api`, `/fetch`, `/proxy`, `/health`), absolute `Sitemap:` line. The main answer engines (GPTBot, ClaudeBot, PerplexityBot, …) are named and allowed on purpose: CORX *wants* to be read and cited, and saying so in the file makes a future "block the bots" edit argue with the list. |
-| `sitemap.xml` | The four indexable URLs with `lastmod`, and an `xhtml:link` hreflang cluster (`en`, `zh`, `x-default`) on each landing URL. |
+| `sitemap.xml` | Every indexable URL with `lastmod`, and an `xhtml:link` hreflang cluster (`en`, `zh`, `x-default`) on each landing URL and each comparison URL. |
 | `llms.txt` | The [llmstxt.org](https://llmstxt.org) index: title, blockquote summary, `## Docs` / `## Facts` link sections, `## Optional` tail. |
 | `llms-full.txt` | The whole behaviour of the instance in one Markdown fetch — calling shapes, the `corx-*` namespace, auth tiers, caching, limits, security, console + admin API, self-hosting. |
 
@@ -405,6 +405,24 @@ Deliberately out of the index: the 404 / 5xx documents and the console
 `X-Robots-Tag: noindex` — a `/fetch?url=…` URL, or a mirror of the target,
 indexed under our hostname would be pure duplicate-content pollution, and
 robots.txt cannot express path-style proxy URLs.
+
+### Comparison pages
+
+`/compare/<name>` answers the *"X vs Y"* search with a table instead of a
+slogan: one hosted CORS proxy per page (`corsproxy.io`, `AllOrigins`), the same
+rows on each (auth model, upstream secrets, self-hosting, caching, request
+logging, limits, price, time to first request, extras, availability), and a
+"where they win" section that is rendered rather than buried in a footnote.
+
+`app/lib/compare.ts` is the registry and the only place a competitor claim may
+live: every claim carries the URL it came from and the day it was read, the
+source notes are rendered on the page, and rows the competitor wins are marked
+`theirs` — a table the competitor never wins reads as marketing. The pages are
+bilingual with real `/en/` and `/zh/` URLs, so each is in the sitemap with its
+own hreflang cluster, and their only inbound link is a line under the landing
+FAQ: a long-tail entry point, never the pitch. `test/compare.test.ts` enforces
+the invariants (every claim sourced and dated, ≥1 row the competitor wins, each
+page linked from the FAQ and the sitemap).
 
 `CONTENT_UPDATED` in `app/lib/site-info.ts` is the sitemap's `lastmod` and the
 terms' own date; bump it whenever the public copy changes.
@@ -805,6 +823,10 @@ app/              HonoX frontend (entry + console UI + API routes)
                 own document, no islands/session/D1. "terms" is in the
                 subdomain RESERVED_LABELS so terms.<zone> never decodes
                 as a proxy target.
+  routes/compare/     /compare/<name> comparison pages: [name].tsx plus the
+                en/ and zh/ variants call _compare.tsx (page + handler),
+                which reads the registry in lib/compare.ts. Not in the nav:
+                linked from the landing FAQ and the sitemap only.
   components/   shared presentational primitives (badges, chart, lucide,
                 table, logo) plus the response viewers (response-preview,
                 json-tree) used by both the landing demo and the playground —
@@ -845,11 +867,13 @@ app/              HonoX frontend (entry + console UI + API routes)
                 formatting, i18n dictionaries, SEO/GEO
                 (seo: canonical/hreflang/JSON-LD + robots.txt,
                 sitemap.xml, llms.txt, llms-full.txt; site-info: the
-                origin-independent facts those all quote)
+                origin-independent facts those all quote; compare: the
+                /compare registry — competitor name, source URLs and the
+                day each claim was read)
 test/           vitest suites (guard, ip, dns-check, cache, inject,
                 admin, origins, subdomain, media, playground, preview,
                 stats, i18n, nav, access, quota, public tier, error
-                pages, seo, integration)
+                pages, seo, compare, integration)
 ```
 
 ## Scripts

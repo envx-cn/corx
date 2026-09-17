@@ -22,6 +22,7 @@ import { Lucide } from "../components/lucide.js";
 import { SiteFooter, SiteHead, SiteNav } from "../components/site.js";
 import { HeroX } from "../components/hero-x.js";
 import { GITHUB_URL } from "../lib/site-info.js";
+import { COMPARISONS } from "../lib/compare.js";
 import { landingAlternates, landingJsonLd, OG_IMAGE, type Faq } from "../lib/seo.js";
 import type { Locale, TFunc } from "../lib/i18n/locale.js";
 import CorsDemo, { type CorsDemoI18n } from "../islands/cors-demo.js";
@@ -442,6 +443,20 @@ export function LandingPage(props: {
                 </details>
               ))}
             </div>
+            {/* The comparison pages are long-tail entry points: linked from the
+                FAQ, where the question is actually asked ("how is this different
+                from X"), never from the nav or the hero. */}
+            <p class="mx-auto mt-6 max-w-3xl text-sm text-base-content/75">
+              {t("landing.faq.compare")}{" "}
+              {COMPARISONS.map((c, i) => (
+                <span>
+                  {i > 0 ? " · " : ""}
+                  <a href={`/compare/${c.slug}`} class="link link-primary">
+                    {c.name}
+                  </a>
+                </span>
+              ))}
+            </p>
           </section>
 
           {/* CTA band */}

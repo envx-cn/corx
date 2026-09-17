@@ -17,6 +17,8 @@
  * `site-info.ts`; only *prose that must match the rendered page* is passed in.
  */
 import { ABUSE_EMAIL, CONTENT_UPDATED, GITHUB_URL, LICENSE, REPO_DOCS } from "./site-info.js";
+import { COMPARISONS } from "./compare.js";
+import type { CompareSlug } from "./compare.js";
 import type { Locale } from "./i18n/locale.js";
 
 /** Open Graph locales (og:locale wants `lang_TERRITORY`, unlike hreflang). */
@@ -47,6 +49,19 @@ export function landingAlternates(origin: string): Array<{ hreflang: string; hre
     { hreflang: "en", href: absUrl(origin, "/en") },
     { hreflang: "zh", href: absUrl(origin, "/zh") },
     { hreflang: "x-default", href: absUrl(origin, "/") },
+  ];
+}
+
+/**
+ * The hreflang cluster for one /compare page: the same three-URL shape as the
+ * landing page — prefixed documents that canonicalise to themselves, plus the
+ * auto-detecting root as x-default.
+ */
+export function compareAlternates(origin: string, slug: CompareSlug): Array<{ hreflang: string; href: string }> {
+  return [
+    { hreflang: "en", href: absUrl(origin, `/en/compare/${slug}`) },
+    { hreflang: "zh", href: absUrl(origin, `/zh/compare/${slug}`) },
+    { hreflang: "x-default", href: absUrl(origin, `/compare/${slug}`) },
   ];
 }
 
@@ -161,6 +176,47 @@ export function termsJsonLd(opts: {
   ];
 }
 
+/**
+ * A comparison page's structured data.
+ *
+ * Defined through the @ids the landing page's graph already publishes (WebSite,
+ * Organization, SoftwareApplication), so the comparison hangs off the same
+ * entity rather than inventing a parallel one. `dateModified` is the day the
+ * competitor claims were last read from their sources — that date is the whole
+ * honesty mechanism of these pages, so it is the one the crawler sees too.
+ */
+export function compareJsonLd(opts: {
+  origin: string;
+  locale: Locale;
+  slug: CompareSlug;
+  title: string;
+  description: string;
+  /** Competitor name and site, linked as a second entity the page is about. */
+  name: string;
+  site: string;
+  /** ISO day the competitor claims were read. */
+  checked: string;
+}): unknown[] {
+  const url = absUrl(opts.origin, `/compare/${opts.slug}`);
+  return [
+    {
+      "@type": "WebPage",
+      "@id": `${url}#webpage`,
+      url,
+      name: opts.title,
+      description: opts.description,
+      inLanguage: opts.locale,
+      dateModified: opts.checked,
+      isPartOf: { "@id": `${absUrl(opts.origin, "/")}#website` },
+      publisher: { "@id": `${absUrl(opts.origin, "/")}#organization` },
+      about: [
+        { "@id": `${absUrl(opts.origin, "/")}#software` },
+        { "@type": "WebSite", name: opts.name, url: opts.site },
+      ],
+    },
+  ];
+}
+
 // --- Crawler files ---------------------------------------------------------
 
 /**
@@ -201,7 +257,7 @@ function robotsGroup(agent: string): string {
 export function robotsTxt(origin: string): string {
   return [
     `# CORX — ${origin}`,
-    "# Public pages (/, /en, /zh, /terms, /llms.txt) are open to every crawler.",
+    "# Public pages (/, /en, /zh, /terms, /compare/*, /llms.txt) are open to every crawler.",
     "# The proxy is a machine surface, not content: keep it, the console and the",
     "# admin API out of the index and out of the crawl budget.",
     "",
@@ -215,14 +271,41 @@ export function robotsTxt(origin: string): string {
   ].join("\n");
 }
 
-/** Public, indexable pages: path + sitemap hints. Landing is in three URLs
-    because /zh and /en are real, linkable, hreflang-declared documents. */
-const SITEMAP_PAGES = [
-  { path: "/", changefreq: "weekly", priority: "1.0", alternates: true },
-  { path: "/en", changefreq: "weekly", priority: "0.9", alternates: true },
-  { path: "/zh", changefreq: "weekly", priority: "0.9", alternates: true },
-  { path: "/terms", changefreq: "monthly", priority: "0.5", alternates: false },
-] as const;
+/** Public, indexable pages: path + sitemap hints. Landing and compare pages
+    exist as three URLs each (/zh and /en plus the auto-detecting root), so each
+    carries its own hreflang cluster; /terms has no translated URL (its language
+    is a cookie and ?lang=), so it has none. */
+interface SitemapPage {
+  path: string;
+  changefreq: string;
+  priority: string;
+  alternates?: Array<{ hreflang: string; href: string }>;
+}
+
+function sitemapPages(origin: string): SitemapPage[] {
+  const landing = (path: string, priority: string): SitemapPage => ({
+    path,
+    changefreq: "weekly",
+    priority,
+    alternates: landingAlternates(origin),
+  });
+  return [
+    landing("/", "1.0"),
+    landing("/en", "0.9"),
+    landing("/zh", "0.9"),
+    // Long-tail entry points: not featured anywhere, but real documents with a
+    // real cluster — a "vs" search should land on the sourced version.
+    ...COMPARISONS.flatMap((c) =>
+      ["", "/en", "/zh"].map((prefix) => ({
+        path: `${prefix}/compare/${c.slug}`,
+        changefreq: "monthly",
+        priority: "0.6",
+        alternates: compareAlternates(origin, c.slug),
+      })),
+    ),
+    { path: "/terms", changefreq: "monthly", priority: "0.5" },
+  ];
+}
 
 /** Minimal XML text escape (origins are hostnames, but never trust that). */
 function xml(value: string): string {
@@ -235,22 +318,24 @@ function xml(value: string): string {
 
 /** sitemap.xml with xhtml:link alternates, one cluster per language URL. */
 export function sitemapXml(origin: string): string {
-  const alternates = landingAlternates(origin)
-    .map((a) => `    <xhtml:link rel="alternate" hreflang="${xml(a.hreflang)}" href="${xml(a.href)}"/>`)
+  const urls = sitemapPages(origin)
+    .map((page) => {
+      const alternates = (page.alternates ?? [])
+        .map((a) => `    <xhtml:link rel="alternate" hreflang="${xml(a.hreflang)}" href="${xml(a.href)}"/>`)
+        .join("\n");
+      return [
+        "  <url>",
+        `    <loc>${xml(absUrl(origin, page.path))}</loc>`,
+        `    <lastmod>${CONTENT_UPDATED}</lastmod>`,
+        `    <changefreq>${page.changefreq}</changefreq>`,
+        `    <priority>${page.priority}</priority>`,
+        alternates,
+        "  </url>",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    })
     .join("\n");
-  const urls = SITEMAP_PAGES.map((page) =>
-    [
-      "  <url>",
-      `    <loc>${xml(absUrl(origin, page.path))}</loc>`,
-      `    <lastmod>${CONTENT_UPDATED}</lastmod>`,
-      `    <changefreq>${page.changefreq}</changefreq>`,
-      `    <priority>${page.priority}</priority>`,
-      page.alternates ? alternates : "",
-      "  </url>",
-    ]
-      .filter(Boolean)
-      .join("\n"),
-  ).join("\n");
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">',
@@ -267,6 +352,10 @@ export function sitemapXml(origin: string): string {
  * the repository stays the source of truth for prose.
  */
 export function llmsTxt(origin: string): string {
+  // Built from the registry so a new comparison page cannot be forgotten here.
+  const comparisons = COMPARISONS.map(
+    (c) => `[CORX vs ${c.name}](${absUrl(origin, `/compare/${c.slug}`)})`,
+  ).join(", ");
   return `# CORX
 
 > CORX is an open-source CORS proxy that runs entirely on Cloudflare's edge. Prefix any URL with
@@ -284,6 +373,8 @@ every URL below is absolute and current for that instance.
   browser, the shared public key and its daily quotas, the feature list and the FAQ.
 - [Terms of use](${absUrl(origin, "/terms")}): quotas, prohibited uses, logging and liability for
   this hosted instance. Read it before sending traffic.
+- Comparisons: ${comparisons} — dated, sourced differences against the hosted CORS proxies CORX is
+  compared with, including the rows the other service wins.
 - [Usage and options](${REPO_DOCS.readmeRaw}): calling conventions, the \`corx-*\` query namespace,
   caching and the full deployment guide — Markdown in the repository.
 - [Feature list](${REPO_DOCS.featuresRaw}): every implemented feature mapped to the code that
@@ -446,6 +537,8 @@ for automation, authenticated with the admin token: \`/api/keys\`, \`/api/keys/:
 - ${root} — landing page, live demo, public key card, FAQ.
 - ${absUrl(origin, "/en")} and ${absUrl(origin, "/zh")} — explicit English and Chinese URLs.
 - ${absUrl(origin, "/terms")} — terms of use, quotas and prohibited uses.
+- ${COMPARISONS.map((c) => `${absUrl(origin, `/compare/${c.slug}`)} (vs ${c.name})`).join(", ")} —
+  dated comparisons against other hosted CORS proxies, every competitor claim linked to its source.
 - ${absUrl(origin, "/llms.txt")}, ${absUrl(origin, "/llms-full.txt")}, ${absUrl(origin, "/sitemap.xml")},
   ${absUrl(origin, "/robots.txt")} — machine-readable surfaces.
 

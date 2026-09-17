@@ -271,6 +271,16 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
   served by `app/server.ts` and described in README → SEO and GEO; the band is
   the human-facing half, with the `<link rel="alternate" type="text/plain">`
   in `SiteHead` and the footer link as the machine-discoverable halves.
+- **Comparison pages** (`/compare/<name>`, with `/en/` and `/zh/` URLs): dated
+  comparisons against the hosted proxies CORX gets measured against
+  (corsproxy.io, AllOrigins). `app/lib/compare.ts` is the registry — one source
+  URL and read-date per competitor claim, plus a `theirs` flag on the rows the
+  competitor wins — and the page renders those sources in full, so the table
+  can be audited rather than believed. Cell prose lives in `compare.*` in both
+  dictionaries, keyed by the row/slug unions, so a row without copy fails
+  `tsc`. Not in the nav or the hero: the only inbound link is a line under the
+  FAQ, and each page sits in the sitemap with its own hreflang cluster.
+  `test/compare.test.ts` enforces the honesty invariants.
 - **Trust band** (`#trust`): a two-card, plainly worded statement of the proxy's
   man-in-the-middle reality — the hosted public instance (free, shared,
   best-effort, not for secrets) next to self-hosting (MIT, free tier, the whole

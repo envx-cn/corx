@@ -58,6 +58,143 @@ const en = {
     s7BodyB: "Include the full request URL when you can.",
     back: "Back to CORX",
   },
+  // The /compare/<name> pages. Structure, sources and dates live in
+  // app/lib/compare.ts; only prose lives here, and both locales must carry the
+  // same keys. This is the one page in the project with a marketing risk, so
+  // the rule is: say what a source says, and admit the row we lose.
+  compare: {
+    table: { topic: "Topic", us: "CORX" },
+    theirs: "They win this row",
+    link: { site: "Website", docs: "Documentation" },
+    checked: "Last checked {date}",
+    wins: { title: "Where {name} wins" },
+    sources: {
+      title: "Sources",
+      note:
+        "Every {name} cell above comes from their own documentation, read on the date shown — follow the links and check them. The CORX column describes this repository (README.md and FEATURES.md) and the same day's code.",
+      ours: "CORX's own column:",
+    },
+    cta: "Both are about a line of code away. Try the public key on the landing page first, and self-host when the traffic matters.",
+    ctaLink: "Back to the landing page",
+    back: "Back to home",
+    row: {
+      auth: "Auth model",
+      secrets: "Upstream secrets",
+      hosting: "Self-hosting",
+      caching: "Caching",
+      logging: "Request logging",
+      limits: "Limits",
+      price: "Price",
+      setup: "Time to first request",
+      extras: "Beyond proxying",
+      availability: "Availability",
+    },
+    us: {
+      auth: "Per-key (`X-Api-Key` or Bearer), keyless access for granted origins, or a hosted instance's shared public key. Keys are stored as hashes in your own D1.",
+      secrets:
+        "Header and query rules live in D1 — AES-256-GCM ciphertext when `INJECTION_KEK` is set — and are applied server-side, only on the hosts the key allows. The browser never receives the value.",
+      hosting:
+        "MIT, one Cloudflare Worker with D1 and R2, deployed to your own account; the free plan covers small deployments.",
+      caching:
+        "R2 GET cache, adjusted per request with `corx-ttl` / `corx-no-cache`, capped per key, and never shared by keys that inject headers.",
+      logging:
+        "Every request lands in your D1 — target, host, status, latency, caller origin, key, IP, country. Raw rows are pruned after 30 days; the daily aggregate stays.",
+      limits:
+        "Your own per-key rate limits and daily quotas, or the shared public tier's. Self-hosted, the ceiling is your Cloudflare plan.",
+      price: "Free and MIT-licensed. You pay Cloudflare for what the Worker serves; there is no subscription and no seat count.",
+      setup:
+        "Deploy a Worker to your own account (about ten minutes), or copy a hosted instance's public key and send GET/HEAD inside its daily quota.",
+      extras: "Proxying only: fetch, cache, inject, log. No image transforms, scraping or file conversion.",
+      availability:
+        "Self-hosted: as available as your own Cloudflare account. The public instance is best-effort, with no SLA and no support commitment.",
+    },
+    "corsproxy-io": {
+      title: "CORX vs corsproxy.io",
+      description:
+        "An honest comparison of CORX and corsproxy.io: auth model, upstream secret injection, self-hosting, caching, logging, limits and price — every competitor claim dated and sourced.",
+      lead:
+        "Both are CORS proxies, and both will unblock a browser request. The difference is what happens to the upstream credential: corsproxy.io is a hosted service you sign up for, CORX is a Worker you deploy whose point is holding an API key the browser never sees.",
+      wins:
+        "If your browser app has no secret to hide, corsproxy.io is the lower-effort choice: no deployment, a free tier, a support address, an uptime commitment on paid plans and extras like image transforms and a scraping API. When CORX's secret injection is not what you need, their hosted plan is simply less to run.",
+      // What each source actually says, shown under its URL. Written as the
+      // audit trail, so it stays close to the source's own wording.
+      src: {
+        auth: "The homepage's own fetch sample carries `?key=YOUR_API_KEY`, and its FAQ answers \"How do I get an API key?\" with creating a free account.",
+        secrets:
+          "Header overrides are query parameters (`reqHeaders=authorization:Bearer%20TOKEN`), so the value comes from the caller; the homepage FAQ advises against exposing upstream secrets in browser code.",
+        hosting: "No repository, source download or self-host path is linked anywhere on the site or in the docs.",
+        caching:
+          "Default 1-hour TTL for GET/HEAD, `ttl=` overrides require the Production plan, and the cache is per data centre rather than global.",
+        logging:
+          "Collects the requested URL, user agent, IP, timestamps and request counts plus the account email; states that bodies and headers are not logged.",
+        limits:
+          "Free: 10,000 requests + 1 GB per month, 1 MB files, browser requests only (no server-side requests, no Production features). Hobby: 250k requests + 25 GB. Production: unlimited requests, 1 GB files.",
+        price:
+          "Free / Hobby $5 / Production $29 per month, plus a free unlimited plan for open-source and educational projects on request.",
+        setup: "The documented path is: create an account, copy the key, prefix the URL. Nothing to deploy, nothing to operate.",
+        extras: "Lists image transformations (beta), header rewrites, an advanced cache and a web-scraping API as plan features.",
+        availability: "99.9% monthly uptime commitment on Hobby, 99.99% on Production; the free tier is best-effort with no SLA.",
+      },
+      row: {
+        auth: "Account and API key on every call (`?key=…`), the free tier included; domain authorization on paid plans.",
+        secrets:
+          "No server-side secret store. Header overrides are query parameters (`reqHeaders=authorization:Bearer TOKEN`), so the value comes from the caller — their own FAQ says to keep upstream secrets out of browser code.",
+        hosting: "Closed source, hosted only: there is no self-host path.",
+        caching:
+          "Edge cache with a 1-hour default TTL; `ttl=` overrides need the Production plan, and the cache is per data centre rather than global.",
+        logging:
+          "Their privacy policy lists the requested URL, user agent, IP, timestamps and request counts, plus your account email. Bodies and headers are not logged.",
+        limits:
+          "Free: 10,000 requests + 1 GB per month, 1 MB files, browser requests only. Hobby $5: 250k requests + 25 GB. Production $29: unlimited* requests, 1 GB files.",
+        price: "$0 free tier, $5 Hobby, $29 Production per month — and free unlimited for open-source and educational projects on request.",
+        setup: "Create an account, prefix the URL, done: no deployment and no infrastructure to own.",
+        extras: "Image transformations (beta), a web-scraping API, header rewrites and file conversion on the paid plans.",
+        availability:
+          "99.9% monthly uptime commitment on Hobby, 99.99% on Production; the free tier is best-effort with no SLA.",
+      },
+    },
+    allorigins: {
+      title: "CORX vs AllOrigins",
+      description:
+        "An honest comparison of CORX and AllOrigins: auth model, upstream secret injection, self-hosting, caching, logging, limits and price — every competitor claim dated and sourced.",
+      lead:
+        "AllOrigins is the simplest CORS proxy around: a free, open-source Node service with `/get` and `/raw`, no key and no account. CORX solves the next problem — holding an upstream credential server-side that the browser never sees.",
+      wins:
+        "AllOrigins asks nothing of you: no account, no key, no deploy, one URL. For pulling public pages into a hobby project that is genuinely less friction than CORX's public tier, which starts with copying a key — and its MIT Node server runs anywhere Node runs, Cloudflare or not.",
+      src: {
+        auth: "The README documents `url`, `charset` and `callback` and nothing about keys or accounts; neither does the site.",
+        secrets:
+          "`/get` and `/raw` forward the request as it arrives — there is no credential store in the hosted service or in the code.",
+        hosting:
+          "MIT-licensed Node/Express: `git clone`, `npm install`, `npm start`. The repository's last push is 2023-02-26 (checked via the GitHub API).",
+        caching: "The site and the README describe `charset`, `raw` and `callback` only — no cache controls and no TTL are documented.",
+        logging:
+          "The repository depends on `@logdna/logger`, so a self-hosted copy can ship logs to LogDNA (Mezmo). Nothing about the hosted instance's retention is published.",
+        limits: "No quota, rate limit or fair-use policy is documented for the hosted instance.",
+        price: "MIT license, free to use and self-host; the README carries a PayPal donate button for the maintainer.",
+        setup: "One URL, no key, no account: `api.allorigins.win/raw?url=…` is the whole setup.",
+        extras: "Beyond proxying, the documented surface is `charset` conversion and a JSONP `callback`.",
+        availability:
+          "Community-run, no published SLA, last push 2023-02-26. On 2026-09-17 every request we made to `https://api.allorigins.win/raw?url=…` from our network answered 5xx (500/522).",
+      },
+      row: {
+        auth: "None documented: no key, no account, no quota page. `/get` and `/raw` are open.",
+        secrets:
+          "Nothing to inject with: the proxy forwards the request as it receives it, so any credential would have to come from the caller. Neither the service nor the code has a secret store.",
+        hosting:
+          "Open source (MIT) Node/Express: `git clone && npm install && npm start`. No Cloudflare account needed, any Node host works. The repository's last push was 2023-02-26.",
+        caching: "Not documented: the README and the site cover `charset`, `raw` and `callback`, with no cache controls.",
+        logging:
+          "Not documented for the hosted instance. The repository depends on `@logdna/logger`, so a self-hosted copy can ship logs to LogDNA (Mezmo) when configured.",
+        limits: "Not documented: no daily, monthly or per-minute quota is published.",
+        price: "Free and MIT-licensed, with a PayPal donate button in the README for the maintainer.",
+        setup: "One URL, no key, no account: `api.allorigins.win/raw?url=…` and you are done.",
+        extras: "None documented beyond proxying, `charset` conversion and JSONP `callback`.",
+        availability:
+          "Community-run with no published SLA, and the repository has not been pushed since 2023-02-26. When we checked on 2026-09-17 the hosted API answered 5xx from our network.",
+      },
+    },
+  },
   landing: {
     title: "CORX — CORS proxy on Cloudflare",
     meta: {
@@ -196,6 +333,9 @@ const en = {
       a7: "Only with data you would hand to a stranger. A proxy sees — and can change — everything passing through it, and on a hosted instance the operator is that stranger. Use the public key for public data, demos and prototypes; when the traffic matters, self-host CORX and the only operator left in the path is you.",
       q8: "Does CORX come with an admin console?",
       a8: "Yes — a bilingual (English/中文) console with a usage dashboard and a period-over-period trend, per-key policy (rate limits, allowed origins, cache TTL, keyless grants, upstream injection, public-tier quotas), request logs, a host blocklist and a playground that runs requests through the real pipeline. Most self-hosted proxies are just a fetch endpoint; this is the product around it, in the same Worker.",
+      // The comparison pages' only entry point besides search. Dated answer to
+      // "how is this different from X", not a pitch.
+      compare: "Comparing it with another hosted proxy?",
     },
     // The agent entry. This instance already publishes llms.txt /
     // llms-full.txt (app/lib/seo.ts); the section is where a *human* finds out.
@@ -613,6 +753,123 @@ const zh: Messages = {
     s7BodyB: "，并尽量附上完整的请求 URL。",
     back: "返回 CORX",
   },
+  // /compare/<name> 页面。结构与来源、日期在 app/lib/compare.ts，这里只放文案；
+  // 两种语言必须键位一致。这是全站最容易被读成营销的页面，规则是：只写来源
+  // 里写过的内容，并且大方承认我们输的那一行。
+  compare: {
+    table: { topic: "对比项", us: "CORX" },
+    theirs: "这一项它更好",
+    link: { site: "官网", docs: "文档" },
+    checked: "核查于 {date}",
+    wins: { title: "{name} 更好的地方" },
+    sources: {
+      title: "信息来源",
+      note:
+        "上表中关于 {name} 的每一个格子都来自其官方文档，并标注了读取日期——点开链接即可自行核对。CORX 一列描述的是本仓库（README.md 与 FEATURES.md）以及同一天的代码。",
+      ours: "CORX 一列的来源：",
+    },
+    cta: "两者都只差一行代码。先在首页用公共 key 试试；流量重要时再自托管。",
+    ctaLink: "回到首页",
+    back: "返回首页",
+    row: {
+      auth: "鉴权模型",
+      secrets: "上游密钥",
+      hosting: "自托管",
+      caching: "缓存",
+      logging: "请求日志",
+      limits: "限额",
+      price: "价格",
+      setup: "从零到第一个请求",
+      extras: "代理之外",
+      availability: "可用性",
+    },
+    us: {
+      auth: "支持按 key 鉴权（`X-Api-Key` 或 Bearer）、为已授权来源免密钥访问，或使用托管实例的公共 key；密钥以哈希形式存放在你自己的 D1 中。",
+      secrets:
+        "上游 header / query 规则存放在 D1（设置 `INJECTION_KEK` 后为 AES-256-GCM 密文），在服务端按白名单主机注入。浏览器始终拿不到密钥值。",
+      hosting: "MIT 许可，单个 Cloudflare Worker 配 D1 与 R2，部署到你自己的账号；小规模使用免费套餐即可。",
+      caching:
+        "R2 GET 缓存，可用 `corx-ttl` / `corx-no-cache` 按请求调整，按 key 封顶；带 header 注入规则的 key 不与他人共享缓存。",
+      logging:
+        "每个请求都写入你自己的 D1：目标、主机、状态码、延迟、调用方 Origin、key、IP、国家。原始日志 30 天后清理，按天聚合长期保留。",
+      limits: "按 key 的频率限制与每日配额由你自己设定，或使用公共档位的共享配额；自托管时上限就是你 Cloudflare 套餐的上限。",
+      price: "免费、MIT 许可。只为 Worker 的实际用量向 Cloudflare 付费，没有订阅，也不按席位计费。",
+      setup: "把 Worker 部署到自己的账号（约十分钟）；或复制托管实例的公共 key，在每日配额内发 GET/HEAD。",
+      extras: "只做代理：抓取、缓存、注入、记日志。不做图片转换、抓取提取或文件转换。",
+      availability: "自托管：可用性取决于你自己的 Cloudflare 账号。公共实例是尽力而为，没有 SLA，也没有支持承诺。",
+    },
+    "corsproxy-io": {
+      title: "CORX 对比 corsproxy.io",
+      description:
+        "CORX 与 corsproxy.io 的诚实对比：鉴权模型、上游密钥注入、自托管、缓存、日志、限额与价格——每条关于对方的结论都附来源与核查日期。",
+      lead:
+        "两者都是 CORS 代理，都能解开浏览器的跨域限制。区别在于上游凭证怎么处理：corsproxy.io 是注册即用的托管服务，CORX 是你自己部署的 Worker——它的核心能力就是替你保管浏览器永远看不到的上游密钥。",
+      wins:
+        "如果你的浏览器应用没有需要隐藏的密钥，corsproxy.io 是更省事的选择：不用部署、有免费额度、有支持邮箱，付费档还带可用性承诺，以及图片转换、抓取 API 等附加能力。当你不需要 CORX 的密钥注入时，他们托管方案的运维成本确实更低。",
+      // 每个来源到底写了什么，展示在对应链接下方；写成核查记录，尽量贴着原文。
+      src: {
+        auth: "官网自己的 fetch 示例就带 `?key=YOUR_API_KEY`，FAQ 里「如何获取 API key」的答案是注册一个免费账号。",
+        secrets:
+          "Header 覆盖走查询参数（`reqHeaders=authorization:Bearer%20TOKEN`），值由调用方提供；官网 FAQ 也建议不要把上游密钥写进浏览器代码。",
+        hosting: "官网与文档没有链接任何仓库、源码下载或自托管入口。",
+        caching: "GET/HEAD 默认 TTL 一小时；`ttl=` 覆盖需要 Production 档；缓存按数据中心而非全局。",
+        logging: "记录请求 URL、User-Agent、IP、时间戳与请求计数，以及账号邮箱；声明不记录请求体与 header。",
+        limits:
+          "免费档：每月 1 万次请求 + 1 GB、单文件 1 MB、仅限浏览器请求（不含服务端请求与 Production 功能）。Hobby：25 万次 + 25 GB。Production：请求不限量、单文件 1 GB。",
+        price: "免费 / Hobby $5 / Production $29 每月；开源与教育项目可申请免费不限量。",
+        setup: "官方给出的路径是：注册账号、复制 key、给 URL 加前缀。不用部署，也不用运维。",
+        extras: "套餐里列出图片转换（beta）、header 重写、高级缓存与网页抓取 API。",
+        availability: "Hobby 承诺 99.9%、Production 99.99% 的月度可用性；免费档尽力而为，无 SLA。",
+      },
+      row: {
+        auth: "每次调用都要账号 + API key（`?key=…`），免费档也一样；付费档支持域名授权。",
+        secrets:
+          "没有服务端密钥存储。Header 覆盖是查询参数（`reqHeaders=authorization:Bearer TOKEN`），值由调用方提供——他们自己的 FAQ 也建议不要把上游密钥写进浏览器代码。",
+        hosting: "闭源，仅托管，没有自托管路径。",
+        caching: "边缘缓存，默认 TTL 一小时；`ttl=` 覆盖需要 Production 档；缓存按数据中心而非全局，新地区首次请求仍需回源。",
+        logging: "隐私政策列出的记录项：请求 URL、User-Agent、IP、时间戳与请求计数，以及账号邮箱；不记录请求体与 header。",
+        limits:
+          "免费档：每月 1 万次请求 + 1 GB，单文件 1 MB，仅限浏览器请求。Hobby $5：25 万次 + 25 GB。Production $29：请求不限*，单文件 1 GB。",
+        price: "免费档 $0，Hobby $5/月，Production $29/月；开源与教育项目可申请免费不限量。",
+        setup: "注册账号、给 URL 加前缀，结束：不用部署，也不用运维任何东西。",
+        extras: "付费档提供图片转换（beta）、网页抓取 API、header 重写与文件转换。",
+        availability: "Hobby 承诺 99.9%、Production 99.99% 的月度可用性；免费档尽力而为，无 SLA。",
+      },
+    },
+    allorigins: {
+      title: "CORX 对比 AllOrigins",
+      description:
+        "CORX 与 AllOrigins 的诚实对比：鉴权模型、上游密钥注入、自托管、缓存、日志、限额与价格——每条关于对方的结论都附来源与核查日期。",
+      lead:
+        "AllOrigins 是市面上最简单的 CORS 代理：免费、开源的 Node 服务，只有 `/get` 与 `/raw`，不用 key、不用账号。CORX 解决的是下一个问题：在服务端替你保管浏览器拿不到的上游凭证。",
+      wins:
+        "AllOrigins 什么都不需要你提供：无账号、无 key、无需部署，一个 URL 就够。如果只是给业余项目抓公开页面，它确实比 CORX 的公共档更省事（后者要先复制 key）；而且它是 MIT 许可的 Node 服务，只要跑得动 Node 就行，不一定非上 Cloudflare。",
+      src: {
+        auth: "README 只记录 `url`、`charset`、`callback` 三个参数，没有任何 key 或账号相关内容；官网也一样。",
+        secrets: "`/get` 与 `/raw` 原样转发收到的请求——托管服务与代码里都没有凭证存储。",
+        hosting: "MIT 许可的 Node/Express：`git clone`、`npm install`、`npm start`。仓库最后一次推送为 2023-02-26（经 GitHub API 核查）。",
+        caching: "官网与 README 只描述 `charset`、`raw` 与 `callback`——没有缓存控制，也没有 TTL 说明。",
+        logging: "仓库依赖 `@logdna/logger`，自托管版本可以把日志写入 LogDNA（Mezmo）。托管实例的保留策略没有任何公开说明。",
+        limits: "托管实例没有公布配额、频率限制或公平使用政策。",
+        price: "MIT 许可，免费使用与自托管；README 里有给维护者的 PayPal 打赏按钮。",
+        setup: "一个 URL，无 key、无账号：`api.allorigins.win/raw?url=…` 就是全部步骤。",
+        extras: "除代理之外，记录在案的只有 `charset` 转换与 JSONP `callback`。",
+        availability: "社区维护，无公布的 SLA，最后一次推送为 2023-02-26。2026-09-17 当天，我们从本网络对它托管 API 的每次请求都返回 5xx（500/522）。",
+      },
+      row: {
+        auth: "未记录任何鉴权：没有 key、没有账号、没有配额页面，`/get` 与 `/raw` 直接开放。",
+        secrets: "无从注入：代理原样转发收到的请求，凭证只能由调用方携带；托管服务与代码里都没有密钥存储。",
+        hosting: "开源（MIT）Node/Express：`git clone && npm install && npm start`，不需要 Cloudflare 账号，任何 Node 主机都能跑。仓库最后一次推送停在 2023-02-26。",
+        caching: "未见说明：README 与官网只描述 `charset`、`raw`、`callback`，没有缓存控制。",
+        logging: "托管实例没有日志说明；仓库依赖 `@logdna/logger`，自托管版本配置后可以写入 LogDNA（Mezmo）。",
+        limits: "未见说明：没有公布任何每日、每月或每分钟的配额。",
+        price: "免费、MIT 许可，README 里有给维护者的 PayPal 打赏按钮。",
+        setup: "一个 URL，无 key、无账号：贴上 `api.allorigins.win/raw?url=…` 就完事。",
+        extras: "除代理、`charset` 转换与 JSONP `callback` 外没有其他记录在案的能力。",
+        availability: "社区维护，没有公布的 SLA，仓库自 2023-02-26 起没有推送。我们 2026-09-17 核查时，托管 API 从我们的网络访问全部返回 5xx。",
+      },
+    },
+  },
   landing: {
     title: "CORX — Cloudflare 上的 CORS 代理",
     meta: {
@@ -751,6 +1008,8 @@ const zh: Messages = {
       a7: "只适合你愿意交给陌生人的数据。代理能看到——也能修改——经过它的所有内容，而托管实例的运营方就是那个陌生人。公开数据、演示和原型可以用公共 key；一旦流量重要，就自托管 CORX，那时链路上唯一的运营方就是你自己。",
       q8: "CORX 带管理控制台吗？",
       a8: "带。它是一个中英双语控制台：用量仪表盘与周期对比趋势、按 key 的策略（频率限制、允许来源、缓存 TTL、免密钥授权、上游注入、公共档位配额）、请求日志、主机黑名单，以及跑真实链路的演练场。多数自托管代理只是一个 fetch 接口，而这里是围绕它的一整套产品，全部包含在同一个 Worker 中。",
+      // 对比页除搜索之外的唯一入口：给「它和 X 有什么不同」一个有日期的回答，而不是推销。
+      compare: "想和其他托管代理对比？",
     },
     agents: {
       title: "为 agent 而写",
