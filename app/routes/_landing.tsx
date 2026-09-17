@@ -3,6 +3,7 @@ import { HasIslands } from "honox/server";
 import linkSvg from "lucide-static/icons/link-2.svg?raw";
 import zapSvg from "lucide-static/icons/zap.svg?raw";
 import shieldSvg from "lucide-static/icons/shield-check.svg?raw";
+import eyeSvg from "lucide-static/icons/eye.svg?raw";
 import keySvg from "lucide-static/icons/key-round.svg?raw";
 import chartSvg from "lucide-static/icons/bar-chart-3.svg?raw";
 import globeSvg from "lucide-static/icons/globe.svg?raw";
@@ -54,6 +55,7 @@ export function LandingPage(props: {
     { q: t("landing.faq.q4"), a: t("landing.faq.a4") },
     { q: t("landing.faq.q5"), a: t("landing.faq.a5") },
     { q: t("landing.faq.q6"), a: t("landing.faq.a6") },
+    { q: t("landing.faq.q7"), a: t("landing.faq.a7") },
   ];
   const features = [
     t("landing.features.simple.title"),
@@ -178,7 +180,27 @@ export function LandingPage(props: {
                   <p class="mx-auto lg:mx-0 mt-6 max-w-2xl text-base sm:text-lg text-base-content/75">
                     {t("landing.hero.sub")}
                   </p>
-                  <div class="mt-8 flex flex-wrap items-center justify-center lg:justify-start gap-3">
+                  {/* Trust pointer first: a visitor deciding whether to paste a
+                      URL into the demo should learn, before they reach the CTAs,
+                      that a proxy is a man in the middle and that self-hosting is
+                      the honest answer — the #trust band below spells it out. A
+                      callout link, not a warning box, so the hero stays a hero. */}
+                  <p class="mt-6">
+                    <a
+                      href="#trust"
+                      class="inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-0.5 rounded-box border border-base-300 bg-base-200/60 px-3 py-2 text-sm text-base-content/75 no-underline transition hover:border-primary/40 hover:bg-base-200"
+                    >
+                      {/* Icon and note are one flex item on purpose: as separate
+                          items the note's max-content width pushes the icon onto
+                          its own line as soon as the pill wraps. */}
+                      <span class="inline-flex items-start gap-2">
+                        <Lucide svg={eyeSvg} class="mt-0.5" />
+                        <span>{t("landing.hero.trustNote")}</span>
+                      </span>
+                      <span class="font-medium text-primary">{t("landing.hero.trustCta")}</span>
+                    </a>
+                  </p>
+                  <div class="mt-6 flex flex-wrap items-center justify-center lg:justify-start gap-3">
                     <a href="#try-it" class="btn btn-primary btn-lg rounded-full! px-8">
                       {t("landing.hero.tryLive")}
                     </a>
@@ -187,19 +209,19 @@ export function LandingPage(props: {
                       <Lucide svg={arrowUpRightSvg} />
                     </a>
                   </div>
-                  {/* The no-deploy path is the thing most visitors can actually
-                      act on, so it gets a direct link in the hero. */}
-                  {props.publicKey ? (
-                    <p class="mt-4 text-sm">
+                  {/* Start-here row: the calling convention made concrete,
+                      with the no-deploy shortcut beside it, grouped so the hero
+                      ends on "how to call it" rather than three loose lines. */}
+                  <p class="mt-8 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-sm text-base-content/75 lg:justify-start">
+                    <span>
+                      {t("landing.hero.prefix")}{" "}
+                      <code class="break-all">{props.origin}/fetch?url=https://api.example.com</code>
+                    </span>
+                    {props.publicKey ? (
                       <a href="#public-key" class="link link-primary no-underline hover:underline">
                         {t("landing.hero.noDeploy")}
                       </a>
-                    </p>
-                  ) : null}
-                  {/* The calling convention, made concrete and copy-friendly. */}
-                  <p class="mt-8 text-sm text-base-content/75">
-                    {t("landing.hero.prefix")}{" "}
-                    <code class="break-all">{props.origin}/fetch?url=https://api.example.com</code>
+                    ) : null}
                   </p>
                 </div>
               </div>
@@ -333,6 +355,41 @@ export function LandingPage(props: {
                 code={["200 · MISS · 143 ms", "x-corx-target: api.vendor.com"]}
               />
             </div>
+          </section>
+
+          {/* Trust — the trade-off a proxy forces on the reader, stated plainly
+              instead of buried in the terms. It sits after the differentiators
+              because "who sees my traffic?" is the next question once the
+              feature list has landed; the answer is self-hosting, which is why
+              the self-host card is the one with the primary border. */}
+          <section id="trust" class="max-w-6xl mx-auto px-4 sm:px-6 py-20">
+            <div class="text-center">
+              <h2 class="text-2xl sm:text-3xl font-bold tracking-tight">{t("landing.trust.title")}</h2>
+              <p class="mx-auto mt-2 max-w-2xl text-base-content/75">{t("landing.trust.sub")}</p>
+            </div>
+            <div class="mx-auto mt-8 grid max-w-4xl gap-4 md:grid-cols-2">
+              <div class="highlight-card">
+                <span class="feature-icon">
+                  <Lucide svg={eyeSvg} />
+                </span>
+                <h3 class="font-semibold">{t("landing.trust.hosted.title")}</h3>
+                <p class="text-sm text-base-content/75 leading-relaxed">{t("landing.trust.hosted.desc")}</p>
+              </div>
+              <div class="highlight-card border-primary/50!">
+                <span class="feature-icon">
+                  <Lucide svg={serverSvg} />
+                </span>
+                <h3 class="font-semibold">{t("landing.trust.self.title")}</h3>
+                <p class="text-sm text-base-content/75 leading-relaxed">{t("landing.trust.self.desc")}</p>
+                <a href={GITHUB_URL} class="btn btn-sm btn-outline rounded-full! mt-auto self-start">
+                  {t("landing.trust.self.cta")}
+                  <Lucide svg={arrowUpRightSvg} />
+                </a>
+              </div>
+            </div>
+            <p class="mx-auto mt-4 max-w-3xl text-center text-xs leading-relaxed text-base-content/75">
+              {t("landing.trust.note")}
+            </p>
           </section>
 
           {/* Features */}

@@ -255,6 +255,25 @@ describe("landing page metadata", () => {
     expect(html).toContain('class="max-w-6xl mx-auto px-4 sm:px-6 pb-20 pt-20"');
   });
 
+  it("states the trust model on the page and in llms-full.txt", async () => {
+    const en = decode(await (await call("/en")).text());
+    expect(en).toContain('id="trust"');
+    expect(en).toContain("You trust someone. Choose who.");
+    // Self-hosting is the answer, so its card is the emphasised one.
+    expect(en).toContain("highlight-card border-primary/50!");
+    // The hero points at it before a visitor pastes anything in.
+    expect(en).toContain('href="#trust"');
+    expect(en).toContain("Don't trust a proxy with secrets");
+
+    const zh = await (await call("/zh")).text();
+    expect(zh).toContain("你总得信任某一方");
+    expect(zh).toContain('href="#trust"');
+
+    const full = await (await call("/llms-full.txt")).text();
+    expect(full).toContain("## Trust model");
+    expect(full).toContain("man in the middle");
+  });
+
   it("locks the structured data against a </script> injection", async () => {
     const html = await (await call("/en")).text();
     const match = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
