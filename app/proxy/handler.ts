@@ -15,6 +15,7 @@ import {
   effectiveInjection,
   hasInjection,
   hostAllowed,
+  responseRulesFingerprint,
   varMap,
 } from "./inject.js";
 import {
@@ -281,11 +282,15 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     // R2 cache for GET. Runs BEFORE the rate limit so cheap cache hits don't
     // burn D1 writes/reads (and don't consume the caller's quota). Keys with
     // header rules are excluded by shouldBypassCache (personalized requests).
+    // Response rules do not bypass the cache — they change what the caller
+    // receives, so they go into the cache key instead (two keys with different
+    // rules must never share an entry).
+    const responseFingerprint = responseRulesFingerprint(injection.responseHeaders, vars);
     const bypass = shouldBypassCache(c.req.raw, reqUrl, row);
     let cacheKey: string | null = null;
     if (!bypass) {
       try {
-        cacheKey = await cacheKeyForUrl(fetchUrl.toString());
+        cacheKey = await cacheKeyForUrl(fetchUrl.toString(), responseFingerprint);
         const hit = await getCached(c.env.CACHE_BUCKET, cacheKey);
         if (hit) {
           cached = true;
@@ -453,6 +458,16 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       }
       if (!upstream) throw new ProxyError(502, "Upstream fetch failed");
 
+      // Response rules are scoped by the host that actually answered (the last
+      // hop), not by the URL the caller asked for.
+      const finalHost = currentUrl.hostname;
+
+      /** Apply the key's response header rules + report them for the log flag. */
+      const applyResponseRules = (headers: Headers): void => {
+        if (injection.responseHeaders.length === 0) return;
+        if (applyHeaderRules(headers, injection.responseHeaders, vars, finalHost) > 0) injected = true;
+      };
+
       // Subdomain mode serves the target under the proxy's hostname, so a
       // `Location` pointing back at the target origin must be rewritten to a
       // relative path — absolute, it would resolve against the proxy host and
@@ -480,6 +495,9 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         });
         if (stoppedRedirect) streamHeaders.set("location", stoppedRedirect);
         rewriteSubdomainLocation(streamHeaders);
+        // Streamed responses get the same rules as buffered ones — before
+        // corx's own markers, so a rule can never clobber them.
+        applyResponseRules(streamHeaders);
         streamHeaders.set("X-Corx-Cache", "MISS");
         streamHeaders.set("X-Corx-Target", host);
         streamHeaders.set("X-Corx-Latency-Ms", String(Date.now() - started));
@@ -550,6 +568,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       });
       if (stoppedRedirect) resHeaders.set("location", stoppedRedirect);
       rewriteSubdomainLocation(resHeaders);
+      applyResponseRules(resHeaders);
       resHeaders.set("X-Corx-Cache", "MISS");
       resHeaders.set("X-Corx-Target", host);
       resHeaders.set("X-Corx-Latency-Ms", String(Date.now() - started));
@@ -557,7 +576,11 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       // Store the GET 200 in R2 (fire-and-forget) — only when upstream allows it.
       if (cacheable && cacheKey) {
         const ttl = ttlSeconds(c.env, reqUrl, row);
-        c.executionCtx.waitUntil(putCached(c.env.CACHE_BUCKET, cacheKey, upstream, resBody, ttl).catch(() => undefined));
+        // Store the headers the caller actually received (rules applied) — the
+        // cache key already carries those rules, so a HIT reproduces this run
+        // header-for-header instead of resurrecting the upstream's.
+        const stored = new Response(null, { status: upstream.status, headers: resHeaders });
+        c.executionCtx.waitUntil(putCached(c.env.CACHE_BUCKET, cacheKey, stored, resBody, ttl).catch(() => undefined));
       }
 
       finish(upstream.status);

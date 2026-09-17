@@ -885,6 +885,8 @@ function injectionPreview(result: PlaygroundResult): string {
   if (inj.vars.length > 0) lines.push(`variables: ${inj.vars.join(", ")} (values hidden)`);
   if (inj.headerLines.length > 0) lines.push("", ...inj.headerLines.map((l) => (l.startsWith("@") ? l : `  ${l}`)));
   if (inj.paramLines.length > 0) lines.push("", ...inj.paramLines.map((l) => (l.startsWith("@") ? l : `  ${l}`)));
+  if (inj.responseLines.length > 0)
+    lines.push("", "response headers (on the way back):", ...inj.responseLines.map((l) => (l.startsWith("@") ? l : `  ${l}`)));
   if (inj.effectiveUrl) lines.push("", `effective URL: ${inj.effectiveUrl}`);
   return lines.join("\n");
 }

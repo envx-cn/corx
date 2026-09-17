@@ -12,6 +12,14 @@
  *                  @@                 (@ alone: back to key-level scope)
  *   Query rules    name = value
  *                  !name
+ *   Response       Name: value        (same grammar as header rules, but
+ *   headers        !Name               applied to the response on the way back)
+ *
+ * Response header rules are for what upstream sends the *caller*: stripping
+ * `X-Frame-Options` / `Content-Security-Policy` for a host you control is the
+ * documented embed recipe. They are matched by the host of the response's final
+ * hop, and their resolved form is part of the cache key (handler.ts), so one
+ * key's rewritten response can never be served from another key's cache entry.
  *
  * Rules always win over client input: a `set` overrides whatever the caller
  * sent, a `remove` drops it — so a client can never spoof an injected header.
@@ -44,6 +52,8 @@ export interface InjectionParts {
   vars: InjectionVar[];
   headers: InjectionRule[];
   params: InjectionRule[];
+  /** Rules applied to the proxied response (embed recipe, header cleanup). */
+  responseHeaders: InjectionRule[];
   /** Key-level host allowlist. Empty = unrestricted (no injection allowed). */
   hosts: string[];
 }
@@ -52,6 +62,7 @@ export interface StoredInjectionFields {
   vars: string;
   headerRules: string;
   paramRules: string;
+  responseRules: string;
   allowedHosts: string | null;
 }
 
@@ -60,6 +71,7 @@ export interface InjectionRow {
   vars?: string | null;
   header_rules?: string | null;
   param_rules?: string | null;
+  response_rules?: string | null;
   allowed_hosts?: string | null;
 }
 
@@ -98,6 +110,45 @@ export const HEADER_BLOCKLIST = new Set([
 
 /** Query params corx owns; a target's own params must never shadow them. */
 const PARAM_BLOCKLIST = new Set<string>(CONTROL_PARAMS);
+
+/**
+ * Response headers a rule must never touch: corx owns them, or the runtime
+ * does. Everything else — `X-Frame-Options`, `Content-Security-Policy`,
+ * `Cross-Origin-*`, `Cache-Control`, `Location`, `Content-Type` — is the
+ * operator's to set or strip, which is the point of the feature.
+ */
+export const RESPONSE_HEADER_BLOCKLIST = new Set([
+  // Framing/transfer: the body we return is already decoded and framed.
+  "content-length",
+  "content-encoding",
+  "transfer-encoding",
+  "connection",
+  "keep-alive",
+  "trailer",
+  "upgrade",
+  // Upstream cookies are never forwarded (handler.ts strips them); a rule must
+  // not re-attach them.
+  "set-cookie",
+  // CORS is the proxy's own contract with the caller.
+  "access-control-allow-origin",
+  "access-control-allow-credentials",
+  "access-control-allow-headers",
+  "access-control-allow-methods",
+  "access-control-expose-headers",
+  "access-control-max-age",
+  // Our markers, metering and the crawler directive: they describe this hop,
+  // not the upstream, and the caller's tooling reads them.
+  "x-corx-cache",
+  "x-corx-target",
+  "x-corx-latency-ms",
+  "x-robots-tag",
+]);
+
+/** Namespaces the proxy writes after the rules have run (see handler.ts). */
+function isProxyOwnedResponseHeader(name: string): boolean {
+  const k = name.toLowerCase();
+  return k.startsWith("x-corx-") || k.startsWith("x-ratelimit-");
+}
 
 // ---------------------------------------------------------------------------
 // Input parsing (save time)
@@ -252,14 +303,17 @@ export function parseHostsInput(input: unknown): string[] {
   return out;
 }
 
-function pushRule(out: InjectionRule[], rule: InjectionRule, kind: string, where: string): void {
+function pushRule(out: InjectionRule[], rule: InjectionRule, kind: RuleKind, where: string): void {
   const name = rule.name.trim();
   if (rule.action === "set") {
-    if (kind === "header") {
+    if (kind === "header" || kind === "response") {
       if (!HEADER_NAME_RE.test(name) || name.length > MAX_NAME) {
         throw new ProxyError(400, `${where}: invalid header name "${name}"`);
       }
       if (HEADER_BLOCKLIST.has(name.toLowerCase())) {
+        throw new ProxyError(400, `${where}: header "${name}" is managed by the proxy and cannot be set`);
+      }
+      if (kind === "response" && (RESPONSE_HEADER_BLOCKLIST.has(name.toLowerCase()) || isProxyOwnedResponseHeader(name))) {
         throw new ProxyError(400, `${where}: header "${name}" is managed by the proxy and cannot be set`);
       }
     } else {
@@ -274,8 +328,11 @@ function pushRule(out: InjectionRule[], rule: InjectionRule, kind: string, where
     if (!value) throw new ProxyError(400, `${where}: a value is required for "${name}" (use !${name} to remove it)`);
     assertNoBreaks(value, `${where} (${name})`);
   } else {
-    if (kind === "header" && !HEADER_NAME_RE.test(name)) {
+    if ((kind === "header" || kind === "response") && !HEADER_NAME_RE.test(name)) {
       throw new ProxyError(400, `${where}: invalid header name "${name}"`);
+    }
+    if (kind === "response" && (RESPONSE_HEADER_BLOCKLIST.has(name.toLowerCase()) || isProxyOwnedResponseHeader(name))) {
+      throw new ProxyError(400, `${where}: header "${name}" is managed by the proxy and cannot be removed`);
     }
     if (kind === "param" && !PARAM_NAME_RE.test(name)) {
       throw new ProxyError(400, `${where}: invalid query param name "${name}"`);
@@ -291,12 +348,11 @@ function pushRule(out: InjectionRule[], rule: InjectionRule, kind: string, where
  * Parse header/query rules. `varNames` is the set of variables the rules may
  * reference — unknown `${X}` is rejected at save time, not at 3am in prod.
  */
-export function parseRulesInput(
-  input: unknown,
-  kind: "header" | "param",
-  varNames: Set<string>,
-): InjectionRule[] {
-  const label = kind === "header" ? "Header rules" : "Query rules";
+export type RuleKind = "header" | "param" | "response";
+
+export function parseRulesInput(input: unknown, kind: RuleKind, varNames: Set<string>): InjectionRule[] {
+  const label = kind === "header" ? "Header rules" : kind === "response" ? "Response header rules" : "Query rules";
+  const headerLike = kind !== "param";
   const out: InjectionRule[] = [];
   let currentHosts: string[] | null = null;
 
@@ -320,7 +376,7 @@ export function parseRulesInput(
         pushRule(out, { action: "remove", name: t.slice(1).trim(), ...scope(currentHosts) }, kind, where);
         return;
       }
-      if (kind === "header") {
+      if (headerLike) {
         const colon = t.indexOf(":");
         if (colon < 0) throw lineError(label, i, 'expected "Name: value" or "!Name"');
         const value = t.slice(colon + 1).trim();
@@ -370,8 +426,13 @@ function scope(hosts: string[] | null): { hosts?: string[] } {
 // Validation + storage (save time)
 // ---------------------------------------------------------------------------
 
-export function hasInjection(parts: Pick<InjectionParts, "vars" | "headers" | "params">): boolean {
-  return parts.vars.length > 0 || parts.headers.length > 0 || parts.params.length > 0;
+export function hasInjection(parts: Pick<InjectionParts, "vars" | "headers" | "params" | "responseHeaders">): boolean {
+  return (
+    parts.vars.length > 0 ||
+    parts.headers.length > 0 ||
+    parts.params.length > 0 ||
+    parts.responseHeaders.length > 0
+  );
 }
 
 /** An injecting key MUST declare a host allowlist (confused-deputy guard). */
@@ -389,6 +450,7 @@ export function serializeInjection(parts: InjectionParts): StoredInjectionFields
     vars: JSON.stringify(parts.vars),
     headerRules: JSON.stringify(parts.headers),
     paramRules: JSON.stringify(parts.params),
+    responseRules: JSON.stringify(parts.responseHeaders),
     allowedHosts: parts.hosts.length ? parts.hosts.join(", ") : null,
   };
 }
@@ -399,7 +461,7 @@ export function varsToText(vars: InjectionVar[]): string {
 }
 
 /** Editor text for rules, re-emitting `@hosts` sections where they change. */
-export function rulesToText(rules: InjectionRule[], kind: "header" | "param"): string {
+export function rulesToText(rules: InjectionRule[], kind: RuleKind): string {
   const lines: string[] = [];
   let current: string | null = null;
   let first = true;
@@ -412,7 +474,7 @@ export function rulesToText(rules: InjectionRule[], kind: "header" | "param"): s
     }
     first = false;
     if (rule.action === "remove") lines.push(`!${rule.name}`);
-    else lines.push(kind === "header" ? `${rule.name}: ${rule.value ?? ""}` : `${rule.name} = ${rule.value ?? ""}`);
+    else lines.push(kind === "param" ? `${rule.name} = ${rule.value ?? ""}` : `${rule.name}: ${rule.value ?? ""}`);
   }
   return lines.join("\n");
 }
@@ -436,6 +498,7 @@ export function readStoredInjection(row: InjectionRow | null | undefined): Injec
     vars: safeJson<InjectionVar[]>(row?.vars, []),
     headers: safeJson<InjectionRule[]>(row?.header_rules, []),
     params: safeJson<InjectionRule[]>(row?.param_rules, []),
+    responseHeaders: safeJson<InjectionRule[]>(row?.response_rules, []),
     hosts: splitHosts(row?.allowed_hosts),
   };
 }
@@ -449,7 +512,7 @@ export function readStoredInjection(row: InjectionRow | null | undefined): Injec
 export function effectiveInjection(row: InjectionRow | null | undefined): InjectionParts {
   const stored = readStoredInjection(row);
   if (hasInjection(stored) && stored.hosts.length === 0) {
-    return { ...stored, vars: [], headers: [], params: [] };
+    return { ...stored, vars: [], headers: [], params: [], responseHeaders: [] };
   }
   return stored;
 }
@@ -510,8 +573,10 @@ export function applyParamRules(url: URL, rules: InjectionRule[], vars: Map<stri
 }
 
 /**
- * Apply header rules to the outgoing headers. Removes run before sets so the
- * result doesn't depend on line order, and rules always win over the client.
+ * Apply header rules to a Headers object. Removes run before sets so the result
+ * doesn't depend on line order. Used for both directions: the outgoing request
+ * headers (where rules win over the client) and the proxied response headers
+ * (`responseHeaders`, where the proxy's own markers are written afterwards).
  * Returns how many rules matched (for the `injected` log flag).
  */
 export function applyHeaderRules(
@@ -534,4 +599,25 @@ export function applyHeaderRules(
     applied++;
   }
   return applied;
+}
+
+/**
+ * A stable fingerprint of what a key's response rules will do, for the cache
+ * key: two keys whose rules resolve to different headers must never share an
+ * entry (one key's stripped `X-Frame-Options` is not another key's response).
+ *
+ * Resolved, not raw: `${VAR}` is substituted first, so rotating a variable's
+ * value moves the entry — and the whole rule list is used, unfiltered by host,
+ * because the cache key is computed before a redirect chain tells us the final
+ * host. Empty string when the key has no response rules, which keeps the key
+ * shape (and every existing entry) unchanged.
+ */
+export function responseRulesFingerprint(rules: InjectionRule[], vars: Map<string, string>): string {
+  if (rules.length === 0) return "";
+  const parts = rules.map((r) =>
+    [r.action, r.name.toLowerCase(), r.action === "set" ? substitute(r.value ?? "", vars) : "", (r.hosts ?? []).join(",")]
+      .join("\u0000"),
+  );
+  parts.sort();
+  return parts.join("\u0001");
 }

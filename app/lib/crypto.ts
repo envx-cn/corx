@@ -130,7 +130,7 @@ export async function decryptRowInjection<T extends InjectionRow>(kek: string | 
   const res = await decryptVars(kek, parts.vars);
   if (!res.ok) {
     console.error("corx: injected variables could not be decrypted — dropping injection (check INJECTION_KEK)");
-    return { ...row, vars: "[]", header_rules: "[]", param_rules: "[]" };
+    return { ...row, vars: "[]", header_rules: "[]", param_rules: "[]", response_rules: "[]" };
   }
   return { ...row, vars: JSON.stringify(res.vars) };
 }

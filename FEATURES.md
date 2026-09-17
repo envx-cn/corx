@@ -26,7 +26,7 @@ map, not the manual.
 | Request hygiene | Hop-by-hop + proxy-owned headers stripped (`Host`, `Connection`, `Upgrade`, `TE`, `X-Forwarded-For`, `CF-*`, `Origin`, `Referer`, …); `X-Forwarded-For` + `X-Proxied-By: corx` added; upstream asked for `accept-encoding: identity`. |
 | Upstream request | Buffered body (early `Content-Length` check, then a buffered cap; a body that fails to read is a 400 — never forwarded empty), shared `AbortController` bounded by `TIMEOUT_MS`; one 300 ms retry on transient `fetch` failure for GET/HEAD only (idempotent methods). |
 | Redirects | `follow` by default; `manual` whenever a key injects headers/rules or declares allowed hosts (a cross-origin redirect must not carry custom secret headers). In-scope hops are re-validated (blocklist + DNS) and re-scoped per rule; a hop outside the allowlist is returned to the caller with an absolute `Location` and never fetched; max 5 hops. Method/body follow the fetch spec: 301/302 rewrite `POST`→`GET`, 303 rewrites every method but `GET`/`HEAD`, both dropping the body. In subdomain mode a `Location` on the target origin is rewritten relative (buffered and streamed paths alike) so the next hop stays inside the proxy. |
-| Response hygiene | `content-encoding`, `content-length`, hop-by-hop and `set-cookie` stripped (lean set on streamed responses so Range/206 survives). |
+| Response hygiene | `content-encoding`, `content-length`, hop-by-hop and `set-cookie` stripped (lean set on streamed responses so Range/206 survives); per-key **response header rules** then set/remove headers for the caller (the embed recipe), before corx's own markers are written. |
 | Response markers | `X-Corx-Cache: HIT/MISS`, `X-Corx-Target`, `X-Corx-Latency-Ms` on every proxy response. |
 | Streaming | Responses > 5 MiB (`CACHE_MAX_BYTES`) or non-cacheable stream straight through; a stream can never OOM the Worker (`app/proxy/cache.ts#readBounded`). |
 | Media | Range requests pass through, `206`/`Content-Range`/`Accept-Ranges` preserved, seeking works in `<video>`/`<audio>`; Range always bypasses the cache. |
@@ -158,6 +158,14 @@ Files: `app/proxy/cache.ts`, `app/proxy/handler.ts`.
   overwriting a secret they can't see; values written before the KEK existed are
   plaintext and re-encrypted on the next save.
 - Manual redirect handling is force-enabled for injecting keys (see §1).
+- **Response header rules** ride the same key: `Name: value`, `!Name` and
+  `@hosts` scoping, applied to what the caller receives on both the buffered and
+  the streamed path, matched by the host of the response's final hop. They are
+  the documented embed recipe (`!X-Frame-Options`, `!Content-Security-Policy`).
+  Headers corx owns — framing/transfer, `Set-Cookie`, `Access-Control-*`,
+  `X-Robots-Tag`, `X-Corx-*`, rate-limit/quota — are rejected at save time, and
+  their *resolved* form is part of the cache key (`responseRulesFingerprint`),
+  so one key's stripped response can never be served as another key's.
 
 Files: `app/proxy/inject.ts`, `app/lib/admin.ts`, `app/routes/console/keys.tsx`,
 `app/islands/key-panel.tsx`.

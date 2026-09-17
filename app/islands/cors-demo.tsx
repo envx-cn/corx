@@ -57,6 +57,8 @@ export interface CorsDemoI18n {
   mediaHint: string;
   frameHint: string;
   frameBlocked: string;
+  frameBlockHint: string;
+  frameBlockDoc: string;
   binary: string;
   array: string;
   object: string;

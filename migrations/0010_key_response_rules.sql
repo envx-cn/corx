@@ -1,0 +1,12 @@
+-- Per-key response header rules: headers corx sets or removes on the way *back*
+-- to the caller, with the same grammar as the request-side rules (`Name: value`,
+-- `!Name`, `@hosts` — see app/proxy/inject.ts).
+--
+-- The case that asked for them: a proxied HTML document that sets
+-- `X-Frame-Options` or `Content-Security-Policy: frame-ancestors` cannot be
+-- embedded in an iframe, and an operator may need to strip those for a host
+-- they control. Rules are per key, and their resolved form is part of the cache
+-- key, so one key's stripped response can never be served to another key.
+--
+-- '[]' = no rules (the default for every existing key).
+ALTER TABLE api_keys ADD COLUMN response_rules TEXT NOT NULL DEFAULT '[]';

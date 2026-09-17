@@ -165,6 +165,7 @@ describe("serialize round-trip", () => {
       vars: VARS,
       headers: parseRulesInput("Authorization: Bearer ${TOKEN}", "header", NAMES),
       params: parseRulesInput("api_key = ${TOKEN}", "param", NAMES),
+      responseHeaders: parseRulesInput("!X-Frame-Options", "response", NAMES),
       hosts: ["api.vendor.com"],
     };
     const stored = serializeInjection(parts);
@@ -172,6 +173,7 @@ describe("serialize round-trip", () => {
       vars: stored.vars,
       header_rules: stored.headerRules,
       param_rules: stored.paramRules,
+      response_rules: stored.responseRules,
       allowed_hosts: stored.allowedHosts,
     };
     expect(stored.allowedHosts).toBe("api.vendor.com");
@@ -181,7 +183,7 @@ describe("serialize round-trip", () => {
   });
 
   it("requires a host allowlist once anything is injected", () => {
-    const base = { vars: [], headers: [], params: [] };
+    const base = { vars: [], headers: [], params: [], responseHeaders: [] };
     expect(() => assertInjectionParts({ ...base, hosts: [] })).not.toThrow();
     expect(() => assertInjectionParts({ ...base, vars: VARS, hosts: [] })).toThrowError(/allowed target host/);
     expect(() => assertInjectionParts({ ...base, params: [{ action: "set", name: "x", value: "1" }], hosts: ["a.example"] })).not.toThrow();

@@ -441,7 +441,7 @@ export interface KeyRow {
 export async function queryKeys(db: D1Database): Promise<KeyRow[]> {
   const rows = await db
     .prepare(
-      "SELECT id, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, created_at, revoked_at FROM api_keys ORDER BY created_at DESC",
+      "SELECT id, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, response_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, created_at, revoked_at FROM api_keys ORDER BY created_at DESC",
     )
     .all<KeyRow>();
   return rows.results;
@@ -451,7 +451,7 @@ export async function queryKeys(db: D1Database): Promise<KeyRow[]> {
 export async function queryKeyById(db: D1Database, id: string, kek?: string): Promise<ApiKeyRow | null> {
   const row = await db
     .prepare(
-      "SELECT id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, created_at, revoked_at FROM api_keys WHERE id = ?",
+      "SELECT id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, response_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, created_at, revoked_at FROM api_keys WHERE id = ?",
     )
     .bind(id)
     .first<ApiKeyRow>();
@@ -489,6 +489,8 @@ export interface KeyInput {
   vars?: unknown;
   headerRules?: unknown;
   paramRules?: unknown;
+  /** Response header rules: what the caller receives back (embed recipe…). */
+  responseRules?: unknown;
   allowedHosts?: unknown;
 }
 
@@ -533,7 +535,13 @@ function assertPublicPolicy(
   dailyLimitTotal: number | null,
 ): void {
   if (tier !== "public") return;
-  if (injection.vars.length || injection.headers.length || injection.params.length || injection.hosts.length) {
+  if (
+    injection.vars.length ||
+    injection.headers.length ||
+    injection.params.length ||
+    injection.responseHeaders.length ||
+    injection.hosts.length
+  ) {
     throw new ProxyError(400, "Public keys cannot inject upstream variables or rules");
   }
   if (ipCheck === 0 || dnsCheck === 0) {
@@ -551,7 +559,7 @@ function assertPublicPolicy(
  * variable that no longer exists.
  */
 function buildInjection(
-  input: Pick<KeyInput, "vars" | "headerRules" | "paramRules" | "allowedHosts">,
+  input: Pick<KeyInput, "vars" | "headerRules" | "paramRules" | "responseRules" | "allowedHosts">,
   previous: InjectionParts,
 ): InjectionParts {
   const vars = input.vars === undefined ? previous.vars : parseVarsInput(input.vars, previous.vars);
@@ -560,9 +568,13 @@ function buildInjection(
     input.headerRules === undefined ? previous.headers : parseRulesInput(input.headerRules, "header", names);
   const params =
     input.paramRules === undefined ? previous.params : parseRulesInput(input.paramRules, "param", names);
+  const responseHeaders =
+    input.responseRules === undefined
+      ? previous.responseHeaders
+      : parseRulesInput(input.responseRules, "response", names);
   const hosts = input.allowedHosts === undefined ? previous.hosts : parseHostsInput(input.allowedHosts);
 
-  for (const rule of [...headers, ...params]) {
+  for (const rule of [...headers, ...params, ...responseHeaders]) {
     for (const ref of collectVarRefs(rule.value ?? "")) {
       if (!names.has(ref)) {
         throw new ProxyError(400, `Rule "${rule.name}" references \${${ref}}, which is not a configured variable`);
@@ -570,7 +582,7 @@ function buildInjection(
     }
   }
 
-  const parts = { vars, headers, params, hosts };
+  const parts = { vars, headers, params, responseHeaders, hosts };
   assertInjectionParts(parts);
   return parts;
 }
@@ -633,7 +645,7 @@ export async function createApiKey(db: D1Database, input: KeyInput, kek?: string
   const dailyLimitPerOrigin = parseDailyLimit(input.dailyLimitPerOrigin, "per-origin");
   const dailyLimitPerHost = parseDailyLimit(input.dailyLimitPerHost, "per-host");
   const dailyLimitTotal = parseDailyLimit(input.dailyLimitTotal, "total");
-  const injection = buildInjection(input, { vars: [], headers: [], params: [], hosts: [] });
+  const injection = buildInjection(input, { vars: [], headers: [], params: [], responseHeaders: [], hosts: [] });
   // Values are encrypted at rest (names/rules stay readable); no KEK = plaintext passthrough.
   const stored = serializeInjection({ ...injection, vars: await encryptVars(kek, injection.vars) });
   const grants = keylessGrants(keyless, allowedOrigins ?? "", ipCheck, dnsCheck);
@@ -642,7 +654,7 @@ export async function createApiKey(db: D1Database, input: KeyInput, kek?: string
 
   await db
     .prepare(
-      "INSERT INTO api_keys (id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO api_keys (id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, response_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(
       id,
@@ -657,6 +669,7 @@ export async function createApiKey(db: D1Database, input: KeyInput, kek?: string
       stored.vars,
       stored.headerRules,
       stored.paramRules,
+      stored.responseRules,
       stored.allowedHosts,
       keyless ? 1 : 0,
       tier,
@@ -690,6 +703,8 @@ export interface KeyUpdate {
   vars?: unknown;
   headerRules?: unknown;
   paramRules?: unknown;
+  /** Response header rules (`Name: value`, `!Name`, `@hosts`). */
+  responseRules?: unknown;
   allowedHosts?: unknown;
 }
 
@@ -698,6 +713,7 @@ interface CurrentKey {
   vars: string | null;
   header_rules: string | null;
   param_rules: string | null;
+  response_rules: string | null;
   allowed_hosts: string | null;
   keyless: number;
   allowed_origins: string | null;
@@ -714,6 +730,7 @@ export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate
     update.vars !== undefined ||
     update.headerRules !== undefined ||
     update.paramRules !== undefined ||
+    update.responseRules !== undefined ||
     update.allowedHosts !== undefined;
   const touchesAuth =
     update.keyless !== undefined ||
@@ -732,7 +749,7 @@ export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate
   if (touchesInjection || touchesAuth || touchesLimits) {
     current = await db
       .prepare(
-        "SELECT vars, header_rules, param_rules, allowed_hosts, keyless, allowed_origins, ip_check, dns_check, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total FROM api_keys WHERE id = ?",
+        "SELECT vars, header_rules, param_rules, response_rules, allowed_hosts, keyless, allowed_origins, ip_check, dns_check, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total FROM api_keys WHERE id = ?",
       )
       .bind(id)
       .first<CurrentKey>();
@@ -781,8 +798,8 @@ export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate
   if (touchesInjection) {
     parts = buildInjection(update, readStoredInjection(current));
     const stored = serializeInjection({ ...parts, vars: await encryptVars(kek, parts.vars) });
-    sets.push("vars = ?", "header_rules = ?", "param_rules = ?", "allowed_hosts = ?");
-    values.push(stored.vars, stored.headerRules, stored.paramRules, stored.allowedHosts);
+    sets.push("vars = ?", "header_rules = ?", "param_rules = ?", "response_rules = ?", "allowed_hosts = ?");
+    values.push(stored.vars, stored.headerRules, stored.paramRules, stored.responseRules, stored.allowedHosts);
   }
   if (update.tier !== undefined) {
     sets.push("tier = ?");
