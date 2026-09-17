@@ -422,8 +422,15 @@ Files: `app/routes/index.ts`, `_landing.tsx`, `_docs.tsx`, `docs.ts`,
   working as token sessions.
 - Dev login: token form on `/console/login`; the same identities guard
   `/api/*`.
+- **CSRF**: every mutating console form (keys, blocklist, logout) carries a
+  signed, session-bound token (`app/lib/csrf.ts`, HMAC over the session cookie
+  — or the Access email for cookie-less Access sessions), and the playground
+  run sends the same value as `X-Corx-Csrf`. The console middleware verifies
+  it before the handler and answers `403` on the console error page (JSON for
+  the playground call) when it is missing or forged; the login form is exempt
+  because there is no session to bind to yet.
 
-Files: `app/lib/access.ts`, `app/lib/session.ts`,
+Files: `app/lib/access.ts`, `app/lib/session.ts`, `app/lib/csrf.ts`,
 `app/routes/console/_middleware.ts`, `login.tsx`, `logout.tsx`.
 
 ## 11. Operations & tooling
@@ -509,16 +516,13 @@ flagged has been fixed below.
 
 1. **HLS/DASH playlists** with absolute segment URLs break out of the proxy;
    relative URLs (or subdomain mode) work.
-2. **Console forms have no CSRF token.** `SameSite=Lax` on the session cookie
-   blocks cross-site POSTs in current browsers; a token would make this
-   explicit.
-3. **Rate limiting is fixed-window** (D1-backed, fail-open) — simple and
+2. **Rate limiting is fixed-window** (D1-backed, fail-open) — simple and
    cross-isolate, but a burst can straddle a window boundary.
-4. **Public-tier quotas fail open too.** A D1 write error means the request is
+3. **Public-tier quotas fail open too.** A D1 write error means the request is
    allowed; the total cap is sized under the write budget so that state should
    not arise from proxied traffic, but it is not a hard guarantee. A public key
    also has no whitelist or exception process — by design.
-5. **The landing page reads D1 once per view** when `PUBLIC_KEY` is set (to
+4. **The landing page reads D1 once per view** when `PUBLIC_KEY` is set (to
    render the enforced caps). Cheap, but it is a real read on a page that is
    otherwise static.
 

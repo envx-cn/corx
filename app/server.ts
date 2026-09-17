@@ -117,6 +117,7 @@ base.onError((err, c) => {
           path: reqUrl.pathname,
           message: devMessage,
           user: consoleUser,
+          csrfToken: c.get("csrfToken") ?? "",
           locale: consoleLocale(c),
           t: consoleT(c),
         })}`,

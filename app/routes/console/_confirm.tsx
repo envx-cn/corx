@@ -21,6 +21,10 @@ export interface ConfirmI18n {
  * which would hide the dialog even in the top layer.
  *
  * Cancel/backdrop are `<form method="dialog">`, so they close without JS.
+ *
+ * The real submit form carries the session-bound CSRF token; render the dialog
+ * without one (no session, no secret) and the POST is refused — the safe side
+ * of a misconfigured deployment.
  */
 let seq = 0;
 
@@ -30,6 +34,8 @@ export function ConfirmButton(props: {
   triggerClass: string;
   confirmClass?: string;
   i18n: ConfirmI18n;
+  /** Session-bound CSRF token (omit only where no session exists). */
+  csrf?: string;
 }) {
   seq += 1;
   const id = `corx-confirm-${seq}`;
@@ -40,7 +46,9 @@ export function ConfirmButton(props: {
       <button type="button" class={props.triggerClass} data-corx-confirm={id}>
         {props.label}
       </button>
-      <form id={formId} method="post" action={props.action} class="contents" />
+      <form id={formId} method="post" action={props.action} class="contents">
+        {props.csrf ? <input type="hidden" name="csrf" value={props.csrf} /> : null}
+      </form>
       <dialog id={id} class="modal" aria-labelledby={titleId}>
         <div class="modal-box max-w-sm">
           <h3 id={titleId} class="text-lg font-semibold">

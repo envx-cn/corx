@@ -15,7 +15,7 @@ const app = new Hono<{ Bindings: Env }>({ strict: false });
 
 app.get("/", async (c) => {
   const t = consoleT(c);
-  return c.render(<KeysContent keys={await queryKeys(c.env.DB)} newKey={null} t={t} />, {
+  return c.render(<KeysContent keys={await queryKeys(c.env.DB)} newKey={null} csrf={c.get("csrfToken") ?? ""} t={t} />, {
     title: t("console.title.keys"),
   });
 });
@@ -44,13 +44,28 @@ app.post("/", async (c) => {
       responseRules: values.responseRules,
     }, c.env.INJECTION_KEK);
     // The raw key is shown once — re-render with it, don't redirect.
-    return c.render(<KeysContent keys={await queryKeys(c.env.DB)} newKey={{ id, key, name: values.name }} t={t} />, {
-      title: t("console.title.keys"),
-    });
+    return c.render(
+      <KeysContent
+        keys={await queryKeys(c.env.DB)}
+        newKey={{ id, key, name: values.name }}
+        csrf={c.get("csrfToken") ?? ""}
+        t={t}
+      />,
+      {
+        title: t("console.title.keys"),
+      },
+    );
   } catch (err) {
     const error = err instanceof ProxyError ? err.message : t("console.keys.createFailed");
     return c.render(
-      <KeysContent keys={await queryKeys(c.env.DB)} newKey={null} error={error} createDraft={values} t={t} />,
+      <KeysContent
+        keys={await queryKeys(c.env.DB)}
+        newKey={null}
+        error={error}
+        createDraft={values}
+        csrf={c.get("csrfToken") ?? ""}
+        t={t}
+      />,
       { title: t("console.title.keys") },
     );
   }
@@ -83,7 +98,14 @@ app.post("/:id", async (c) => {
   } catch (err) {
     const error = err instanceof ProxyError ? err.message : t("console.keys.saveFailed");
     return c.render(
-      <KeysContent keys={await queryKeys(c.env.DB)} newKey={null} error={error} editDraft={{ id, values }} t={t} />,
+      <KeysContent
+        keys={await queryKeys(c.env.DB)}
+        newKey={null}
+        error={error}
+        editDraft={{ id, values }}
+        csrf={c.get("csrfToken") ?? ""}
+        t={t}
+      />,
       { title: t("console.title.keys") },
     );
   }
@@ -104,6 +126,7 @@ app.post("/:id/delete", async (c) => {
         newKey={null}
         error={error}
         editDraft={key ? { id, values: rowValues(key) } : undefined}
+        csrf={c.get("csrfToken") ?? ""}
         t={t}
       />,
       { title: t("console.title.keys") },
@@ -250,6 +273,8 @@ function KeysContent(props: {
   createDraft?: KeyFormValues;
   /** Key + values to re-open the edit panel with (a save or delete failed). */
   editDraft?: { id: string; values: KeyFormValues };
+  /** Session-bound CSRF token for every POST form on the page. */
+  csrf: string;
   t: TFunc;
 }) {
   const { t } = props;
@@ -268,6 +293,7 @@ function KeysContent(props: {
           action="/console/keys"
           values={props.createDraft}
           open={props.createDraft != null}
+          csrf={props.csrf}
           labels={labels}
         />
       </div>
@@ -346,6 +372,7 @@ function KeysContent(props: {
                       open={props.editDraft?.id === k.id}
                       deleteAction={`/console/keys/${k.id}/delete`}
                       keyName={k.name}
+                      csrf={props.csrf}
                       labels={labels}
                     />
                   </div>

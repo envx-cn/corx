@@ -10,7 +10,7 @@ import type { Locale, TFunc } from "../../lib/i18n/locale.js";
  * language switch, and the user menu on the right (Profile / Log out). The language switch sets the corx_lang cookie via ?lang=… (handled by
  * the console _middleware) and keeps the current page.
  */
-export function Topbar(props: { title: string; user: string; locale: Locale; t: TFunc }) {
+export function Topbar(props: { title: string; user: string; locale: Locale; t: TFunc; csrf?: string }) {
   const { t } = props;
   return (
     <div class="navbar bg-base-200 border-b border-base-300 sticky top-0 z-30 min-h-16 px-4 gap-2">
@@ -63,6 +63,7 @@ export function Topbar(props: { title: string; user: string; locale: Locale; t: 
             <li>
               <ConfirmButton
                 action="/console/logout"
+                csrf={props.csrf}
                 label={t("console.topbar.logout")}
                 // Restate the menu-item metrics explicitly (menu-sm: px-2.5 py-1,
                 // the theme's radius-field) so the trigger keeps them even if

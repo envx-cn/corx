@@ -131,6 +131,8 @@ export default function KeyPanel(props: {
   open?: boolean;
   /** Delete endpoint — set on the edit panel to render the danger zone. */
   deleteAction?: string;
+  /** Session-bound CSRF token, rendered into both POST forms. */
+  csrf?: string;
   /** Current name of the key (delete confirmation). */
   keyName?: string;
 }) {
@@ -184,6 +186,7 @@ export default function KeyPanel(props: {
                 the safe defaults (both checks on) instead of an absent -
                 unchecked - field silently turning the guards off. */}
             <input type="hidden" name="checks" value="1" />
+            <input type="hidden" name="csrf" value={props.csrf ?? ""} />
             <div class="grid gap-x-4 gap-y-3 sm:grid-cols-2">
               <Field label={labels.name}>
                 <input
@@ -385,6 +388,7 @@ export default function KeyPanel(props: {
             </h3>
             <p class="mt-2 text-sm text-base-content/75">{labels.deleteHint.replace("{name}", props.keyName)}</p>
             <form method="post" action={props.deleteAction} class="mt-4">
+              <input type="hidden" name="csrf" value={props.csrf ?? ""} />
               <input
                 ref={confirmInputRef}
                 name="confirmName"

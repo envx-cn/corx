@@ -187,7 +187,13 @@ function replayUrlOf(result: PlaygroundResult | null): string {
  * controls) and inspect the raw response the proxy produced. Runs server-side
  * so stored keys never expose their value and every guard applies for real.
  */
-export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: PlaygroundI18n; preview: ResponsePreviewI18n }) {
+export default function Playground(props: {
+  keys: PlaygroundKeyOption[];
+  /** Session-bound CSRF token for the run POST. */
+  csrf: string;
+  i18n: PlaygroundI18n;
+  preview: ResponsePreviewI18n;
+}) {
   const { i18n, preview } = props;
   const [spec, setSpec] = useState<Spec>(emptySpec());
   const [running, setRunning] = useState(false);
@@ -246,7 +252,7 @@ export default function Playground(props: { keys: PlaygroundKeyOption[]; i18n: P
     try {
       const res = await fetch("/console/playground/run", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-corx-csrf": props.csrf },
         body: JSON.stringify(toWire(at)),
       });
       const data = (await res.json()) as PlaygroundResult & { error?: string };

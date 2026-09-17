@@ -22,6 +22,8 @@ export function ConsoleErrorDocument(props: {
   user: AdminIdentity;
   locale: Locale;
   t: TFunc;
+  /** CSRF token for the shell's logout form (empty = no token available). */
+  csrfToken?: string;
 }) {
   return (
     <ConsoleLayout
@@ -30,6 +32,7 @@ export function ConsoleErrorDocument(props: {
       active={activeNavItem(props.path)}
       locale={props.locale}
       t={props.t}
+      csrf={props.csrfToken}
     >
       <ConsoleErrorPanel status={props.status} path={props.path} message={props.message} t={props.t} />
     </ConsoleLayout>

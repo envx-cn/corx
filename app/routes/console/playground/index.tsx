@@ -18,7 +18,7 @@ app.get("/", async (c) => {
     <>
       <h1 class="text-3xl font-semibold tracking-tight mb-1">{t("console.title.playground")}</h1>
       <p class="text-sm text-base-content/75 mb-4">{t("console.playground.sub")}</p>
-      <Playground keys={keys} i18n={playgroundI18n(t)} preview={previewI18n(t)} />
+      <Playground keys={keys} csrf={c.get("csrfToken") ?? ""} i18n={playgroundI18n(t)} preview={previewI18n(t)} />
     </>,
     { title: t("console.title.playground") },
   );
