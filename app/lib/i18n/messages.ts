@@ -652,6 +652,9 @@ const en = {
         title: "Your own deployment — free, private",
         desc: "One MIT-licensed Cloudflare Worker with D1 + R2. Deploy it to your own account on the free tier and the whole data path stays inside it: your keys, your logs, your limits, no third party in the middle. Read the source, fork it, change it — that is the point.",
         cta: "Get the source",
+        deploy: "Deploy to Cloudflare",
+        deployHint:
+          "One click: Cloudflare clones the repository to your GitHub, creates the D1 database and R2 bucket in your account, and deploys it — the free plan is enough.",
       },
       note: "No accounts, seats or bills from us. Where trust matters, self-hosting is the intended way to run CORX.",
     },
@@ -1705,6 +1708,8 @@ const zh: Messages = {
         title: "自己部署——免费、私密",
         desc: "一个 MIT 许可的 Cloudflare Worker，配 D1 + R2。用免费额度部署到你自己的账号，整条数据链路就都在你手里：你的密钥、你的日志、你的限额，中间没有第三方。读源码、fork、随意改——这正是它的意义。",
         cta: "获取源码",
+        deploy: "部署到 Cloudflare",
+        deployHint: "一键完成：Cloudflare 会把仓库克隆到你的 GitHub，在你的账号里创建 D1 与 R2，并直接部署——免费套餐即可。",
       },
       note: "我们不收账号费、席位费或账单。在信任重要的场合，自托管才是运行 CORX 的预期方式。",
     },

@@ -16,6 +16,14 @@
 export const GITHUB_URL = "https://github.com/envx-cn/corx";
 
 /**
+ * Cloudflare's "Deploy to Cloudflare" flow for this repository: it clones the
+ * repo into the visitor's GitHub, provisions the D1 database and R2 bucket in
+ * their account and runs the same `npm run deploy` the README documents. The
+ * landing page's self-host card links here; the README carries the badge.
+ */
+export const DEPLOY_URL = `https://deploy.workers.cloudflare.com/?url=${GITHUB_URL}`;
+
+/**
  * The canonical prose lives in the repository, not in these pages. llms.txt and
  * the landing page link to the rendered GitHub blobs so an answer engine can
  * always fetch the full, current text (and the code it describes).

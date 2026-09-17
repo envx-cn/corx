@@ -9,6 +9,8 @@
 
 A CORS proxy running on Cloudflare. Stack: **HonoX + D1 + R2**.
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/envx-cn/corx)
+
 CORX is **open source and meant to be self-hosted**: you deploy your own
 Worker on your own Cloudflare account, under your own hostname, with your own
 keys. The repository deliberately carries no deployment's values — hostnames,
@@ -663,39 +665,80 @@ everything else is broken.
 
 ## Quickstart
 
+One click, or the same deployment from the terminal. You need a Cloudflare
+account; the free plan is enough.
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/envx-cn/corx)
+
+The button clones the repository into your GitHub account, provisions the D1
+database and R2 bucket in *your* account, asks for the secrets (`ADMIN_TOKEN`
+is the only required one — it is empty in the committed example), runs the
+migrations and deploys. The terminal equivalent:
+
 ```bash
 npm install
-
-# 1. Cloudflare resources (once)
-npm run db:create        # paste the database_id into wrangler.jsonc
+npm run db:create        # paste the printed database_id into wrangler.jsonc
 npm run bucket:create
-
-# 2. Local dev (vite + Cloudflare adapter: D1/R2 bindings work locally)
-cp .dev.vars.example .dev.vars   # set ADMIN_TOKEN (+ INJECTION_KEK to encrypt secrets)
-npm run db:migrate:local
-npm run db:seed:public           # optional: public-tier key, so / shows the key card
-npm run dev              # vite on :5173 (set PORT to change)
-
-# 3. Deploy (always through the vite build — wrangler serves ./dist)
-npm run db:migrate
 npx wrangler secret put ADMIN_TOKEN
-npx wrangler secret put INJECTION_KEK          # optional: encrypt injection at rest
-# rotating it later: npm run kek:rotate (README → Rotating INJECTION_KEK)
-# deployment values — copy the committed example and fill in your own:
-#   cp .env.production.template .env.production
-#   npx wrangler deploy --secrets-file .env.production      # bootstrap once
-npx wrangler secret put PROXY_ZONE             # subdomain mode suffix
-npx wrangler secret put PUBLIC_KEY             # optional: public-tier key
-npx wrangler secret put ACCESS_TEAM_DOMAIN     # optional: Access login
-npx wrangler secret put ACCESS_AUD
-npx wrangler secret put ADMIN_EMAILS           # optional: admin allowlist
-npm run deploy           # = vite build (client + worker) && wrangler deploy
+npm run deploy           # build → D1 migrations → wrangler deploy
+```
+
+Either way the instance is at `https://corx.<your-subdomain>.workers.dev/`, and
+`/console/` logs in with `ADMIN_TOKEN`. Optional secrets, subdomain mode,
+Access login and CI deployments are in [Deployment](#deployment).
+
+Local development (vite plus the Cloudflare adapter, so D1 and R2 work
+locally):
+
+```bash
+cp .dev.vars.example .dev.vars   # set ADMIN_TOKEN
+npm run db:migrate:local
+npm run db:seed:public           # optional: the landing page's public-key card
+npm run dev                      # vite on :5173 (set PORT to change)
+```
+
+`npm run dev:worker` runs the production bundle through `wrangler dev` instead
+(the closest thing to prod). Under `vite` dev the HMR client script is appended
+to proxied HTML pages — a dev-only artifact; production is untouched.
+
+## Deployment
+
+Everything past the first deploy, in one place.
+
+### Resources
+
+| Resource | Binding | What lives there | How it is created |
+| --- | --- | --- | --- |
+| `corx-db` (D1) | `DB` | API keys, rate-limit windows, daily quotas, request logs, host blocklist | the deploy button (rename it there if you like), or `npm run db:create` and paste the printed `database_id` into `wrangler.jsonc` |
+| `corx-cache` (R2) | `CACHE_BUCKET` | GET response cache | the deploy button, or `npm run bucket:create` |
+
+The migration commands reference the D1 **binding** (`DB`), not the database
+name, so renaming the database in the deploy flow does not break `npm run
+deploy` or CI.
+
+### Secrets
+
+`ADMIN_TOKEN` is required; everything else is optional:
+
+```bash
+npx wrangler secret put ADMIN_TOKEN            # openssl rand -base64 32
+npx wrangler secret put INJECTION_KEK          # encrypt injection at rest
+npx wrangler secret put PROXY_ZONE             # subdomain mode
+npx wrangler secret put PUBLIC_KEY             # public tier
+```
+
+The committed, value-free [`.env.production.template`](./.env.production.template)
+lists every secret with what it does and why it is worth setting; the
+[`Config`](#config) table is the same list with defaults. To bootstrap the whole
+set in one command:
+
+```bash
+cp .env.production.template .env.production    # then fill it in
+npx wrangler deploy --secrets-file .env.production
 ```
 
 `.env.production` is gitignored; only the value-free template is committed, so
-the repository stays free of one deployment's values. The file lists every
-deployment secret with what it does, including the ones most people skip
-(`SESSION_SECRET`, `INJECTION_KEK`) and why they are worth setting.
+the repository stays free of one deployment's values.
 
 Secrets are never touched by `wrangler deploy` (only `wrangler secret delete`
 removes them), so they survive every deploy — while plain-text `vars` are
@@ -734,10 +777,6 @@ code without touching the database.
 The trade-off of a manual trigger: nothing forces a deploy after a merge, so
 the live version can drift from `main` until you run it — but the code that
 reaches `main` has already passed the same checks the deploy would run.
-
-Dev notes: `npm run dev:worker` runs the production bundle via
-`wrangler dev` (closest to prod). Under `vite` dev, its HMR client script is
-appended to proxied HTML pages — dev-only artifact, production is untouched.
 
 ## Config
 
@@ -1170,7 +1209,7 @@ test/           vitest suites (guard, ip, dns-check, cache, inject,
 | `npm run kek:rotate` | re-wrap every stored variable value for an `INJECTION_KEK` rotation (dry-run first; `--remote` for the deployed D1, `--restore` to undo), see [Rotating `INJECTION_KEK`](#rotating-injection_kek) |
 | `npm run dev:worker` | production bundle via `wrangler dev` |
 | `npm run build` | client (islands) + worker bundles into `./dist` |
-| `npm run deploy` | build + deploy to Cloudflare |
+| `npm run deploy` | build + D1 migrations + `wrangler deploy` (also what the Deploy to Cloudflare button runs) |
 | `npm run check` / `npm test` | typecheck / vitest |
 | `npm run og` | regenerate `public/og.png` (needs a Chromium: `npx playwright install chromium` or `CHROMIUM_PATH`) |
 | `npm run check:contrast` | WCAG AA guard: theme tokens in `app/styles/app.css` + a scan for sub-`/75` text utilities in `app/` |
