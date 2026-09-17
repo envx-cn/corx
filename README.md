@@ -158,6 +158,7 @@ forwarding — the browser never holds the upstream secret:
 | Variables | `NAME=value` per line. Values are **write-only**: the panel shows `NAME=` and a blank value keeps the stored secret. |
 | Header rules | `Name: value`, `!Name` removes, `@hosts` scopes the lines below (`@` alone resets), `${VAR}` substitutes, `\${` escapes. |
 | Query rules | `name = value`, `!name` removes. |
+| Response header rules | Same grammar as header rules, but applied to what the **caller receives** — see [Embed a page that refuses framing](#embed-a-page-that-refuses-framing). |
 
 - Rules always win over client input — a `set` overrides a spoofed header, a
   `remove` drops it — and removes run before sets, so results never depend on
@@ -174,7 +175,9 @@ forwarding — the browser never holds the upstream secret:
 - **Cache:** keys with header rules never read or write the shared R2 cache
   (personalized/credentialed requests, same rule as client-sent
   `Authorization`); param-only keys cache under the injected URL, so different
-  secrets never share entries.
+  secrets never share entries. Response rules *do* cache — their resolved form
+  is part of the cache key, so a key that strips `X-Frame-Options` can never be
+  served another key's untouched copy.
 - **Redirects:** injection switches the upstream fetch to manual redirect
   handling — a cross-origin redirect keeps custom headers (e.g. `X-Api-Key`)
   per the fetch spec, which would leak secrets. In-scope redirects are followed
@@ -195,6 +198,37 @@ forwarding — the browser never holds the upstream secret:
   the next save. If the KEK is missing or wrong, injection is dropped (the
   request still works, but with no secret attached) and edits are refused rather
   than overwriting secrets that can't be read.
+
+### Embed a page that refuses framing
+
+A proxied HTML document that sends `X-Frame-Options: DENY` (or a CSP
+`frame-ancestors` list that excludes you) cannot go into an `<iframe>` — the
+browser refuses to render it, which is why the landing demo shows an explanation
+card instead of a blank box. On a deployment you control, a key can strip those
+responses' headers for a host you allow:
+
+```
+# Response header rules, scoped to the host you are embedding
+@docs.vendor.com
+!X-Frame-Options
+!Content-Security-Policy
+```
+
+Same grammar as the request-side rules (`@hosts` scopes, `!Name` removes,
+`Name: value` sets, `${VAR}` substitutes), applied to the response on the
+buffered and streamed paths alike, matched against the host that actually
+answered (so a redirect is scoped by its destination). The headers CORX owns —
+`Content-Length`, `Set-Cookie`, `Access-Control-*`, `X-Robots-Tag`, `X-Corx-*`
+and the rate-limit/quota headers — are rejected at save time.
+
+**The caveat, because it matters:** re-serving someone else's document under
+your own origin is an XSS-shaped decision. Stripping `X-Frame-Options` also
+removes the target's own clickjacking protection, and the framed page now runs
+in a frame *you* control. Sandbox it — `sandbox=""` (no `allow-same-origin`, no
+`allow-scripts` unless you have read what the document does), which is exactly
+what the CORX landing preview does — and only do this for hosts you trust or
+own. The public tier cannot configure this at all (no injection, by policy), so
+this is a self-hosting feature.
 
 **Keyless access (per key)**
 

@@ -72,6 +72,8 @@ export interface ApiKeyRow {
   header_rules: string | null;
   /** JSON array of upstream query-param rules. */
   param_rules: string | null;
+  /** JSON array of response header rules (applied to the proxied response). */
+  response_rules: string | null;
   /** Comma-separated host patterns this key may reach. NULL/'' = unrestricted. */
   allowed_hosts: string | null;
   /** 1 = allowed origins can use this key without presenting it (keyless access). */

@@ -48,7 +48,7 @@ export async function lookupApiKey(db: D1Database, raw: string, kek?: string): P
   try {
     const row = await db
       .prepare(
-        "SELECT id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, created_at, revoked_at FROM api_keys WHERE key_hash = ?",
+        "SELECT id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, response_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, created_at, revoked_at FROM api_keys WHERE key_hash = ?",
       )
       .bind(await hashKey(raw))
       .first<ApiKeyRow>();
@@ -110,7 +110,7 @@ export async function lookupKeyByOrigin(db: D1Database, origin: string, kek?: st
     const row = await db
       .prepare(
         `SELECT k.id, k.key_hash, k.name, k.rate_limit_per_min, k.allowed_origins, k.cache_ttl, k.no_cache,
-                k.ip_check, k.dns_check, k.vars, k.header_rules, k.param_rules, k.allowed_hosts, k.keyless,
+                k.ip_check, k.dns_check, k.vars, k.header_rules, k.param_rules, k.response_rules, k.allowed_hosts, k.keyless,
                 k.tier, k.daily_limit_per_origin, k.daily_limit_per_host, k.daily_limit_total,
                 k.created_at, k.revoked_at
          FROM keyless_origins o JOIN api_keys k ON k.id = o.key_id

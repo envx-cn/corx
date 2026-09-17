@@ -475,7 +475,11 @@ Every \`corx-*\` parameter is namespaced, so it can never collide with the targe
 
 - **API key** — \`x-api-key: <key>\`, \`Authorization: Bearer <key>\` or \`?corx-key=<key>\`. Keys are
   stored as SHA-256 hashes. A key carries allowed origins, a per-minute rate limit, a cache TTL, an
-  allowed-host list, SSRF-check opt-outs and encrypted header/query injection rules.
+  allowed-host list, SSRF-check opt-outs and encrypted header/query injection rules. It can also
+  carry **response header rules** — headers corx sets or removes on the way back to the caller
+  (the documented embed recipe: strip \`X-Frame-Options\`/CSP \`frame-ancestors\` for a host you
+  control, then sandbox the iframe yourself). The headers corx owns are rejected at save time, and a
+  key's resolved response rules are part of the cache key.
 - **Keyless browser access** — grant an origin to a key and its visitors call the proxy without
   shipping one. The grant matches on \`Origin\` (or \`Referer\` for same-origin GETs) and is metered
   per visitor IP, so one site cannot drain the whole key.
@@ -488,7 +492,8 @@ Every \`corx-*\` parameter is namespaced, so it can never collide with the targe
 
 - GET responses are cached in R2 and served from the edge; \`x-corx-cache: HIT|MISS\` reports which.
 - Requests carrying \`Authorization\` or \`Cookie\` never read or write the shared cache, and neither
-  do JSONP responses or keys with injection rules.
+  do JSONP responses or keys with request header rules. Keys with response header rules do cache:
+  those rules are part of the cache key, so a rewritten response is never served to another key.
 - TTL is capped by the deployment default to stop a caller pinning entries for a day;
   \`corx-no-cache=1\` opts a request out entirely, and the public tier cannot set a TTL at all.
 

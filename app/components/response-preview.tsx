@@ -1,6 +1,7 @@
 import type { FrameBlock, PreviewKind } from "../lib/preview.js";
 import { humanBytes } from "../lib/format.js";
 import { JsonTree } from "./json-tree.js";
+import { REPO_DOCS } from "../lib/site-info.js";
 import { Lucide } from "./lucide.js";
 import arrowUpRightSvg from "lucide-static/icons/arrow-up-right.svg?raw";
 
@@ -25,6 +26,10 @@ export interface ResponsePreviewI18n {
   frameHint: string;
   /** "This site refuses to be embedded ({reason})" */
   frameBlocked: string;
+  /** What a self-hosted deployment can do about it (response header rules). */
+  frameBlockHint: string;
+  /** Link label for the README section that documents the recipe. */
+  frameBlockDoc: string;
   /** "Binary body · {type} · {bytes}" */
   binary: string;
   openRaw: string;
@@ -88,13 +93,29 @@ export function ResponsePreview(props: ResponsePreviewProps) {
     if (props.frameBlock) {
       // Name the header that blocked it (a wire token, so it stays as-is).
       const reason = props.frameBlock === "x-frame-options" ? "X-Frame-Options" : "CSP frame-ancestors";
+      // Not just "can't be done": a self-hosted deployment can strip the header
+      // for a host it controls (response header rules), and this is where a
+      // caller finds that out. The sandbox warning travels with the recipe.
       return (
-        <Notice
-          title={i18n.frameBlocked.replace("{reason}", reason)}
-          body={i18n.frameHint}
-          href={rawUrl}
-          link={i18n.openRaw}
-        />
+        <div class="preview-notice">
+          <p class="font-medium text-base-content">{i18n.frameBlocked.replace("{reason}", reason)}</p>
+          <p class="mt-1 text-base-content/75">
+            {i18n.frameBlockHint}{" "}
+            <a
+              href={`${REPO_DOCS.readme}#embed-a-page-that-refuses-framing`}
+              target="_blank"
+              /* `noopener` only: this file must never add `noreferrer`/`referrerpolicy`,
+                 because the preview's own proxy URLs rely on the Referer for
+                 caller identity (test/auth.test.ts). A public GitHub link does
+                 not need the extra suppression. */
+              rel="noopener"
+              class="link link-primary"
+            >
+              {i18n.frameBlockDoc}
+            </a>
+          </p>
+          <RawLink href={rawUrl} label={i18n.openRaw} className="mt-3" />
+        </div>
       );
     }
     return (

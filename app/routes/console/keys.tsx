@@ -41,6 +41,7 @@ app.post("/", async (c) => {
       vars: values.vars,
       headerRules: values.headerRules,
       paramRules: values.paramRules,
+      responseRules: values.responseRules,
     }, c.env.INJECTION_KEK);
     // The raw key is shown once — re-render with it, don't redirect.
     return c.render(<KeysContent keys={await queryKeys(c.env.DB)} newKey={{ id, key, name: values.name }} t={t} />, {
@@ -140,6 +141,7 @@ function readKeyForm(form: Record<string, unknown>): KeyFormValues {
     vars: String(form["vars"] ?? ""),
     headerRules: String(form["headerRules"] ?? ""),
     paramRules: String(form["paramRules"] ?? ""),
+    responseRules: String(form["responseRules"] ?? ""),
   };
 }
 
@@ -170,13 +172,16 @@ function rowValues(k: KeyRow): KeyFormValues {
     vars: varsToText(injection.vars),
     headerRules: rulesToText(injection.headers, "header"),
     paramRules: rulesToText(injection.params, "param"),
+    responseRules: rulesToText(injection.responseHeaders, "response"),
   };
 }
 
 /** How many injection entries a key carries (badge on the keys table). */
 function injectionCount(k: KeyRow): number {
   const injection = readStoredInjection(k);
-  return injection.vars.length + injection.headers.length + injection.params.length;
+  return (
+    injection.vars.length + injection.headers.length + injection.params.length + injection.responseHeaders.length
+  );
 }
 
 function cacheText(k: KeyRow, t: TFunc): string {
@@ -223,6 +228,9 @@ function panelLabels(t: TFunc): KeyPanelI18n {
     headerRulesPh: t("console.keys.headerRulesPh"),
     paramRules: t("console.keys.paramRules"),
     paramRulesPh: t("console.keys.paramRulesPh"),
+    responseRules: t("console.keys.responseRules"),
+    responseRulesPh: t("console.keys.responseRulesPh"),
+    responseRulesHint: t("console.keys.responseRulesHint"),
     danger: t("console.keys.danger"),
     dangerHint: t("console.keys.dangerHint"),
     delete: t("console.keys.delete"),

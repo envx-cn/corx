@@ -25,6 +25,8 @@ export interface KeyFormValues {
   vars: string;
   headerRules: string;
   paramRules: string;
+  /** Response header rules (what the caller receives back). */
+  responseRules: string;
 }
 
 /** UI strings for the key panel (injected from the server dict). */
@@ -65,6 +67,9 @@ export interface KeyPanelI18n {
   headerRulesPh: string;
   paramRules: string;
   paramRulesPh: string;
+  responseRules: string;
+  responseRulesPh: string;
+  responseRulesHint: string;
   danger: string;
   dangerHint: string;
   delete: string;
@@ -320,6 +325,20 @@ export default function KeyPanel(props: {
                     {v?.paramRules ?? ""}
                   </textarea>
                 </Field>
+                {/* Response rules are their own concern (what the caller gets
+                    back), and the embed recipe is the reason they exist — say
+                    so where the operator configures it. */}
+                <Field label={labels.responseRules}>
+                  <textarea
+                    name="responseRules"
+                    rows={2}
+                    placeholder={labels.responseRulesPh}
+                    class="textarea textarea-bordered w-full font-mono text-xs leading-5"
+                  >
+                    {v?.responseRules ?? ""}
+                  </textarea>
+                </Field>
+                <p class="-mt-1 text-xs leading-relaxed text-base-content/75">{labels.responseRulesHint}</p>
               </div>
             </div>
 

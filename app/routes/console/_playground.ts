@@ -228,6 +228,7 @@ function injectionPreview(row: ApiKeyRow, target: URL): PlaygroundInjectionPrevi
     vars: parts.vars.map((v) => v.name),
     headerLines: rulesToText(parts.headers, "header").split("\n").filter(Boolean),
     paramLines: rulesToText(parts.params, "param").split("\n").filter(Boolean),
+    responseLines: rulesToText(parts.responseHeaders, "response").split("\n").filter(Boolean),
     effectiveUrl,
   };
 }

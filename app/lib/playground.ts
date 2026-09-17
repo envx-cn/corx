@@ -65,6 +65,8 @@ export interface PlaygroundInjectionPreview {
   vars: string[];
   headerLines: string[];
   paramLines: string[];
+  /** Response header rules, as written (applied to what comes back). */
+  responseLines: string[];
   /** Target URL with param rules applied (secret values masked as ***). */
   effectiveUrl: string | null;
 }

@@ -69,6 +69,7 @@ describe("createApiKey", () => {
       "[]", // vars
       "[]", // header_rules
       "[]", // param_rules
+      "[]", // response_rules
       null, // allowed_hosts: no injection, so unrestricted
       0, // keyless
       "standard", // tier
@@ -81,7 +82,7 @@ describe("createApiKey", () => {
   it("defaults both checks to on (and no injection/keyless)", async () => {
     const { db, calls } = recordingDb();
     await createApiKey(db, { name: "app", rateLimitPerMin: null });
-    expect(calls[0]?.values.slice(7)).toEqual([1, 1, "[]", "[]", "[]", null, 0, "standard", null, null, null]);
+    expect(calls[0]?.values.slice(7)).toEqual([1, 1, "[]", "[]", "[]", "[]", null, 0, "standard", null, null, null]);
   });
 
   it("stores injection fields and requires a host allowlist", async () => {
@@ -97,7 +98,8 @@ describe("createApiKey", () => {
     expect(JSON.parse(String(values[10]))).toEqual([
       { action: "set", name: "Authorization", value: "Bearer ${TOKEN}" },
     ]);
-    expect(values[12]).toBe("api.vendor.com");
+    expect(JSON.parse(String(values[12]))).toEqual([]); // response_rules
+    expect(values[13]).toBe("api.vendor.com");
 
     const withoutHosts = recordingDb();
     await expect(
@@ -126,7 +128,7 @@ describe("createApiKey", () => {
       keyless: true,
     });
     const insert = calls.find((c) => c.sql.includes("INSERT INTO api_keys"));
-    expect(insert?.values[13]).toBe(1); // keyless
+    expect(insert?.values[14]).toBe(1); // keyless
     const grant = calls.find((c) => c.sql.includes("INSERT OR IGNORE INTO keyless_origins"));
     expect(grant?.values).toEqual(["https://app.example", id]);
     expect(calls.some((c) => c.sql.includes("DELETE FROM keyless_origins"))).toBe(true);
@@ -152,6 +154,7 @@ describe("updateApiKey", () => {
     vars: "[]",
     header_rules: "[]",
     param_rules: "[]",
+    response_rules: "[]",
     allowed_hosts: null,
     keyless: 0,
     allowed_origins: null,
@@ -252,6 +255,7 @@ describe("public tier policy", () => {
     vars: "[]",
     header_rules: "[]",
     param_rules: "[]",
+    response_rules: "[]",
     allowed_hosts: null,
     keyless: 0,
     allowed_origins: null,
@@ -272,13 +276,13 @@ describe("public tier policy", () => {
       dailyLimitPerHost: "5000",
       dailyLimitTotal: "15000",
     });
-    expect(calls[0]?.values.slice(14)).toEqual(["public", 3000, 5000, 15000]);
+    expect(calls[0]?.values.slice(15)).toEqual(["public", 3000, 5000, 15000]);
   });
 
   it("accepts a boolean tier from the console form", async () => {
     const { db, calls } = recordingDb();
     await createApiKey(db, { name: "public", tier: true, dailyLimitTotal: "15000" });
-    expect(calls[0]?.values[14]).toBe("public");
+    expect(calls[0]?.values[15]).toBe("public");
   });
 
   it("rejects injection on a public key", async () => {
@@ -292,6 +296,30 @@ describe("public tier policy", () => {
         allowedHosts: "api.vendor.com",
       }),
     ).rejects.toThrowError(/cannot inject/);
+  });
+
+  it("rejects response header rules on a public key too", async () => {
+    const { db } = recordingDb();
+    await expect(
+      createApiKey(db, {
+        name: "public",
+        tier: "public",
+        dailyLimitTotal: "15000",
+        responseRules: "!X-Frame-Options",
+        allowedHosts: "api.vendor.com",
+      }),
+    ).rejects.toThrowError(/cannot inject/);
+  });
+
+  it("flipping a standard key to public re-checks stored response rules", async () => {
+    const { db } = recordingDb({
+      ...standardRow,
+      response_rules: '[{"action":"remove","name":"X-Frame-Options"}]',
+      allowed_hosts: "api.vendor.com",
+    });
+    await expect(updateApiKey(db, "key-1", { tier: "public", dailyLimitTotal: "15000" })).rejects.toThrowError(
+      /cannot inject/,
+    );
   });
 
   it("rejects turning the SSRF checks off on a public key", async () => {
@@ -335,7 +363,7 @@ describe("public tier policy", () => {
   it("leaves a standard key alone", async () => {
     const { db, calls } = recordingDb();
     await createApiKey(db, { name: "app" });
-    expect(calls[0]?.values[14]).toBe("standard");
+    expect(calls[0]?.values[15]).toBe("standard");
   });
 });
 

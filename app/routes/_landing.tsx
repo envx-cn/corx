@@ -101,6 +101,8 @@ export function LandingPage(props: {
     mediaHint: t("preview.mediaHint"),
     frameHint: t("preview.frameHint"),
     frameBlocked: t("preview.frameBlocked"),
+    frameBlockHint: t("preview.frameBlockHint"),
+    frameBlockDoc: t("preview.frameBlockDoc"),
     binary: t("preview.binary"),
     array: t("preview.array"),
     object: t("preview.object"),
