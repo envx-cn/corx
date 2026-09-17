@@ -619,6 +619,7 @@ const en = {
       sub: "Examples rotate every 10s and load straight through the proxy. Type any URL to take over.",
       hint: "Same as GET {origin}/fetch?url=…. Every request goes through the edge proxy — watch the status, latency, size and cache HIT/MISS badges update as examples rotate.",
       snippets: "Using React, Vue, axios or ky? Copy-paste snippets",
+      tester: "Test a URL's CORS",
     },
     highlights: {
       title: "Built for real apps, not toy demos",
@@ -1666,6 +1667,7 @@ const zh: Messages = {
       sub: "示例每 10 秒轮换，直接通过代理加载。输入任意 URL 即可接管。",
       hint: "等价于 GET {origin}/fetch?url=…。每个请求都经过边缘代理——观察状态码、延迟、体积和缓存 HIT/MISS 徽标随示例实时更新。",
       snippets: "在用 React、Vue、axios 或 ky？这里有可复制的代码示例",
+      tester: "测试某个 URL 的 CORS",
     },
     highlights: {
       title: "为真实应用而建，而非玩具演示",

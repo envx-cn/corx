@@ -249,11 +249,18 @@ describe("cors tester discovery", () => {
     );
   });
 
-  it("is linked from llms.txt, llms-full.txt, /docs and the compare pages", async () => {
+  it("is linked from the landing, llms.txt, llms-full.txt, /docs and the compare pages", async () => {
     const index = await (await call("/llms.txt")).text();
     expect(index).toContain("(https://corx.test/tools/cors-tester)");
     const full = await (await call("/llms-full.txt")).text();
     expect(full).toContain("https://corx.test/tools/cors-tester");
+
+    const landing = await (await call("/en")).text();
+    expect(landing).toContain('href="/tools/cors-tester"');
+    expect(landing).toContain("Test a URL");
+    const landingZh = await (await call("/zh")).text();
+    expect(landingZh).toContain('href="/tools/cors-tester"');
+    expect(landingZh).toContain("测试某个 URL 的 CORS");
 
     const docs = await (await call("/en/docs")).text();
     expect(docs).toContain('href="/tools/cors-tester"');

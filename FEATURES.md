@@ -324,8 +324,9 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
   preflight, mixed content, unreachable host — then the URL is fetched through
   this instance and rendered with the shared preview, with copyable calls
   (public key inlined when configured). The page is honest that a browser does
-  not reveal *why* a fetch was blocked. Linked from `/docs` and every compare
-  page, in the sitemap with its own hreflang cluster, `WebApplication` JSON-LD.
+  not reveal *why* a fetch was blocked. Linked from the landing try-it line,
+  `/docs` and every compare page, in the sitemap with its own hreflang cluster,
+  `WebApplication` JSON-LD.
 - **Injection demo**: the try-it demo's footer grows a "See a key get
   injected" button that runs one real request through a public demo key to
   `/demo/echo` — an echo endpoint on this Worker (`app/routes/demo/echo.ts`)
