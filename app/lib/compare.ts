@@ -36,7 +36,7 @@ export type CompareRowId =
   | "extras"
   | "availability";
 
-export type CompareSlug = "corsproxy-io" | "allorigins";
+export type CompareSlug = "corsproxy-io" | "corsfix" | "allorigins";
 
 /** One place a claim came from, and the day it was read from there. */
 export interface CompareSource {
@@ -121,6 +121,62 @@ export const COMPARISONS: Comparison[] = [
         id: "availability",
         theirs: true,
         source: { url: "https://corsproxy.io/pricing/", checked: CHECKED },
+      },
+    ],
+  },
+  {
+    // The closest match to CORX's own model: server-side secrets, open source,
+    // a self-hosting path. Do not write this page as if Corsfix lacked the key
+    // feature — it does not, and saying so would be the one lie that destroys
+    // the other two pages' credibility.
+    slug: "corsfix",
+    name: "Corsfix",
+    site: "https://corsfix.com/",
+    docs: "https://corsfix.com/docs",
+    checked: CHECKED,
+    rows: [
+      {
+        id: "auth",
+        source: { url: "https://corsfix.com/docs/getting-started", checked: CHECKED },
+      },
+      {
+        id: "secrets",
+        source: { url: "https://corsfix.com/docs/cors-proxy/secrets-variable", checked: CHECKED },
+      },
+      {
+        id: "hosting",
+        source: { url: "https://corsfix.com/docs/open-source/self-hosting", checked: CHECKED },
+      },
+      {
+        id: "caching",
+        source: { url: "https://corsfix.com/docs/cors-proxy/cached-response", checked: CHECKED },
+      },
+      {
+        id: "logging",
+        theirs: true,
+        source: { url: "https://corsfix.com/privacy", checked: CHECKED },
+      },
+      {
+        id: "limits",
+        source: { url: "https://corsfix.com/docs/cors-proxy/quotas", checked: CHECKED },
+      },
+      {
+        id: "price",
+        source: { url: "https://corsfix.com/pricing", checked: CHECKED },
+      },
+      {
+        id: "setup",
+        theirs: true,
+        source: { url: "https://corsfix.com/docs/free-tier", checked: CHECKED },
+      },
+      {
+        id: "extras",
+        source: { url: "https://corsfix.com/docs", checked: CHECKED },
+      },
+      {
+        id: "availability",
+        theirs: true,
+        source: { url: "https://corsfix.com/", checked: CHECKED },
       },
     ],
   },

@@ -273,7 +273,7 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
   in `SiteHead` and the footer link as the machine-discoverable halves.
 - **Comparison pages** (`/compare/<name>`, with `/en/` and `/zh/` URLs): dated
   comparisons against the hosted proxies CORX gets measured against
-  (corsproxy.io, AllOrigins). `app/lib/compare.ts` is the registry — one source
+  (corsproxy.io, Corsfix, AllOrigins). `app/lib/compare.ts` is the registry — one source
   URL and read-date per competitor claim, plus a `theirs` flag on the rows the
   competitor wins — and the page renders those sources in full, so the table
   can be audited rather than believed. Cell prose lives in `compare.*` in both

@@ -153,6 +153,54 @@ const en = {
           "99.9% monthly uptime commitment on Hobby, 99.99% on Production; the free tier is best-effort with no SLA.",
       },
     },
+    corsfix: {
+      title: "CORX vs Corsfix",
+      description:
+        "An honest comparison of CORX and Corsfix: both inject upstream secrets server-side and both are open source — the differences are ownership, logging, limits and price, with every competitor claim dated and sourced.",
+      lead:
+        "Corsfix is the fair fight: like CORX it keeps upstream API keys out of the browser with server-side secret variables, and like CORX it is open source with a self-hosting path. What differs is where everything lives — their dashboard and servers, or your own Cloudflare account — and what each one defaults to.",
+      wins:
+        "Corsfix wins where a managed product should: it logs no request URLs, headers or bodies at all (CORX keeps 30 days of request logs in your own D1), it publishes an availability figure with paid support behind it, and localhost needs no account whatsoever. Pick CORX when the secrets, the cache and the log rows should sit in your own account, and when paying Cloudflare suits you better than a subscription.",
+      src: {
+        auth: "Production traffic is authorised by adding your website's domain in the dashboard; `x-corsfix-key` is documented as a fallback, and localhost needs no registration.",
+        secrets:
+          "`{{SECRET_NAME}}` variables can be used in query parameters and request headers; secrets are encrypted at rest and decrypted in memory only when a request uses them.",
+        hosting:
+          "`git clone github.com/corsfix/corsfix`, Docker Compose with MongoDB and Redis, your own VPS — the docs cover logs, updates and domain configuration.",
+        caching:
+          "The `x-corsfix-cache` request header takes `10s`/`10m`/`2h`/`1d` (invalid values default to one hour, capped at one day); GET only, and cached responses do not count against plan throughput.",
+        logging:
+          "\"We do not log or store access logs (no URL, headers, or body)\" — only aggregate performance metrics; error diagnostics are purged after 30 days, and WAF logs (source IP, user agent, path) exist only for requests that breach a rule, purged in under 72 hours.",
+        limits:
+          "Throughput is 60/120/180 RPM per IP on Hobby/Growth/Scale with 25/100/500 GB monthly outbound transfer; the requests themselves are unlimited. Free tier: localhost at 60 RPM, production trial 1 GB + 3 web apps.",
+        price:
+          "$5 Hobby, $9 Growth and $19 Scale per month, or $29/year for the text-only Lite proxy at lite.corsfix.com; prices exclude VAT.",
+        setup:
+          "Local development takes no account, no key and one URL prefix; production takes adding the domain in the dashboard and a plan sized for the traffic.",
+        extras:
+          "JSONP, request/response header overrides and every file type are CORX features too; region selection, a CORS tester and the platform integration guides are theirs.",
+        availability:
+          "The homepage claims \">99.9% availability, based on live data\", backed by paid plans, support and 30-day refunds. CORX's hosted instance carries no SLA at all.",
+      },
+      row: {
+        auth: "Dashboard domain whitelist — no key in the browser — with `x-corsfix-key` as a documented fallback; localhost needs no registration at all.",
+        secrets:
+          "`{{SECRET_NAME}}` variables in query parameters or request headers, encrypted at rest and decrypted in memory per request. Managed from their dashboard, not from your own database.",
+        hosting: "Open source too (`github.com/corsfix/corsfix`): Docker Compose with MongoDB and Redis on your own VPS.",
+        caching:
+          "`x-corsfix-cache` header with a duration (`10m`, `2h`, `1d`; invalid values default to one hour, capped at a day); GET only, and cached responses do not count against the plan's throughput.",
+        logging:
+          "Their privacy policy: no access logs at all — no URL, headers or body. Only aggregate performance metrics, error diagnostics purged after 30 days, and WAF logs (IP, user agent, path) for requests that breach a rule.",
+        limits:
+          "Requests are unlimited on every plan, but throughput is per IP (60/120/180 RPM) and monthly outbound transfer is metered (25/100/500 GB). Free: localhost at 60 RPM, production trial 1 GB + 3 web apps. Lite: 600 RPM shared, text only, ≤1 MB.",
+        price: "$5 Hobby, $9 Growth, $19 Scale per month; $29/year for the text-only Lite proxy; free for localhost and a production trial. VAT not included.",
+        setup: "For local development: nothing at all — no registration, no key, one prefix. For production: add the domain in the dashboard and pick a plan for the traffic.",
+        extras:
+          "JSONP, header overrides and all file types — CORX has those too. Region selection, a CORS tester and platform guides are theirs; nothing here changes the model.",
+        availability:
+          "Publishes a >99.9% availability figure from live data, with paid support and refunds behind it. CORX's hosted instance has no SLA — self-hosting is the answer it gives instead.",
+      },
+    },
     allorigins: {
       title: "CORX vs AllOrigins",
       description:
@@ -834,6 +882,47 @@ const zh: Messages = {
         setup: "注册账号、给 URL 加前缀，结束：不用部署，也不用运维任何东西。",
         extras: "付费档提供图片转换（beta）、网页抓取 API、header 重写与文件转换。",
         availability: "Hobby 承诺 99.9%、Production 99.99% 的月度可用性；免费档尽力而为，无 SLA。",
+      },
+    },
+    corsfix: {
+      title: "CORX 对比 Corsfix",
+      description:
+        "CORX 与 Corsfix 的诚实对比：两者都在服务端做密钥注入，也都开源——差别在于数据归属、日志、限额与价格；每条关于对方的结论都附来源与核查日期。",
+      lead:
+        "Corsfix 是同一量级的对手：和 CORX 一样用服务端密钥变量把上游 API key 挡在浏览器之外，也一样开源、有自托管路径。不同的是东西放在哪里——他们的面板和服务器，还是你自己的 Cloudflare 账号——以及各自的默认行为。",
+      wins:
+        "Corsfix 赢在一个托管产品应该赢的地方：它完全不记录请求 URL、header 与 body（CORX 会在你自己的 D1 里保留 30 天请求日志），它公布了可用性数据且背后有付费支持，本地开发甚至不需要账号。如果你希望密钥、缓存与日志留在自己的账号里，并且更愿意把钱付给 Cloudflare 而不是订阅制服务，那就选 CORX。",
+      src: {
+        auth: "生产环境靠在面板添加网站域名来授权；文档把 `x-corsfix-key` 作为备用方案；localhost 无需注册。",
+        secrets: "`{{SECRET_NAME}}` 变量可用于查询参数与请求头；密钥静态加密，仅在请求用到时在内存中解密。",
+        hosting:
+          "`git clone github.com/corsfix/corsfix`，用 Docker Compose 带起 MongoDB 与 Redis，跑在自己的 VPS 上；文档覆盖日志、升级与域名配置。",
+        caching:
+          "请求头 `x-corsfix-cache` 接受 `10s`/`10m`/`2h`/`1d`（非法值默认一小时，最长一天）；仅支持 GET，命中缓存的响应不计入套餐吞吐。",
+        logging:
+          "「我们不记录也不存储访问日志（不记录 URL、header 与 body）」——只保留聚合性能指标；错误诊断信息 30 天后清理；WAF 日志（来源 IP、User-Agent、路径）只在请求触发规则时产生，72 小时内清理。",
+        limits:
+          "Hobby/Growth/Scale 的吞吐为每 IP 60/120/180 RPM，月出站流量 25/100/500 GB；请求数本身不限。免费档：localhost 60 RPM，生产试用 1 GB + 3 个 web app。",
+        price: "Hobby $5、Growth $9、Scale $19 每月，或 lite.corsfix.com 的纯文本 Lite 套餐 $29/年；价格不含增值税。",
+        setup: "本地开发什么都不用：不要账号、不要 key，加一个 URL 前缀即可；生产环境则是在面板添加域名并为流量选一个套餐。",
+        extras: "JSONP、header 覆盖与全文件类型 CORX 也有；区域选择、CORS 测试工具与各平台接入指南是他们的。",
+        availability: "首页声称「基于实时数据 >99.9% 可用性」，背后是付费套餐、支持渠道与 30 天退款。CORX 的托管实例则完全没有 SLA。",
+      },
+      row: {
+        auth: "面板里的域名白名单——浏览器里不放 key；文档给出 `x-corsfix-key` 作为备用；localhost 连注册都不需要。",
+        secrets:
+          "`{{SECRET_NAME}}` 变量可用于查询参数或请求头，静态加密、按请求在内存中解密。密钥存在他们的面板里，而不是你自己的数据库里。",
+        hosting: "同样开源（`github.com/corsfix/corsfix`）：用 Docker Compose 在自己的 VPS 上带起 MongoDB 与 Redis。",
+        caching:
+          "请求头 `x-corsfix-cache` 指定时长（`10m`、`2h`、`1d`；非法值默认一小时，最长一天）；仅 GET，且命中缓存的响应不计入套餐吞吐。",
+        logging:
+          "他们的隐私政策：完全不记访问日志——不记 URL、header 与 body。只有聚合性能指标，错误诊断 30 天后清理，WAF 日志（IP、User-Agent、路径）仅针对触发规则的请求。",
+        limits:
+          "各套餐请求数均不限，但吞吐按 IP 计（60/120/180 RPM），月出站流量也有限额（25/100/500 GB）。免费：localhost 60 RPM，生产试用 1 GB + 3 个 web app。Lite：600 RPM 共享、仅文本、≤1 MB。",
+        price: "Hobby $5、Growth $9、Scale $19 每月；纯文本 Lite 代理 $29/年；localhost 与生产试用免费。不含增值税。",
+        setup: "本地开发什么都不用——不注册、不用 key，一个前缀就够；生产环境则要在面板加域名，并按流量选套餐。",
+        extras: "JSONP、header 覆盖与全文件类型 CORX 也有；区域选择、CORS 测试工具与平台指南是他们的，不影响产品模型。",
+        availability: "公布「>99.9%」的实时可用性数据，背后有付费支持与退款承诺。CORX 的托管实例没有 SLA——它给出的答案是自托管。",
       },
     },
     allorigins: {

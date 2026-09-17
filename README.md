@@ -409,8 +409,8 @@ robots.txt cannot express path-style proxy URLs.
 ### Comparison pages
 
 `/compare/<name>` answers the *"X vs Y"* search with a table instead of a
-slogan: one hosted CORS proxy per page (`corsproxy.io`, `AllOrigins`), the same
-rows on each (auth model, upstream secrets, self-hosting, caching, request
+slogan: one hosted CORS proxy per page (`corsproxy.io`, `Corsfix`, `AllOrigins`),
+the same rows on each (auth model, upstream secrets, self-hosting, caching, request
 logging, limits, price, time to first request, extras, availability), and a
 "where they win" section that is rendered rather than buried in a footnote.
 
