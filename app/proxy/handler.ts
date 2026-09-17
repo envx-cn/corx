@@ -437,7 +437,13 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         if (row?.dns_check !== 0) await assertPublicHost(next.hostname);
 
         if (next.origin !== currentUrl.origin) dropClientAuth = true;
-        if ((method === "POST" && (upstream.status === 301 || upstream.status === 302 || upstream.status === 303))) {
+        // fetch spec: 301/302 rewrite only POST to GET; 303 rewrites every
+        // method except GET/HEAD. Both drop the body — re-sending it would
+        // double-apply a side effect the upstream already handled.
+        if (
+          (method === "POST" && (upstream.status === 301 || upstream.status === 302)) ||
+          (upstream.status === 303 && method !== "GET" && method !== "HEAD")
+        ) {
           method = "GET";
           hopBody = undefined;
         }
@@ -446,6 +452,23 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         currentUrl = nextUrl;
       }
       if (!upstream) throw new ProxyError(502, "Upstream fetch failed");
+
+      // Subdomain mode serves the target under the proxy's hostname, so a
+      // `Location` pointing back at the target origin must be rewritten to a
+      // relative path — absolute, it would resolve against the proxy host and
+      // send the browser somewhere else. Every response path applies it, since
+      // a redirect can come back buffered or streamed.
+      const rewriteSubdomainLocation = (headers: Headers) => {
+        if (!viaSubdomain) return;
+        const loc = headers.get("location");
+        if (!loc) return;
+        try {
+          const abs = new URL(loc, url.toString());
+          if (abs.origin === url.origin) headers.set("location", abs.pathname + abs.search + abs.hash);
+        } catch {
+          /* keep original Location */
+        }
+      };
 
       // Stream helper: minimal header stripping so Range/206 + media metadata survive.
       // res_bytes/latency are recorded by countStream when the body finishes
@@ -456,6 +479,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
           if (!STREAM_STRIP_RESPONSE.has(key.toLowerCase())) streamHeaders.set(key, value);
         });
         if (stoppedRedirect) streamHeaders.set("location", stoppedRedirect);
+        rewriteSubdomainLocation(streamHeaders);
         streamHeaders.set("X-Corx-Cache", "MISS");
         streamHeaders.set("X-Corx-Target", host);
         streamHeaders.set("X-Corx-Latency-Ms", String(Date.now() - started));
@@ -525,21 +549,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         if (!STRIP_RESPONSE.has(key.toLowerCase())) resHeaders.set(key, value);
       });
       if (stoppedRedirect) resHeaders.set("location", stoppedRedirect);
-      // Keep redirects inside the proxy in subdomain mode (relative Location
-      // resolves against the proxy host, not the target).
-      if (viaSubdomain) {
-        const loc = resHeaders.get("location");
-        if (loc) {
-          try {
-            const abs = new URL(loc, url.toString());
-            if (abs.origin === url.origin) {
-              resHeaders.set("location", abs.pathname + abs.search + abs.hash);
-            }
-          } catch {
-            /* keep original Location */
-          }
-        }
-      }
+      rewriteSubdomainLocation(resHeaders);
       resHeaders.set("X-Corx-Cache", "MISS");
       resHeaders.set("X-Corx-Target", host);
       resHeaders.set("X-Corx-Latency-Ms", String(Date.now() - started));
