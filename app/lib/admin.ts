@@ -2,6 +2,7 @@ import type { ApiKeyRow, Env } from "./types.js";
 import { ProxyError } from "./types.js";
 import { hashKey, newRawKey } from "./auth.js";
 import { decryptRowInjection, decryptVarsForEdit, encryptVars } from "./crypto.js";
+import { DEFAULT_LOG_RETENTION_DAYS } from "./db.js";
 import { normalizeOriginsInput, parseOrigins } from "../proxy/cors.js";
 import { normalizeCacheTtlInput } from "../proxy/cache.js";
 import { utcDay } from "../proxy/quota.js";
@@ -153,16 +154,16 @@ export async function queryStats(db: D1Database): Promise<Stats> {
 
 // --- Daily rollup + period-over-period comparison -------------------------
 
-/** Raw request_logs are pruned after this many days (keep in sync with server.ts). */
-export const LOG_RETENTION_DAYS = 30;
-
 /**
- * A calendar day that is at least this recent may still have raw rows, so it
- * is read from request_logs; older days come from the rollup. 29, not 30,
- * because the prune deletes by timestamp: the 30th day back can be half gone
- * while its calendar day is still nominally in range.
+ * How many recent calendar days may still have raw rows, and therefore get read
+ * from request_logs instead of the rollup: retention − 1, because the prune
+ * deletes by timestamp — the last day back can be half gone while its calendar
+ * day is still nominally in range. `LOG_RETENTION_DAYS` (app/lib/db.ts) is the
+ * deployment's value; everything here defaults to the shipped 30.
  */
-const RAW_TRUST_DAYS = LOG_RETENTION_DAYS - 1;
+function rawTrustDays(retentionDays: number): number {
+  return Math.max(retentionDays - 1, 0);
+}
 
 /** Shift a "YYYY-MM-DD" UTC day string by n days. */
 export function shiftDay(day: string, n: number): string {
@@ -216,7 +217,13 @@ async function allOrEmptyBound<T>(db: D1Database, sql: string, ...values: unknow
  * days — older days are already complete in the rollup and have no raw rows
  * left to aggregate.
  */
-export async function rollupDailyStats(db: D1Database): Promise<void> {
+export async function rollupDailyStats(
+  db: D1Database,
+  retentionDays: number = DEFAULT_LOG_RETENTION_DAYS,
+): Promise<void> {
+  // retention + 1: the prune keeps `retentionDays` of raw rows by timestamp, so
+  // the oldest surviving day can be one further back. A LONGER retention than
+  // the default must widen this window, or those days would never be rolled up.
   await db
     .prepare(
       `INSERT OR REPLACE INTO stats_daily
@@ -224,9 +231,10 @@ export async function rollupDailyStats(db: D1Database): Promise<void> {
        SELECT ${DAILY_COLUMNS},
               strftime('%Y-%m-%dT%H:%M:%fZ', 'now') AS updated_at
        FROM request_logs
-       WHERE created_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-31 days')
+       WHERE created_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)
        GROUP BY day`,
     )
+    .bind(`-${Math.max(retentionDays, 1) + 1} days`)
     .run();
 }
 
@@ -243,8 +251,9 @@ export async function queryDailyStats(
   startDay: string,
   endDay: string,
   nowMs = Date.now(),
+  retentionDays: number = DEFAULT_LOG_RETENTION_DAYS,
 ): Promise<DailyPoint[]> {
-  const rawSince = shiftDay(utcDay(nowMs), -RAW_TRUST_DAYS);
+  const rawSince = shiftDay(utcDay(nowMs), -rawTrustDays(retentionDays));
   const rawStart = startDay > rawSince ? startDay : rawSince;
   const rollupEnd = shiftDay(rawSince, -1);
   const [rawRows, rollupRows] = await Promise.all([
@@ -345,7 +354,12 @@ function sumPeriod(daily: Map<string, DailyPoint>, from: string, to: string): Pe
  * today: including a partial day would understate the current period and turn
  * a genuinely flat week into an apparent decline.
  */
-export async function queryStatsComparison(db: D1Database, days = 7, nowMs = Date.now()): Promise<StatsComparison> {
+export async function queryStatsComparison(
+  db: D1Database,
+  days = 7,
+  nowMs = Date.now(),
+  retentionDays: number = DEFAULT_LOG_RETENTION_DAYS,
+): Promise<StatsComparison> {
   const n = clampStatsDays(days);
   const today = utcDay(nowMs);
   const end = shiftDay(today, -1);
@@ -353,12 +367,12 @@ export async function queryStatsComparison(db: D1Database, days = 7, nowMs = Dat
   const prevEnd = shiftDay(start, -1);
   const prevStart = shiftDay(prevEnd, -(n - 1));
 
-  const points = await queryDailyStats(db, prevStart, end, nowMs);
+  const points = await queryDailyStats(db, prevStart, end, nowMs, retentionDays);
   const byDay = new Map(points.map((p) => [p.day, p]));
   const current = sumPeriod(byDay, start, end);
   const previous = sumPeriod(byDay, prevStart, prevEnd);
 
-  const rawSince = shiftDay(today, -RAW_TRUST_DAYS);
+  const rawSince = shiftDay(today, -rawTrustDays(retentionDays));
   const usesRaw = end >= rawSince;
   const usesRollup = prevStart < rawSince;
   return {

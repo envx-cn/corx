@@ -30,7 +30,7 @@ map, not the manual.
 | Response markers | `X-Corx-Cache: HIT/MISS`, `X-Corx-Target`, `X-Corx-Latency-Ms` on every proxy response. |
 | Streaming | Responses > 5 MiB (`CACHE_MAX_BYTES`) or non-cacheable stream straight through; a stream can never OOM the Worker (`app/proxy/cache.ts#readBounded`). |
 | Media | Range requests pass through, `206`/`Content-Range`/`Accept-Ranges` preserved, seeking works in `<video>`/`<audio>`; Range always bypasses the cache. |
-| Logging | Every request logged to D1 via `waitUntil` (method, pre-injection target, host, status, latency, client IP, country, key, cache flag, bytes both ways, auth via, origin, injected flag); streamed bodies are byte-counted by `countStream` when they finish or the client disconnects. |
+| Logging | Every request logged to D1 via `waitUntil` (method, pre-injection target, host, status, latency, client IP, country, key, cache flag, bytes both ways, auth via, origin, injected flag); streamed bodies are byte-counted by `countStream` when they finish or the client disconnects. Configurable per deployment: `LOG_REQUESTS=false` writes no rows at all (nothing else depends on them), `LOG_RETENTION_DAYS` sets the raw window (1–365). |
 
 Files: `app/proxy/handler.ts`, `app/proxy/subdomain.ts`, `app/proxy/guard.ts`.
 
@@ -386,7 +386,9 @@ Files: `app/lib/access.ts`, `app/lib/session.ts`,
 
 - Cron `0 3 * * *`: aggregate `request_logs` into `stats_daily` **before** the
   prune (the rollup is the trend's long memory; the raw rows are not), then
-  prune `request_logs` > 30 days, `rate_windows` > 2 h,
+  prune `request_logs` past the deployment's `LOG_RETENTION_DAYS` (default 30;
+  the rollup window and the stats read path follow the same value),
+  `rate_windows` > 2 h,
   `quota_counters` older than yesterday, and a 100-object batch of expired R2
   entries.
 - Observability enabled in `wrangler.jsonc`; `npm run tail` for live logs.

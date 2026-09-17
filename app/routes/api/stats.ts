@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../../lib/types.js";
 import { clampStatsDays, queryStats, queryStatsComparison } from "../../lib/admin.js";
+import { logRetentionDays } from "../../lib/db.js";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -16,7 +17,10 @@ app.get("/", async (c) => {
   const raw = c.req.query("days");
   if (raw === undefined) return c.json({ window: "24h", ...(await queryStats(c.env.DB)) });
   const days = clampStatsDays(Number(raw));
-  return c.json({ window: `${days}d`, ...(await queryStatsComparison(c.env.DB, days)) });
+  return c.json({
+    window: `${days}d`,
+    ...(await queryStatsComparison(c.env.DB, days, Date.now(), logRetentionDays(c.env))),
+  });
 });
 
 export default app;

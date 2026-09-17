@@ -14,6 +14,10 @@ export interface Env {
   REQUIRE_API_KEY?: string;
   /** Default R2 cache TTL for GET responses, in seconds. */
   CACHE_TTL_SECONDS?: string;
+  /** "false"/"0"/"off"/"no" = write nothing to request_logs (default: log). */
+  LOG_REQUESTS?: string;
+  /** Days of raw request_logs kept before the cron prunes them (1–365, default 30). */
+  LOG_RETENTION_DAYS?: string;
   /** Upstream fetch timeout in ms. */
   TIMEOUT_MS?: string;
   /** Default rate limit per key/IP per minute. */

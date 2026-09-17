@@ -99,7 +99,7 @@ const en = {
       caching:
         "R2 GET cache, adjusted per request with `corx-ttl` / `corx-no-cache`, capped per key, and never shared by keys that inject headers.",
       logging:
-        "Every request lands in your D1 — target, host, status, latency, caller origin, key, IP, country. Raw rows are pruned after 30 days; the daily aggregate stays.",
+        "Every request lands in your D1 — target, host, status, latency, caller origin, key, IP, country. The raw window is yours to set (30 days by default, `LOG_RETENTION_DAYS`) and logging can be switched off entirely (`LOG_REQUESTS=false`); the daily aggregate keeps the trend.",
       limits:
         "Your own per-key rate limits and daily quotas, or the shared public tier's. Self-hosted, the ceiling is your Cloudflare plan.",
       price: "Free and MIT-licensed. You pay Cloudflare for what the Worker serves; there is no subscription and no seat count.",
@@ -161,7 +161,7 @@ const en = {
       lead:
         "Corsfix is the fair fight: like CORX it keeps upstream API keys out of the browser with server-side secret variables, and like CORX it is open source with a self-hosting path. What differs is where everything lives — their dashboard and servers, or your own Cloudflare account — and what each one defaults to.",
       wins:
-        "Corsfix wins where a managed product should: it logs no request URLs, headers or bodies at all (CORX keeps 30 days of request logs in your own D1), it publishes an availability figure with paid support behind it, and localhost needs no account whatsoever. Pick CORX when the secrets, the cache and the log rows should sit in your own account, and when paying Cloudflare suits you better than a subscription.",
+        "Corsfix wins where a managed product should: it logs no request URLs, headers or bodies at all (CORX logs to your own D1 by default — with a configurable window, including off), it publishes an availability figure with paid support behind it, and localhost needs no account whatsoever. Pick CORX when the secrets, the cache and the log rows should sit in your own account, and when paying Cloudflare suits you better than a subscription.",
       src: {
         auth: "Production traffic is authorised by adding your website's domain in the dashboard; `x-corsfix-key` is documented as a fallback, and localhost needs no registration.",
         secrets:
@@ -854,7 +854,7 @@ const zh: Messages = {
       caching:
         "R2 GET 缓存，可用 `corx-ttl` / `corx-no-cache` 按请求调整，按 key 封顶；带 header 注入规则的 key 不与他人共享缓存。",
       logging:
-        "每个请求都写入你自己的 D1：目标、主机、状态码、延迟、调用方 Origin、key、IP、国家。原始日志 30 天后清理，按天聚合长期保留。",
+        "每个请求都写入你自己的 D1：目标、主机、状态码、延迟、调用方 Origin、key、IP、国家。保留窗口由你决定（默认 30 天，`LOG_RETENTION_DAYS`），也可以完全关闭（`LOG_REQUESTS=false`）；按天聚合保留趋势。",
       limits: "按 key 的频率限制与每日配额由你自己设定，或使用公共档位的共享配额；自托管时上限就是你 Cloudflare 套餐的上限。",
       price: "免费、MIT 许可。只为 Worker 的实际用量向 Cloudflare 付费，没有订阅，也不按席位计费。",
       setup: "把 Worker 部署到自己的账号（约十分钟）；或复制托管实例的公共 key，在每日配额内发 GET/HEAD。",
@@ -906,7 +906,7 @@ const zh: Messages = {
       lead:
         "Corsfix 是同一量级的对手：和 CORX 一样用服务端密钥变量把上游 API key 挡在浏览器之外，也一样开源、有自托管路径。不同的是东西放在哪里——他们的面板和服务器，还是你自己的 Cloudflare 账号——以及各自的默认行为。",
       wins:
-        "Corsfix 赢在一个托管产品应该赢的地方：它完全不记录请求 URL、header 与 body（CORX 会在你自己的 D1 里保留 30 天请求日志），它公布了可用性数据且背后有付费支持，本地开发甚至不需要账号。如果你希望密钥、缓存与日志留在自己的账号里，并且更愿意把钱付给 Cloudflare 而不是订阅制服务，那就选 CORX。",
+        "Corsfix 赢在一个托管产品应该赢的地方：它完全不记录请求 URL、header 与 body（CORX 默认写入你自己的 D1，窗口可配置、也可关闭），它公布了可用性数据且背后有付费支持，本地开发甚至不需要账号。如果你希望密钥、缓存与日志留在自己的账号里，并且更愿意把钱付给 Cloudflare 而不是订阅制服务，那就选 CORX。",
       src: {
         auth: "生产环境靠在面板添加网站域名来授权；文档把 `x-corsfix-key` 作为备用方案；localhost 无需注册。",
         secrets: "`{{SECRET_NAME}}` 变量可用于查询参数与请求头；密钥静态加密，仅在请求用到时在内存中解密。",

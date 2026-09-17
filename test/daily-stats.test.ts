@@ -79,7 +79,16 @@ describe("rollupDailyStats", () => {
     // The stored format is ISO-with-T; datetime('now') would silently include
     // the whole boundary calendar day (see the note in admin.ts).
     expect(sql).not.toContain("datetime('now'");
-    expect(sql).toContain("strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-31 days')");
+    expect(sql).toContain("strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)");
+    // Default retention is 30 → the window reaches 31 days back (one further
+    // than the prune keeps, since the prune deletes by timestamp).
+    expect(calls[0]?.values).toEqual(["-31 days"]);
+  });
+
+  it("follows a deployment's longer retention instead of the shipped default", async () => {
+    const { db, calls } = stubDb([], []);
+    await rollupDailyStats(db, 200);
+    expect(calls[0]?.values).toEqual(["-201 days"]);
   });
 });
 

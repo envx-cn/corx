@@ -512,8 +512,10 @@ Every \`corx-*\` parameter is namespaced, so it can never collide with the targe
 - Hop-by-hop headers are stripped on the way in and out; \`Set-Cookie\` is not forwarded; the public
   tier strips credentials.
 - Requests are logged (IP, country, method, target URL, status, latency, caller origin, key), rolled
-  into a per-day aggregate by a nightly cron, and the raw rows pruned after 30 days — the aggregate
-  keeps the long-term trend (\`/api/stats?days=\`).
+  into a per-day aggregate by a nightly cron, and the raw rows pruned after 30 days by default — the
+  aggregate keeps the long-term trend (\`/api/stats?days=\`). Self-hosted deployments choose both:
+  \`LOG_REQUESTS=false\` writes no request rows at all, and \`LOG_RETENTION_DAYS\` (1–365) sets the
+  raw window; the rollup and the stats read path follow it.
 
 ## Trust model
 
