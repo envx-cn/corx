@@ -252,8 +252,9 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
   the demo sparks one from the centre. Then the live "Try it" mockup-browser
   demo (10 s in view / 30 s ambient off-screen, type-to-take-over, paused on
   hidden tabs and for reduced motion), a **Highlights band** (upstream secret
-  injection, keyless browser access, playground introspection — each with a
-  real config snippet), a compact nine-item feature list and a dark footer.
+  injection, keyless browser access, playground introspection and a
+  **console-not-just-an-endpoint** umbrella card — each with a real config
+  snippet), a compact nine-item feature list and a dark footer.
 - The demo **renders by content type** (`lib/preview.ts` +
   `components/response-preview.tsx`): JSON tree, sandboxed HTML preview,
   image on a checkerboard, streaming `<video>`/`<audio>` behind a play button,

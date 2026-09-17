@@ -48,6 +48,30 @@ That trade is the product: open source, free, and honest about when not to
 trust someone else's instance. The landing page says so in the hero itself,
 with a pointer to the dedicated trust section.
 
+## More than a fetch endpoint
+
+Many open-source CORS proxies are one route: deploy, call
+`/fetch?url=`, done. CORX ships the product around that route too, so a
+self-hosted copy feels like a service rather than a script:
+
+- **A console** (bilingual EN/中文) at `/console/`: a usage dashboard, a
+  period-over-period trend that outlives the 30-day logs, request logs showing
+  the authorizing key or keyless origin, a host blocklist and a playground
+  that runs requests through the real pipeline (auth, SSRF guards, injection,
+  cache).
+- **Per-key policy**, not one global behaviour: name, allowed origins, rate
+  limit, cache TTL / no-cache, keyless grants, SSRF-check opt-outs, upstream
+  secret injection (header + query rules) and a public tier with daily quotas
+  — all editable in the console without a redeploy.
+- **The same Worker**: the console is server-rendered by the same Hono app and
+  reads the same D1 it manages — no extra service, no third-party dashboard,
+  no seat or bill. Access is Cloudflare Access, a signed session cookie or the
+  admin token, and `/api/*` exposes the same operations as JSON for
+  automation.
+
+Projects that offer this much are usually commercial; here it is in the
+repository, included in the free-tier deployment.
+
 ## Usage
 
 ```js

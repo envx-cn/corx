@@ -13,6 +13,7 @@ import flaskSvg from "lucide-static/icons/flask-conical.svg?raw";
 import clapperboardSvg from "lucide-static/icons/clapperboard.svg?raw";
 import languagesSvg from "lucide-static/icons/languages.svg?raw";
 import serverSvg from "lucide-static/icons/server.svg?raw";
+import layoutDashboardSvg from "lucide-static/icons/layout-dashboard.svg?raw";
 import fileTextSvg from "lucide-static/icons/file-text.svg?raw";
 import bookOpenTextSvg from "lucide-static/icons/book-open-text.svg?raw";
 import arrowUpRightSvg from "lucide-static/icons/arrow-up-right.svg?raw";
@@ -56,6 +57,7 @@ export function LandingPage(props: {
     { q: t("landing.faq.q5"), a: t("landing.faq.a5") },
     { q: t("landing.faq.q6"), a: t("landing.faq.a6") },
     { q: t("landing.faq.q7"), a: t("landing.faq.a7") },
+    { q: t("landing.faq.q8"), a: t("landing.faq.a8") },
   ];
   const features = [
     t("landing.features.simple.title"),
@@ -335,7 +337,7 @@ export function LandingPage(props: {
               <h2 class="text-2xl sm:text-3xl font-bold tracking-tight">{t("landing.highlights.title")}</h2>
               <p class="mt-2 text-base-content/75">{t("landing.highlights.sub")}</p>
             </div>
-            <div class="grid md:grid-cols-3 gap-4">
+            <div class="grid sm:grid-cols-2 gap-4">
               <Highlight
                 icon={syringeSvg}
                 title={t("landing.highlights.injection.title")}
@@ -353,6 +355,15 @@ export function LandingPage(props: {
                 title={t("landing.highlights.playground.title")}
                 desc={t("landing.highlights.playground.desc")}
                 code={["200 · MISS · 143 ms", "x-corx-target: api.vendor.com"]}
+              />
+              {/* The umbrella highlight: the other three are capabilities, this
+                  is the product they live in — and the reason a self-hosted
+                  copy feels like a service rather than a route. */}
+              <Highlight
+                icon={layoutDashboardSvg}
+                title={t("landing.highlights.console.title")}
+                desc={t("landing.highlights.console.desc")}
+                code={["Keys · Logs · Analytics · Playground", "rate 120/min · origins https://app.example"]}
               />
             </div>
           </section>
