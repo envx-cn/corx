@@ -474,6 +474,16 @@ describe("upstream injection + keyless access (integration)", () => {
     expect(new TextDecoder().decode(calls[1]?.body as ArrayBuffer)).toBe("payload");
   });
 
+  it("rewrites an absolute subdomain Location even on the streamed path", async () => {
+    const calls = stubFetch(() => new Response(null, { status: 302, headers: { location: "https://example.com/new" } }));
+    const subEnv = { ...env, PROXY_ZONE: "corx.test" } as Env;
+    const res = await worker.fetch(new Request("https://example.corx.test/old"), subEnv, ctx);
+    expect(res.status).toBe(302);
+    expect(calls[0]?.url).toBe("https://example.com/old");
+    // Relative, so the browser stays on the proxy instead of leaving for the target.
+    expect(res.headers.get("location")).toBe("/new");
+  });
+
   it("header rules keep the key out of the shared cache", async () => {
     const calls = stubFetch(() => new Response("ok", { status: 200 }));
     const puts: unknown[] = [];
