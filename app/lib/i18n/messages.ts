@@ -582,10 +582,10 @@ const en = {
     more: { title: "Keep reading" },
   },
   landing: {
-    title: "CORX — CORS proxy on Cloudflare",
+    title: "CORX — Free, open-source CORS proxy on Cloudflare",
     meta: {
       description:
-        "CORX is an edge CORS proxy on Cloudflare: fetch any URL cross-origin with R2 caching, upstream secret injection, keyless browser access and SSRF guards.",
+        "Free, open-source CORS proxy on Cloudflare's edge: a public key with no signup, or self-host the MIT-licensed Worker for private quotas, logs and keys.",
     },
     hero: {
       h1a: "Fetch any URL,",
@@ -721,6 +721,8 @@ const en = {
       a7: "Only with data you would hand to a stranger. A proxy sees — and can change — everything passing through it, and on a hosted instance the operator is that stranger. Use the public key for public data, demos and prototypes; when the traffic matters, self-host CORX and the only operator left in the path is you.",
       q8: "Does CORX come with an admin console?",
       a8: "Yes — a bilingual (English/中文) console with a usage dashboard and a period-over-period trend, per-key policy (rate limits, allowed origins, cache TTL, keyless grants, upstream injection, public-tier quotas), request logs, a host blocklist and a playground that runs requests through the real pipeline. Most self-hosted proxies are just a fetch endpoint; this is the product around it, in the same Worker.",
+      q9: "Is CORX free?",
+      a9: "Yes, both halves. The hosted instance gives you a public key with no account — GET/HEAD, daily quotas, best effort. Self-hosting is free too: CORX is MIT-licensed and runs on Cloudflare's free plan; if you outgrow that you pay Cloudflare ($5/mo Workers Paid), not us. There is no paid tier, no seat count and no subscription.",
       // The comparison pages' only entry point besides search. Dated answer to
       // "how is this different from X", not a pitch.
       compare: "Comparing it with another hosted proxy?",
@@ -1633,10 +1635,10 @@ const zh: Messages = {
     more: { title: "延伸阅读" },
   },
   landing: {
-    title: "CORX — Cloudflare 上的 CORS 代理",
+    title: "CORX — 免费开源的 Cloudflare CORS 代理",
     meta: {
       description:
-        "CORX 是运行在 Cloudflare 上的边缘 CORS 代理：给任意 URL 加前缀即可跨域抓取，支持 R2 缓存、上游密钥注入、浏览器免密钥访问与 SSRF 防护。",
+        "免费开源的边缘 CORS 代理：公共 key 无需注册，或自托管 MIT 许可的 Worker，自定配额、私有日志与密钥注入。",
     },
     hero: {
       h1a: "抓取任意 URL，",
@@ -1772,6 +1774,8 @@ const zh: Messages = {
       a7: "只适合你愿意交给陌生人的数据。代理能看到——也能修改——经过它的所有内容，而托管实例的运营方就是那个陌生人。公开数据、演示和原型可以用公共 key；一旦流量重要，就自托管 CORX，那时链路上唯一的运营方就是你自己。",
       q8: "CORX 带管理控制台吗？",
       a8: "带。它是一个中英双语控制台：用量仪表盘与周期对比趋势、按 key 的策略（频率限制、允许来源、缓存 TTL、免密钥授权、上游注入、公共档位配额）、请求日志、主机黑名单，以及跑真实链路的演练场。多数自托管代理只是一个 fetch 接口，而这里是围绕它的一整套产品，全部包含在同一个 Worker 中。",
+      q9: "CORX 免费吗？",
+      a9: "免费，而且两边都免费。托管实例提供公共 key、无需注册——仅限 GET/HEAD，有每日配额，尽力而为。自托管同样免费：CORX 是 MIT 许可，跑在 Cloudflare 免费套餐上；额度不够时你付给 Cloudflare（$5/月的 Workers Paid），而不是付给我们。没有付费档、没有席位费、没有订阅。",
       // 对比页除搜索之外的唯一入口：给「它和 X 有什么不同」一个有日期的回答，而不是推销。
       compare: "想和其他托管代理对比？",
     },

@@ -246,11 +246,12 @@ describe("compare discovery", () => {
     for (const comparison of COMPARISONS) {
       expect(landing).toContain(`href="/compare/${comparison.slug}"`);
     }
-    // The FAQ JSON-LD stays the eight questions; the links are page chrome.
+    // The FAQ JSON-LD stays the nine questions (including "Is CORX free?");
+    // the compare links are page chrome.
     const graph = JSON.parse(
       (await (await call("/en")).text()).match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)![1]!,
     );
-    expect(graph["@graph"].find((n: Record<string, unknown>) => n["@type"] === "FAQPage")["mainEntity"].length).toBe(8);
+    expect(graph["@graph"].find((n: Record<string, unknown>) => n["@type"] === "FAQPage")["mainEntity"].length).toBe(9);
 
     const zh = await (await call("/zh")).text();
     expect(zh).toContain("想和其他托管代理对比？");

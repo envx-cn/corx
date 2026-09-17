@@ -62,6 +62,7 @@ export function LandingPage(props: {
     { q: t("landing.faq.q6"), a: t("landing.faq.a6") },
     { q: t("landing.faq.q7"), a: t("landing.faq.a7") },
     { q: t("landing.faq.q8"), a: t("landing.faq.a8") },
+    { q: t("landing.faq.q9"), a: t("landing.faq.a9") },
   ];
   const features = [
     t("landing.features.simple.title"),
