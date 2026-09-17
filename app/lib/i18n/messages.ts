@@ -21,6 +21,7 @@ const en = {
     features: "Features",
     highlights: "Highlights",
     faq: "FAQ",
+    docs: "Docs",
     tagline: "CORS proxy, served from the edge",
     console: "Console",
     terms: "Terms",
@@ -242,6 +243,144 @@ const en = {
         availability:
           "Community-run with no published SLA, and the repository has not been pushed since 2023-02-26. When we checked on 2026-09-17 the hosted API answered 5xx from our network.",
       },
+    },
+  },
+  // The /docs page: the human-readable manual. Code-coupled facts (call
+  // shapes, the corx-* table) live in app/lib/docs.ts; only prose lives here,
+  // and both locales must carry the same keys.
+  docs: {
+    title: "Usage",
+    back: "Back to home",
+    updated: "Last updated {date}",
+    lead:
+      "This page is the manual for the instance at {origin}: the four ways to call the proxy, every control parameter, the auth tiers, what the cache does, the limits you will hit and the security model behind it. README.md in the repository stays the source of truth for deploying your own copy.",
+    toc: {
+      aria: "On this page",
+      call: "Call shapes",
+      params: "Control parameters",
+      auth: "Authentication",
+      caching: "Caching",
+      limits: "Limits and errors",
+      security: "Security",
+      selfhost: "Self-hosting",
+    },
+    call: {
+      title: "Calling the proxy",
+      lead:
+        "Every shape below resolves to the same request through the same pipeline — auth, SSRF guards, upstream injection, cache, logging. CORS preflight (`OPTIONS`) is answered before the proxy runs, so browser `fetch` just works.",
+      note:
+        "GET and HEAD responses are cached and counted; every other method passes straight through, uncached. A caller-supplied target keeps its own query string: the target's own `key`, `ttl` or `callback` parameters are forwarded untouched, and CORX only consumes names it owns.",
+      query: {
+        title: "Query parameter (recommended)",
+        desc:
+          "The shape this documentation uses everywhere: the target URL, percent-encoded, in `?url=`. Works on `/fetch` and on every other proxy route.",
+      },
+      path: {
+        title: "Path",
+        desc:
+          "The target appended after `/proxy/`. Easy to read and to paste into a browser; the target's own query string survives after the first `?`.",
+      },
+      bare: {
+        title: "Bare path",
+        desc:
+          "The same as `/proxy/`, one segment shorter: any path that is not a CORX page and looks like a URL is proxied.",
+      },
+      subdomain: {
+        title: "Subdomain mode",
+        desc:
+          "When the deployment has a wildcard zone, a target gets a hostname of its own: dots become hyphens and hyphens double (`api.example.com` → `api-example-com.<zone>`). The request's query string is the target's query string, so the `corx-*` names are stripped back off.",
+      },
+    },
+    params: {
+      title: "The corx-* namespace",
+      lead:
+        "`corx-*` is CORX's namespace: these parameters are consumed by the proxy and never reach the target. Everything else belongs to the target and is forwarded untouched. A `corx-*` name that is not in this table is a 400, never a param quietly forwarded upstream.",
+      col: { param: "Parameter", effect: "Effect" },
+      note:
+        "Subdomain mode is the one place where the proxy request's query is also the target's, so the control names are stripped back off there. A target that genuinely needs a `corx-*` parameter is best addressed with `?url=` or path mode.",
+    },
+    param: {
+      ttl:
+        "Cache TTL in seconds for this GET response. Capped by the deployment's maximum (and by a public key's own TTL) so no caller can pin an entry for a day.",
+      noCache:
+        "Bypass the R2 cache for this request: fetch upstream, return, do not store. Range requests, JSONP and credentialed requests bypass it anyway.",
+      key: "The API key for this request. Equivalent to `X-Api-Key` or `Authorization: Bearer`. Public-tier keys cannot control the cache.",
+      callback:
+        "JSONP: wrap an `application/json` body as `fn(<json>);` (max 2 MiB) for a `<script>` tag when CSP blocks `fetch`. JSONP never caches.",
+      scheme: "Subdomain mode: the target scheme. Defaults to `https`; `http` is the only other accepted value.",
+      port: "Subdomain mode: the target port (1–65535), appended unless it is the scheme's default (80 for http, 443 for https).",
+    },
+    auth: {
+      title: "Authentication",
+      lead: "Three ways in — roughly the order a self-hosted deployment turns them on.",
+      formsNote: "All three are equivalent; use whichever survives your client or tooling.",
+      key: {
+        title: "API key (per caller)",
+        body:
+          "Created in the console as `corx_<random>` and stored only as a SHA-256 hash — the raw value is shown once. A key can carry allowed origins, a per-minute rate limit, a cache TTL, keyless grants, allowed hosts, SSRF-check opt-outs and upstream injection. Send it in any of the forms below.",
+      },
+      keyless: {
+        title: "Keyless origin grants",
+        body:
+          "Enable keyless access on a key and browsers from its allowed origins call the proxy without carrying the key at all. The grant matches the `Origin` header (or the `Referer`'s origin for same-origin GETs) and is metered per visitor IP, so one embedded site cannot drain the key. An origin is a convenience, not a credential — scripts can forge it — so pair it with allowed hosts and a rate limit.",
+      },
+      public: {
+        title: "Public tier",
+        body:
+          "A hosted instance may publish a shared key on its landing page. It is deliberately reduced: GET and HEAD only, daily quotas per calling site / per target host / per instance, no cache control, no injection and no subdomain mode; `Cookie` and `Authorization` are stripped before forwarding. Fine for public data, demos and prototypes.",
+      },
+      where: {
+        title: "Where the key goes — and where it must not",
+        body:
+          "Server-side only. A key in a browser bundle, a public repository or a page source is a key you have given away; a site that needs to call the proxy from a browser should use a keyless origin grant (or the public key, if the data really is public). Never send credentials or personal data through a shared instance at all.",
+      },
+    },
+    caching: {
+      title: "Caching",
+      lead:
+        "GET responses are cached in R2 and served from the edge, so a repeated request usually never reaches upstream. `X-Corx-Cache: HIT|MISS` on every response says which path it took.",
+      hitTitle: "Cache markers",
+      hit:
+        "`X-Corx-Cache` is the header to watch while debugging: `MISS` means upstream answered (and the response was stored), `HIT` means R2 answered. `X-Corx-Target` names the upstream host, and `X-Corx-Latency-Ms` is the time the proxy spent.",
+      ttlTitle: "TTL",
+      ttl:
+        "The deployment's default TTL applies unless `?corx-ttl=` lowers or raises it, up to the cap. A key can pin its own default TTL, or `0` to never store; the public tier cannot set a TTL at all.",
+      bypassTitle: "What bypasses the cache",
+      bypass:
+        "Always bypassing the shared cache: non-GET/HEAD methods, requests carrying `Authorization` or `Cookie`, `?corx-no-cache=1`, JSONP (`corx-callback`), Range requests, and keys that inject upstream headers. Keys with response header rules do cache — their resolved rules are part of the cache key, so a rewritten response is never served to another key.",
+    },
+    limits: {
+      title: "Limits and errors",
+      lead:
+        "Two independent limits protect an instance: a per-minute rate limit per key (or per IP for anonymous calls), and the public tier's daily quotas.",
+      rate:
+        "The per-minute limit is counted on the key, or on the caller IP without one. Cache hits count too, and the D1-backed checks fail open during a database incident rather than taking the proxy down.",
+      quota:
+        "A public key's daily counters run per calling site, per target host and for the instance as a whole, in UTC days. Cache hits count as well — the quota is about requests, not upstream load. `X-Corx-Quota-{Origin,Host,Day}-{Limit,Remaining}` reports where you stand.",
+      response:
+        "Over either limit the proxy answers `429` with a JSON body (`{ error, scope, limit, resetAt }`) and `Retry-After` — seconds until the window or the UTC day resets. Ordinary responses carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`. Every machine-facing path (the proxy, `/api/*`, `/health`) answers errors as JSON `{ error }`; browser pages get a branded HTML document.",
+    },
+    security: {
+      title: "Security",
+      lead:
+        "CORX is a CORS proxy, so it is a man in the middle by construction: whoever operates an instance can read, change and replay everything passing through it. The guards below reduce what an untrusted caller can reach; they do not make a shared instance safe for secrets.",
+      ssrf:
+        "SSRF guards: private, link-local, CGNAT, multicast and reserved IP literals are blocked, the host is resolved over DoH and re-checked so a name cannot rebind to a private address, and a D1 blocklist covers whole hosts and their subdomains. A trusted key can opt out of the IP/hostname and DNS checks; the blocklist and Cloudflare's own rules are never bypassed.",
+      headers:
+        "Header hygiene: hop-by-hop and proxy-owned headers (`Host`, `Connection`, `X-Forwarded-For`, `CF-*`, …) are stripped on the way in and out, `Set-Cookie` is never forwarded, and the public tier strips `Cookie` and `Authorization` before forwarding.",
+      visibility:
+        "What a proxy can see: the target URL, the request and response bodies, and the caller's IP, `Origin` and country. A hosted instance logs requests and rolls them into a per-day aggregate; a self-hosted deployment chooses whether and how long (`LOG_REQUESTS`, `LOG_RETENTION_DAYS`).",
+      trust:
+        "So the honest way to run CORX is self-hosting: one MIT-licensed Worker in an account you control. A hosted instance is a shared, best-effort demo — read the terms of use and the trust model before sending it traffic.",
+      termsLink: "Terms of use",
+      trustLink: "Trust model",
+    },
+    selfhost: {
+      title: "Self-hosting",
+      lead:
+        "Every limit on this page — quotas, rate limits, retention, allowed hosts — is a setting on a Worker you control once you deploy your own copy. The README covers the ten-minute deployment (D1 + R2 + `wrangler deploy`); CONTRIBUTING.md covers local development and the checks a change has to pass.",
+      readme: "Deployment guide",
+      contributing: "Contributing guide",
     },
   },
   landing: {
@@ -778,6 +917,7 @@ const zh: Messages = {
     features: "功能特性",
     highlights: "亮点功能",
     faq: "常见问题",
+    docs: "文档",
     tagline: "边缘 CORS 代理",
     console: "控制台",
     terms: "使用条款",
@@ -972,6 +1112,138 @@ const zh: Messages = {
         extras: "除代理、`charset` 转换与 JSONP `callback` 外没有其他记录在案的能力。",
         availability: "社区维护，没有公布的 SLA，仓库自 2023-02-26 起没有推送。我们 2026-09-17 核查时，托管 API 从我们的网络访问全部返回 5xx。",
       },
+    },
+  },
+  // /docs 页面：给人看的使用手册。与代码绑定的部分（调用形态、corx-*
+  // 参数表）在 app/lib/docs.ts；这里只有文案，两个语言必须保持相同的键。
+  docs: {
+    title: "使用文档",
+    back: "返回首页",
+    updated: "最后更新 {date}",
+    lead:
+      "本页是 {origin} 实例的说明书：四种调用方式、全部控制参数、鉴权层级、缓存行为、会遇到的限额，以及背后的安全模型。自托管自己的一份，以仓库里的 README.md 为准。",
+    toc: {
+      aria: "本页目录",
+      call: "调用方式",
+      params: "控制参数",
+      auth: "鉴权",
+      caching: "缓存",
+      limits: "限额与错误",
+      security: "安全",
+      selfhost: "自托管",
+    },
+    call: {
+      title: "调用代理",
+      lead:
+        "下面四种写法最终都会走同一条链路：鉴权、SSRF 防护、上游注入、缓存、日志。CORS 预检（`OPTIONS`）在进入代理前就已应答，浏览器的 `fetch` 可以直接用。",
+      note:
+        "GET 和 HEAD 响应会被缓存并计入配额，其他方法一律直接透传、不缓存。调用方自带的目标会完整保留自己的查询串：目标自己的 `key`、`ttl`、`callback` 参数原样转发，CORX 只消费属于自己的名字。",
+      query: {
+        title: "查询参数（推荐）",
+        desc: "本文档统一使用的写法：目标 URL 经过百分号编码后放进 `?url=`。`/fetch` 和任何其他代理路由都支持。",
+      },
+      path: {
+        title: "路径式",
+        desc: "把目标接在 `/proxy/` 之后，便于阅读，也能直接粘进浏览器；目标自己的查询串在第一个 `?` 之后完整保留。",
+      },
+      bare: {
+        title: "裸路径",
+        desc: "与 `/proxy/` 相同，只是少一段：任何不是 CORX 页面、又看起来像 URL 的路径都会走代理。",
+      },
+      subdomain: {
+        title: "子域名模式",
+        desc: "部署绑定了泛解析域名时，每个目标可以拥有自己的主机名：点变连字符、连字符翻倍（`api.example.com` → `api-example-com.<zone>`）。该请求的查询串就是目标的查询串，因此 `corx-*` 名字会被剔除。",
+      },
+    },
+    params: {
+      title: "corx-* 命名空间",
+      lead:
+        "`corx-*` 是 CORX 的命名空间：这些参数由代理消费，绝不会转发给目标。其余参数都归目标所有，原样转发。表中没有的 `corx-*` 名字会直接 400，而不会被悄悄转发。",
+      col: { param: "参数", effect: "作用" },
+      note:
+        "子域名模式是唯一一种「代理请求的查询串就是目标的查询串」的场景，因此在那里会把控制参数剔除。如果目标确实需要一个叫 `corx-*` 的参数，请改用 `?url=` 或路径式调用。",
+    },
+    param: {
+      ttl:
+        "本次 GET 响应的缓存 TTL（秒）。会被部署上限（以及公共 key 自身的 TTL）压低，避免调用方把条目钉死一整天。",
+      noCache:
+        "本次请求跳过 R2 缓存：直接回源、返回，且不写入缓存。Range 请求、JSONP 和携带凭证的请求本来就会绕过缓存。",
+      key: "本次请求使用的 API key，等价于 `X-Api-Key` 或 `Authorization: Bearer`。公共档位不能控制缓存。",
+      callback:
+        "JSONP：当 CSP 拦住 `fetch` 时，把 `application/json` 响应包成 `fn(<json>);`（上限 2 MiB）供 `<script>` 使用。JSONP 永不缓存。",
+      scheme: "子域名模式：目标协议。默认 `https`，另一个可选值是 `http`。",
+      port: "子域名模式：目标端口（1–65535），若不是该协议的默认端口（http 为 80、https 为 443）则拼接在主机名之后。",
+    },
+    auth: {
+      title: "鉴权",
+      lead: "三种进入方式，大致就是自托管部署逐步启用的顺序。",
+      formsNote: "三种形式完全等价，用你手头客户端支持的那种即可。",
+      key: {
+        title: "API key（按调用方）",
+        body:
+          "在控制台创建的 key 形如 `corx_<随机串>`，库里只存 SHA-256 哈希，原始值只展示一次。它可以携带允许来源、每分钟频率限制、缓存 TTL、免密钥授权、允许主机、SSRF 检查开关和上游注入。用下面任意一种形式发送即可。",
+      },
+      keyless: {
+        title: "免密钥来源授权",
+        body:
+          "给 key 开启免密钥（keyless）后，其允许来源的浏览器调用代理时完全无需携带 key。授权按 `Origin` 匹配（同源 GET 时回退到 `Referer` 的来源），并按访客 IP 计量，因此单个嵌入站点无法耗尽整个 key。来源是便利措施而非凭证——脚本可以伪造——请配合允许主机和频率限制使用。",
+      },
+      public: {
+        title: "公共档位",
+        body:
+          "托管实例可能在落地页公开一个共享 key，它是刻意削减过的：仅 GET/HEAD、按调用站点／目标站点／整个实例的每日配额、不能控制缓存、不能注入、不支持子域名模式；转发前会剥掉 `Cookie` 和 `Authorization`。适合公开数据、演示和原型。",
+      },
+      where: {
+        title: "key 该放在哪，绝不能放在哪",
+        body:
+          "只能放在服务端。出现在浏览器打包产物、公开仓库或页面源码里的 key，就等于已经泄露；需要从浏览器调用代理的站点应该使用免密钥来源授权（如果数据确实是公开的，就用公共 key）。无论如何，都不要让凭证或个人数据经过共享实例。",
+      },
+    },
+    caching: {
+      title: "缓存",
+      lead:
+        "GET 响应会缓存在 R2 并从边缘返回，重复请求通常根本到不了上游。每个响应上的 `X-Corx-Cache: HIT|MISS` 会告诉你走了哪条路。",
+      hitTitle: "缓存标记",
+      hit:
+        "调试时最该盯的就是 `X-Corx-Cache`：`MISS` 表示响应来自上游（并已写入缓存），`HIT` 表示由 R2 直接返回。`X-Corx-Target` 给出上游主机名，`X-Corx-Latency-Ms` 是代理消耗的时间。",
+      ttlTitle: "TTL",
+      ttl:
+        "默认使用部署的 TTL，除非用 `?corx-ttl=` 调低或调高（不超过上限）。key 也可以设定自己的默认 TTL，或设成 `0` 表示永不写入；公共档位完全不能设置 TTL。",
+      bypassTitle: "哪些请求绕过缓存",
+      bypass:
+        "以下情况一定绕过共享缓存：非 GET/HEAD 方法、携带 `Authorization` 或 `Cookie`、`?corx-no-cache=1`、JSONP（`corx-callback`）、Range 请求，以及会注入上游请求头的 key。带响应头规则的 key 仍然会缓存——其解析后的规则属于缓存键的一部分，改写过的响应绝不会返回给另一个 key。",
+    },
+    limits: {
+      title: "限额与错误",
+      lead: "有两层彼此独立的限制在保护实例：按 key（匿名时按 IP）的每分钟频率限制，以及公共档位的每日配额。",
+      rate:
+        "每分钟限制按 key 计数，匿名调用按 IP 计数。命中缓存的请求同样计入；底层 D1 故障时这些检查会放行（fail open），以免代理整体不可用。",
+      quota:
+        "公共 key 的每日计数按调用站点、目标站点和整个实例三个维度，以 UTC 自然日为单位。命中缓存也计入——配额算的是请求数，不是上游压力。`X-Corx-Quota-{Origin,Host,Day}-{Limit,Remaining}` 会报告你的剩余额度。",
+      response:
+        "触碰任一限制时，代理返回 `429`，JSON body 形如 `{ error, scope, limit, resetAt }`，并带 `Retry-After`——距离窗口或 UTC 零点重置的秒数。普通响应也会带 `X-RateLimit-Limit` 和 `X-RateLimit-Remaining`。所有面向机器的路径（代理、`/api/*`、`/health`）出错都是 JSON `{ error }`；浏览器页面则是带品牌的 HTML 错误文档。",
+    },
+    security: {
+      title: "安全",
+      lead:
+        "CORX 是 CORS 代理，因此本质上就是中间人：运行实例的人可以读取、修改并重放经过它的所有内容。下面的防护只能限制不可信调用方能碰到什么，并不能让共享实例变得适合承载机密。",
+      ssrf:
+        "SSRF 防护：私有、链路本地、CGNAT、组播和保留网段的 IP 字面量会被拦截；主机名会通过 DoH 解析并复核，防止重绑定到内网；D1 黑名单按域名及其子域生效。可信的 key 可以关掉 IP/主机名检查和 DNS 检查，但黑名单与 Cloudflare 自身的规则永远不会被绕过。",
+      headers:
+        "请求头卫生：逐跳头和代理自有头（`Host`、`Connection`、`X-Forwarded-For`、`CF-*` 等）在进出两个方向都会被剥掉，`Set-Cookie` 不会转发，公共档位在转发前剥离 `Cookie` 和 `Authorization`。",
+      visibility:
+        "代理能看到什么：目标 URL、请求与响应体，以及调用方的 IP、`Origin` 与国家/地区。托管实例会记录请求并汇总成每日聚合；自托管可以自行决定是否记录、保留多久（`LOG_REQUESTS`、`LOG_RETENTION_DAYS`）。",
+      trust:
+        "所以运行 CORX 最诚实的方式就是自托管：一个 MIT 许可的 Worker，放在你自己掌控的账号里。托管实例只是共享的尽力而为演示——在把流量交给它之前，请先读一读使用条款和信任模型。",
+      termsLink: "使用条款",
+      trustLink: "信任模型",
+    },
+    selfhost: {
+      title: "自托管",
+      lead:
+        "本页上的每一项限制——配额、频率、保留时长、允许主机——在自托管之后都是你自己 Worker 上的设置。README 覆盖了约十分钟的部署流程（D1 + R2 + `wrangler deploy`）；CONTRIBUTING.md 写明了本地开发和改动必须通过的检查。",
+      readme: "部署指南",
+      contributing: "贡献指南",
     },
   },
   landing: {
