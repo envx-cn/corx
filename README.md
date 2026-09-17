@@ -291,7 +291,8 @@ R2 cache; everything else streams straight through untouched, so:
   to a seeking player)
 
 One limitation: HLS/DASH playlists (`.m3u8`/`.mpd`) with absolute segment URLs
-break out of the proxy — relative URLs (or subdomain mode) work fine.
+break out of the proxy — relative URLs (or subdomain mode) work fine. That is a
+[non-goal](#non-goals), not a backlog item.
 
 ## Landing page
 
@@ -861,6 +862,41 @@ curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: applicati
   -d '{"hostname":"evil.example","reason":"abuse"}' \
   https://corx.<you>.workers.dev/api/block-host
 ```
+
+## Non-goals
+
+CORX is a pipe that can hold a credential: it forwards a request and returns the
+response without interpreting the payload. Some things adjacent to that are
+deliberately out of scope. The `/compare` pages record the price of each one row
+by row (the `accepted` marker); they are written down here so a future request
+gets an answer instead of an argument.
+
+- **Image transformation, web scraping/extraction, file conversion.** Those are
+  a different product: they have to understand the *content*, which turns this
+  Worker into a media/text pipeline with a much larger surface and a different
+  failure mode. CORX's job is to hold the upstream secret and move bytes; the
+  `extras` rows on `/compare` are the price of that focus, paid on purpose.
+- **User-selectable egress regions.** Workers run across Cloudflare's edge, and
+  the platform's own control is `placement` in `wrangler.jsonc` — `smart`, or a
+  `targeted` region on plans that offer it. That is a deployment-wide execution
+  hint for the operator, not a per-request "egress from eu-west-1" choice for a
+  caller, which is what a region selector would have to be. A platform
+  constraint, not a backlog item.
+- **An SLA, uptime page or support commitment for the hosted instance.** The
+  hosted instance is a free, shared, best-effort demo — `/terms` says so and the
+  landing page's trust section repeats it. A status page would not change whose
+  availability it is. Self-hosting is the answer: a deployment you own inherits
+  your own Cloudflare account's uptime, and you are the only operator in the
+  path.
+- **HLS/DASH manifest rewriting.** Segments already stream (Range requests and
+  seeking work), but rewriting absolute segment URLs inside `.m3u8`/`.mpd`
+  manifests would make CORX interpret the payload — a content rewriter with a
+  dialect per player. Relative URLs and subdomain mode are the supported paths.
+- **Control parameters as request headers.** `corx-*` lives in the query string
+  because that is what the callers who need it can set: a `<script src>` (JSONP),
+  an `<img>`/`<video>` tag, a browser address bar, a copied link. Custom headers
+  would mean a preflight for every cross-origin call and would sit in the same
+  namespace as the target's own headers, which the query already keeps separate.
 
 ## How it works
 

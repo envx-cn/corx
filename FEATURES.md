@@ -494,6 +494,14 @@ flagged has been fixed below.
    unreadable (injection fails closed, edits are refused). Recovering means
    re-entering the values on each key; a re-wrap migration script would fix it.
 
+Product **non-goals** are a separate list from the limitations above — not gaps
+but deliberate scope decisions with their reasons: image transforms,
+scraping/extraction and file conversion; caller-selectable egress regions; an
+SLA or support commitment for the hosted instance; HLS/DASH manifest rewriting;
+and control parameters as request headers. They live in README →
+[Non-goals](./README.md#non-goals), so a feature request can be answered with a
+pointer instead of a debate.
+
 ## Review follow-ups (fixed)
 
 - **Body reads fail loudly.** A read error is a `400`, never a silently-empty
