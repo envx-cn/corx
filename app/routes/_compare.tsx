@@ -196,9 +196,26 @@ export function ComparePage(props: {
                     <td class="align-top text-sm whitespace-normal text-base-content/80">
                       {t(themCellKey(comparison.slug, row.id))}
                       {/* The honest half of the table: say it in the cell, not
-                          in a footnote nobody reads. */}
+                          in a footnote nobody reads. The status label is the
+                          other half — a row we lose on purpose and a row an
+                          open task closes are different statements. */}
                       {row.theirs && (
-                        <span class="badge badge-secondary badge-sm mt-2 block w-fit">{t("compare.theirs")}</span>
+                        <span class="mt-2 flex flex-wrap items-center gap-2">
+                          <span class="badge badge-secondary badge-sm">{t("compare.theirs")}</span>
+                          {row.status === "planned" && row.trackedIn ? (
+                            <a
+                              href={row.trackedIn}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              class="badge badge-outline badge-sm"
+                              title={t("compare.status.plannedHint")}
+                            >
+                              {t("compare.status.planned")}
+                            </a>
+                          ) : (
+                            <span class="badge badge-ghost badge-sm">{t("compare.status.accepted")}</span>
+                          )}
+                        </span>
                       )}
                     </td>
                   </tr>

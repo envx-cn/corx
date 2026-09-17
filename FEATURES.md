@@ -284,7 +284,10 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
   (corsproxy.io, Corsfix, AllOrigins). `app/lib/compare.ts` is the registry — one source
   URL and read-date per competitor claim, plus a `theirs` flag on the rows the
   competitor wins — and the page renders those sources in full, so the table
-  can be audited rather than believed. Cell prose lives in `compare.*` in both
+  can be audited rather than believed. Every `theirs` row also states whether
+  the loss is an **accepted** trade-off or **planned** work (rendered as the
+  tracking-issue link); when a task lands the row flips, it is not deleted, so
+  the trade-off stays visible. Cell prose lives in `compare.*` in both
   dictionaries, keyed by the row/slug unions, so a row without copy fails
   `tsc`. Not in the nav or the hero: the only inbound link is a line under the
   FAQ, and each page sits in the sitemap with its own hreflang cluster.

@@ -488,12 +488,23 @@ logging, limits, price, time to first request, extras, availability), and a
 `app/lib/compare.ts` is the registry and the only place a competitor claim may
 live: every claim carries the URL it came from and the day it was read, the
 source notes are rendered on the page, and rows the competitor wins are marked
-`theirs` — a table the competitor never wins reads as marketing. The pages are
+`theirs` — a table the competitor never wins reads as marketing. A `theirs` row
+also carries a `status`, rendered as a small label next to the badge:
+
+- **`accepted`** — a deliberate trade-off (a non-goal, a hosted-service
+  advantage, a default difference we keep on purpose) and the default;
+- **`planned`** — a real gap an open task closes, which must carry the tracking
+  issue in `trackedIn` (the label is a link).
+
+When a planned task lands, re-read the source and flip the row instead of
+deleting it, so the trade-off stays visible; `test/compare.test.ts` rejects a
+`planned` row without an issue URL. The pages are
 bilingual with real `/en/` and `/zh/` URLs, so each is in the sitemap with its
 own hreflang cluster, and their only inbound link is a line under the landing
 FAQ: a long-tail entry point, never the pitch. `test/compare.test.ts` enforces
 the invariants (every claim sourced and dated, ≥1 row the competitor wins, each
-page linked from the FAQ and the sitemap).
+theirs row labelled and planned work linked, each page linked from the FAQ and
+the sitemap).
 
 `CONTENT_UPDATED` in `app/lib/site-info.ts` is the sitemap's `lastmod` and the
 terms' own date; bump it whenever the public copy changes.
