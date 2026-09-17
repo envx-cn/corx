@@ -784,6 +784,9 @@ const en = {
       account: "Account",
       session: "Session",
     },
+    csrf: {
+      failed: "The form could not be verified — its CSRF token was missing or invalid. Reload the console page and try again.",
+    },
     overview: {
       last24hTitle: "Last 24 hours",
       requests: "requests",
@@ -1826,6 +1829,9 @@ const zh: Messages = {
       logoutBody: "会话 cookie 会被清除；如果控制台前面配置了 Cloudflare Access，也会一并退出 Access。",
       account: "账户",
       session: "会话",
+    },
+    csrf: {
+      failed: "表单校验失败——CSRF 令牌缺失或无效。请刷新控制台页面后重试。",
     },
     overview: {
       last24hTitle: "最近 24 小时",

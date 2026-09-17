@@ -30,6 +30,7 @@ export default jsxRenderer(({ children, title }, c) => {
       active={activeNavItem(c.req.path)}
       locale={locale}
       t={t}
+      csrf={c.get("csrfToken") ?? ""}
       scripts={scripts}
     >
       {children}

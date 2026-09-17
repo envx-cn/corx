@@ -118,6 +118,8 @@ export function ConsoleLayout(props: {
   locale: Locale;
   t: TFunc;
   children: Child;
+  /** CSRF token for the shell's logout form (empty = no token available). */
+  csrf?: string;
   /** Head scripts (island hydration entry). Set by the renderer. */
   scripts?: Child;
 }) {
@@ -126,7 +128,13 @@ export function ConsoleLayout(props: {
       <div class="drawer lg:drawer-open">
         <input id="console-drawer" type="checkbox" class="drawer-toggle" />
         <div class="drawer-content flex flex-col min-h-svh">
-          <Topbar title={props.title} user={props.user} locale={props.locale} t={props.t} />
+          <Topbar
+            title={props.title}
+            user={props.user}
+            locale={props.locale}
+            t={props.t}
+            csrf={props.csrf ?? ""}
+          />
           <main class="flex-1 w-full max-w-6xl mx-auto p-4 lg:p-6">{props.children}</main>
           <footer class="text-center py-4 text-xs text-base-content/75">CORX</footer>
         </div>

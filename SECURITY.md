@@ -45,10 +45,26 @@ on the way out. The interesting properties, and where each is enforced:
 | A key cannot forge the proxy's own response headers (or re-attach upstream cookies) | `RESPONSE_HEADER_BLOCKLIST` in `app/proxy/inject.ts` rejects `Content-Length`, `Set-Cookie`, `Access-Control-*`, `X-Robots-Tag`, `X-Corx-*` and the rate-limit headers at save time; corx writes its markers after the rules run |
 | A public-tier caller cannot authenticate upstream as themselves | `Cookie`/`Authorization` stripped from public-key requests |
 | Admin surfaces are authenticated | Cloudflare Access JWT verified in-process (RS256, issuer, audience, expiry) with the `ADMIN_EMAILS` allowlist re-checked per request; `ADMIN_TOKEN` bearer for the JSON API |
+| A cross-site page cannot ride the admin session into a mutation | Signed, session-bound CSRF token on every console POST (`app/lib/csrf.ts`, verified in `app/routes/console/_middleware.ts`); needs `SESSION_SECRET` or `ADMIN_TOKEN` to sign — without one the check logs a warning and `SameSite=Lax` is the only guard |
 | API keys are not recoverable from the database | SHA-256 hashed at rest; the raw value is shown once |
 
 If you find a path around any of these, that is a security bug and worth
 reporting.
+
+One row deserves the longer version, because it is the one a security-minded
+self-hoster asks about first. The session cookie is HttpOnly + `SameSite=Lax`
+(`Secure` on https), so a cross-site form POST does not carry it in current
+browsers. On top of that, every mutating console form carries a signed,
+session-bound CSRF token: `app/lib/csrf.ts` derives it as HMAC-SHA256 over the
+session cookie's value (or the Access identity for a cookie-less Access
+session) keyed by `SESSION_SECRET`/`ADMIN_TOKEN`, the console middleware
+verifies it before the handler, and a missing or forged value answers `403` on
+the console error page (JSON for the playground's run call). The token is what
+turns “the browser won't send the cookie” into “a request that did not come
+from a page we served cannot be built” — an explicit, testable guarantee
+rather than an inherited cookie property. Signing needs
+`SESSION_SECRET` or `ADMIN_TOKEN`; a deployment with neither logs a warning and
+falls back to `SameSite=Lax` alone.
 
 ## Accepted limitations (please don't report these as new)
 
@@ -66,16 +82,13 @@ interesting if it shows one of them being worse than described.
    is bounded by `daily_limit_total`, not by a hard edge limit.
 3. **Rate limiting is fixed-window** (D1-backed, fail-open). A burst can
    straddle a window boundary.
-4. **Console forms carry no CSRF token.** `SameSite=Lax` on the session cookie
-   blocks cross-site POSTs in current browsers; a token would make that
-   explicit rather than inherited.
-5. **The SSRF guards can be switched off per key** (`ipCheck`/`dnsCheck`) — by
+4. **The SSRF guards can be switched off per key** (`ipCheck`/`dnsCheck`) — by
    design, for trusted internal keys, and never in combination with keyless
    access or the public tier.
-6. **The hosted instance is best-effort** with no SLA, no uptime target and no
+5. **The hosted instance is best-effort** with no SLA, no uptime target and no
    support commitment ([terms](./README.md#terms-of-use)). Its availability is
    not a security boundary, and an outage is not a vulnerability.
-7. **Stripping framing headers is the operator's risk.** Response header rules
+6. **Stripping framing headers is the operator's risk.** Response header rules
    can remove `X-Frame-Options`/CSP `frame-ancestors` so a proxied document can
    be embedded: the target loses its clickjacking protection and the caller owns
    the sandbox. Only a self-hosted deployment can configure this (public-tier

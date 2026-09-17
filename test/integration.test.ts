@@ -41,6 +41,15 @@ async function call(path: string, init: RequestInit = {}, e: Env = env): Promise
   return worker.fetch(new Request(`https://corx.test${path}`, { ...init, headers: { ...(init.headers ?? {}) } }), e, ctx);
 }
 
+/** The CSRF token a console page rendered into its forms (browser flow). */
+async function csrfFrom(path: string, e: Env = env): Promise<string> {
+  const res = await call(path, { headers: { cookie: `corx_session=${sessionCookie}` } }, e);
+  const html = await res.text();
+  const m = html.match(/name="csrf" value="([^"]+)"/);
+  if (!m) throw new Error(`no CSRF token rendered on ${path}`);
+  return m[1]!;
+}
+
 /** Env whose D1 answers the API-key lookup with one row (everything else empty). */
 function envWithKey(row: Record<string, unknown>): Env {
   const stmt = (sql: string) => {
@@ -207,7 +216,7 @@ describe("route wiring (integration)", () => {
         cookie: `corx_session=${sessionCookie}`,
         "content-type": "application/x-www-form-urlencoded",
       },
-      body: "name=my-app",
+      body: `name=my-app&csrf=${await csrfFrom("/console/keys")}`,
     });
     expect(created.status).toBe(200);
     const html = await created.text();
@@ -254,7 +263,16 @@ describe("route wiring (integration)", () => {
   });
 
   it("logout clears the cookie, and bounces through Access when configured", async () => {
-    const res = await call("/console/logout", { method: "POST" });
+    const csrf = await csrfFrom("/console/profile");
+    const logout = {
+      method: "POST",
+      headers: {
+        cookie: `corx_session=${sessionCookie}`,
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: `csrf=${csrf}`,
+    } as const;
+    const res = await call("/console/logout", logout);
     expect(res.status).toBe(302);
     expect(res.headers.get("set-cookie")).toContain("corx_session=");
     expect(res.headers.get("set-cookie")).toContain("Max-Age=0");
@@ -268,7 +286,7 @@ describe("route wiring (integration)", () => {
       ACCESS_TEAM_DOMAIN: "https://envx.cloudflareaccess.com/",
       ACCESS_AUD: "aud-tag",
     } as Env;
-    const viaAccess = await call("/console/logout", { method: "POST" }, accessEnv);
+    const viaAccess = await call("/console/logout", logout, accessEnv);
     expect(viaAccess.headers.get("location")).toBe("https://envx.cloudflareaccess.com/cdn-cgi/access/logout");
   });
 
@@ -279,7 +297,7 @@ describe("route wiring (integration)", () => {
         cookie: `corx_session=${sessionCookie}`,
         "content-type": "application/x-www-form-urlencoded",
       },
-      body: "confirmName=x",
+      body: `confirmName=x&csrf=${await csrfFrom("/console/keys")}`,
     });
     expect(res.status).toBe(200);
     expect(await res.text()).toContain("Failed to delete key");

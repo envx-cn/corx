@@ -11,7 +11,7 @@ const app = new Hono<{ Bindings: Env }>({ strict: false });
 
 app.get("/", async (c) => {
   const t = consoleT(c);
-  return c.render(<BlockedContent hosts={await queryBlockedHosts(c.env.DB)} t={t} />, {
+  return c.render(<BlockedContent hosts={await queryBlockedHosts(c.env.DB)} csrf={c.get("csrfToken") ?? ""} t={t} />, {
     title: t("console.title.blocked"),
   });
 });
@@ -37,7 +37,12 @@ app.post("/:hostname/delete", async (c) => {
 export default app;
 
 // ---------- Page markup (colocated) ----------
-function BlockedContent(props: { hosts: Array<{ hostname: string; reason: string; created_at: string }>; t: TFunc }) {
+function BlockedContent(props: {
+  hosts: Array<{ hostname: string; reason: string; created_at: string }>;
+  /** Session-bound CSRF token for the add and remove forms. */
+  csrf: string;
+  t: TFunc;
+}) {
   const { t } = props;
   return (
     <>
@@ -45,6 +50,7 @@ function BlockedContent(props: { hosts: Array<{ hostname: string; reason: string
       <p class="text-sm text-base-content/75 mb-4">{t("console.blocked.sub")}</p>
       <div class="bg-base-100 border border-base-300 rounded-box p-4 mb-4">
         <form method="post" action="/console/blocked" class="flex flex-wrap items-center gap-3">
+          <input type="hidden" name="csrf" value={props.csrf} />
           <input
             name="hostname"
             placeholder={t("console.blocked.hostnamePh")}
@@ -86,6 +92,7 @@ function BlockedContent(props: { hosts: Array<{ hostname: string; reason: string
                   <div class="flex items-center justify-end">
                     <ConfirmButton
                       action={`/console/blocked/${h.hostname}/delete`}
+                      csrf={props.csrf}
                       label={t("console.blocked.remove")}
                       triggerClass="btn btn-xs btn-error btn-outline"
                       confirmClass="btn btn-error"

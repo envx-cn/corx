@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../app/server.js";
 import { signSession } from "../app/lib/session.js";
+import { csrfToken } from "../app/lib/csrf.js";
 import { parsePlaygroundSpec } from "../app/lib/playground.js";
 import type { Env } from "../app/lib/types.js";
 
@@ -34,7 +35,9 @@ const env = {
 const ctx = { waitUntil: (p: Promise<unknown>) => p.catch(() => undefined) } as unknown as ExecutionContext;
 
 const sessionCookie = await signSession("tester@example.com", "test-token");
-const authHeaders = { cookie: `corx_session=${sessionCookie}`, "content-type": "application/json" };
+// The console middleware binds the token to the session cookie value.
+const csrf = await csrfToken("test-token", `session:${sessionCookie}`);
+const authHeaders = { cookie: `corx_session=${sessionCookie}`, "content-type": "application/json", "x-corx-csrf": csrf };
 
 async function call(path: string, init: RequestInit = {}, e: Env = env): Promise<Response> {
   return worker.fetch(new Request(`https://corx.test${path}`, { ...init }), e, ctx);

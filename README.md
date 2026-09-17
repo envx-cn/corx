@@ -868,6 +868,13 @@ localStorage; on mobile there is no rail, only the topbar hamburger, which
 opens the full menu as a floating drawer overlay. The topbar holds a language
 switch (中文 / EN) and a user menu (Profile / Billing / Log out).
 
+Every mutating form — keys, blocklist, logout — carries a signed,
+session-bound CSRF token, and the playground's run call sends it as
+`X-Corx-Csrf`. The console middleware verifies it before the handler and
+answers `403` on the console error page (JSON for the playground) when it is
+missing or forged. `SameSite=Lax` on the session cookie already blocks
+cross-site POSTs; the token makes that explicit instead of inherited.
+
 Uncaught errors on browser-facing routes render the same branded style as the
 404. An authenticated console request keeps the shell — sidebar, topbar, user
 menu — with an error card as the page content; public pages (and console
@@ -1130,7 +1137,7 @@ app/              HonoX frontend (entry + console UI + API routes)
                 D1 rate limit, daily quotas (quota), inject
                 (variables + rules)
   lib/          shared kernel (no HTTP wiring): types, utils, API-key
-                auth, Access identity, sessions, request logging,
+                auth, Access identity, sessions, CSRF tokens, request logging,
                 D1 query helpers, admin key/log queries, playground
                 spec, response-preview classification (preview),
                 formatting, i18n dictionaries, SEO/GEO
@@ -1149,7 +1156,7 @@ app/              HonoX frontend (entry + console UI + API routes)
 test/           vitest suites (guard, ip, dns-check, cache, inject,
                 admin, origins, subdomain, media, playground, preview,
                 stats, i18n, nav, access, quota, public tier, error
-                pages, seo, compare, docs, snippets, cors tester,
+                pages, seo, compare, docs, snippets, cors tester, csrf,
                 kek rotation, integration)
 ```
 
