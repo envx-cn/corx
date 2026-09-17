@@ -66,6 +66,11 @@ const en = {
   compare: {
     table: { topic: "Topic", us: "CORX" },
     theirs: "They win this row",
+    status: {
+      accepted: "Accepted trade-off",
+      planned: "Planned",
+      plannedHint: "Tracked in an open issue",
+    },
     link: { site: "Website", docs: "Documentation" },
     checked: "Last checked {date}",
     wins: { title: "Where {name} wins" },
@@ -961,6 +966,11 @@ const zh: Messages = {
   compare: {
     table: { topic: "对比项", us: "CORX" },
     theirs: "这一项它更好",
+    status: {
+      accepted: "有意取舍",
+      planned: "计划补齐",
+      plannedHint: "由跟踪中的 issue 负责",
+    },
     link: { site: "官网", docs: "文档" },
     checked: "核查于 {date}",
     wins: { title: "{name} 更好的地方" },

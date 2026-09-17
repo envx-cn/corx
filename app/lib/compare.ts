@@ -15,6 +15,10 @@
  *    `checked` when you do.
  *  - A row is marked `theirs` when the competitor is simply better. A table the
  *    competitor never wins reads as marketing, not as a comparison.
+ *  - Every `theirs` row carries a `status`: `accepted` (a trade-off we choose to
+ *    live with) or `planned` (a gap an open task closes), the latter with the
+ *    tracking issue in `trackedIn`. When that task lands, re-read the source and
+ *    flip the row — never delete it, so the trade-off stays visible.
  *  - Never paraphrase a limit the competitor does not have; link their docs and
  *    say what they say. A claim without a source does not go on the page.
  *
@@ -38,6 +42,16 @@ export type CompareRowId =
 
 export type CompareSlug = "corsproxy-io" | "corsfix" | "allorigins";
 
+/**
+ * Why a row the competitor wins is still in the table:
+ *
+ *  - `accepted` — a deliberate trade-off (a non-goal, a hosted-service
+ *    advantage, a default difference we keep on purpose). Default when absent.
+ *  - `planned`  — a real gap an open task closes; `trackedIn` must hold the
+ *    tracking issue.
+ */
+export type CompareStatus = "accepted" | "planned";
+
 /** One place a claim came from, and the day it was read from there. */
 export interface CompareSource {
   url: string;
@@ -49,6 +63,10 @@ export interface CompareRow {
   id: CompareRowId;
   /** True when the competitor is the better answer here. Rendered on the page. */
   theirs?: boolean;
+  /** Why a `theirs` row is still in the table; `accepted` when absent. */
+  status?: CompareStatus;
+  /** Tracking issue for a `planned` row (required by test/compare.test.ts). */
+  trackedIn?: string;
   source: CompareSource;
 }
 
@@ -110,16 +128,19 @@ export const COMPARISONS: Comparison[] = [
       {
         id: "setup",
         theirs: true,
+        status: "accepted",
         source: { url: "https://corsproxy.io/", checked: CHECKED },
       },
       {
         id: "extras",
         theirs: true,
+        status: "accepted",
         source: { url: "https://corsproxy.io/pricing/", checked: CHECKED },
       },
       {
         id: "availability",
         theirs: true,
+        status: "accepted",
         source: { url: "https://corsproxy.io/pricing/", checked: CHECKED },
       },
     ],
@@ -154,6 +175,9 @@ export const COMPARISONS: Comparison[] = [
       {
         id: "logging",
         theirs: true,
+        // Their default is no logs at all; ours is logs in your own D1 with an
+        // off switch. Deliberate: the console's trend is part of the product.
+        status: "accepted",
         source: { url: "https://corsfix.com/privacy", checked: CHECKED },
       },
       {
@@ -167,6 +191,7 @@ export const COMPARISONS: Comparison[] = [
       {
         id: "setup",
         theirs: true,
+        status: "accepted",
         source: { url: "https://corsfix.com/docs/free-tier", checked: CHECKED },
       },
       {
@@ -176,6 +201,7 @@ export const COMPARISONS: Comparison[] = [
       {
         id: "availability",
         theirs: true,
+        status: "accepted",
         source: { url: "https://corsfix.com/", checked: CHECKED },
       },
     ],
@@ -218,10 +244,17 @@ export const COMPARISONS: Comparison[] = [
       {
         id: "setup",
         theirs: true,
+        status: "accepted",
         source: { url: "https://allorigins.win/", checked: CHECKED },
       },
       {
+        // The one `planned` row at the time of writing: `charset` is a real
+        // convenience CORX lacks, and #51 adds it (plus a JSON envelope).
+        // Closing #51 means re-reading their README and flipping this row.
         id: "extras",
+        theirs: true,
+        status: "planned",
+        trackedIn: "https://github.com/envx-cn/corx/issues/51",
         source: { url: "https://github.com/gnuns/allorigins", checked: CHECKED },
       },
       {

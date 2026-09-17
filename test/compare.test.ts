@@ -81,6 +81,30 @@ describe("comparison registry", () => {
       }
     }
   });
+
+  it("states why every theirs row stays in the table, and links the open work", () => {
+    for (const comparison of COMPARISONS) {
+      for (const row of comparison.rows) {
+        const id = `${comparison.slug}/${row.id}`;
+        if (row.status === "planned") {
+          // A planned row is a promise: it must be a loss the tracker owns.
+          expect(row.theirs, `${id}: planned but not a theirs row`).toBe(true);
+          expect(row.trackedIn, `${id}: planned without a tracking issue`).toMatch(
+            /^https:\/\/github\.com\/envx-cn\/corx\/issues\/\d+$/,
+          );
+        } else {
+          expect(row.trackedIn, `${id}: trackedIn without status planned`).toBeUndefined();
+          if (row.theirs) {
+            expect(row.status, `${id}: theirs row without an explicit status`).toBe("accepted");
+          }
+        }
+      }
+    }
+    // Both states exist, so both labels are actually exercised on the pages.
+    // When the last planned row flips, delete this assertion with it — the
+    // per-row rendering test below follows the registry either way.
+    expect(COMPARISONS.flatMap((c) => c.rows).some((r) => r.status === "planned")).toBe(true);
+  });
 });
 
 describe("compare page contract", () => {
@@ -114,6 +138,24 @@ describe("compare page contract", () => {
     // inventing a parallel product identity.
     expect(page["isPartOf"]["@id"]).toBe("https://corx.test/#website");
     expect(JSON.stringify(page)).toContain("corsproxy.io");
+  });
+
+  it("labels every theirs row as accepted or planned, in both languages", async () => {
+    for (const comparison of COMPARISONS) {
+      const en = await (await call(`/compare/${comparison.slug}`)).text();
+      const zh = await (await call(`/zh/compare/${comparison.slug}`)).text();
+      for (const row of comparison.rows.filter((r) => r.theirs)) {
+        const status = row.status ?? "accepted";
+        const where = `${comparison.slug}/${row.id}`;
+        expect(en, `${where} en`).toContain(makeT("en")(`compare.status.${status}`));
+        expect(zh, `${where} zh`).toContain(makeT("zh")(`compare.status.${status}`));
+        if (status === "planned") {
+          // The label is a link to the issue that closes the gap.
+          expect(en, where).toContain(`href="${row.trackedIn}"`);
+          expect(zh, where).toContain(`href="${row.trackedIn}"`);
+        }
+      }
+    }
   });
 
   it("serves the prefixed URLs as their own canonical documents and remembers the choice", async () => {
