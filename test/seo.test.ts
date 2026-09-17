@@ -195,6 +195,20 @@ describe("landing page metadata", () => {
     expect(zh).toContain('<meta property="og:locale:alternate" content="en_US"/>');
   });
 
+  it("targets the free / open-source / self-hosted intent in title, description and FAQ", async () => {
+    const en = await (await call("/en")).text();
+    expect(en).toContain("<title>CORX — Free, open-source CORS proxy on Cloudflare</title>");
+    expect(en).toContain('name="description" content="Free, open-source CORS proxy');
+    expect(en).toContain("no signup");
+    // The FAQ answers the query directly, and the JSON-LD graph carries it.
+    expect(decode(en)).toContain("Is CORX free?");
+
+    const zh = await (await call("/zh")).text();
+    expect(zh).toContain("<title>CORX — 免费开源的 Cloudflare CORS 代理</title>");
+    expect(zh).toContain("免费开源的边缘 CORS 代理");
+    expect(decode(zh)).toContain("CORX 免费吗？");
+  });
+
   it("emits a JSON-LD graph whose FAQ matches the FAQ rendered on the page", async () => {
     const html = decode(await (await call("/en")).text());
     const { "@graph": nodes } = await graph(await call("/en"));
