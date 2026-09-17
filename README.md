@@ -205,7 +205,8 @@ forwarding — the browser never holds the upstream secret:
   Values written before the KEK existed stay plaintext and are re-encrypted on
   the next save. If the KEK is missing or wrong, injection is dropped (the
   request still works, but with no secret attached) and edits are refused rather
-  than overwriting secrets that can't be read.
+  than overwriting secrets that can't be read. Rotating the secret is a
+  one-pass re-wrap — see [Rotating `INJECTION_KEK`](#rotating-injection_kek).
 
 ### Embed a page that refuses framing
 
@@ -678,7 +679,8 @@ npm run dev              # vite on :5173 (set PORT to change)
 # 3. Deploy (always through the vite build — wrangler serves ./dist)
 npm run db:migrate
 npx wrangler secret put ADMIN_TOKEN
-npx wrangler secret put INJECTION_KEK          # optional: encrypt injected secrets at rest
+npx wrangler secret put INJECTION_KEK          # optional: encrypt injection at rest
+# rotating it later: npm run kek:rotate (README → Rotating INJECTION_KEK)
 # deployment values — copy the committed example and fill in your own:
 #   cp .env.production.template .env.production
 #   npx wrangler deploy --secrets-file .env.production      # bootstrap once
@@ -759,13 +761,71 @@ vars are rewritten from the config file each time.
 | `LOG_RETENTION_DAYS` | `30` | Days of raw `request_logs` kept before the cron prune (1–365; junk falls back to 30). The daily rollup (`stats_daily`) follows the same window, and the console's stats read raw rows only while they exist — a shorter value means the trend comes from the rollup sooner |
 | `ADMIN_TOKEN` (secret) | — | Bearer token for `/api/*`; legacy HMAC key for console sessions |
 | `SESSION_SECRET` (secret) | — | HMAC key for console session cookies (falls back to `ADMIN_TOKEN`) |
-| `INJECTION_KEK` (secret) | — | Encrypts injected variable values at rest (AES-256-GCM via HKDF). Empty = plaintext. Losing it makes stored secrets unreadable |
+| `INJECTION_KEK` (secret) | — | Encrypts injected variable values at rest (AES-256-GCM via HKDF). Empty = plaintext. Rotate with `npm run kek:rotate` — changing it without re-wrapping makes stored values unreadable |
 | `ACCESS_TEAM_DOMAIN` (secret) | `""` | Cloudflare Access team domain (enables Access login) |
 | `ACCESS_AUD` (secret) | `""` | Access application AUD tag |
 | `ADMIN_EMAILS` (secret) | `""` | Optional comma-separated allowlist for admin access |
 | `PUBLIC_KEY` (secret) | `""` | Raw value of the public-tier key, rendered on the landing page (public by design — a secret only to keep deployment values out of the repo; D1 stores only its hash). Empty = no public key advertised |
 | `PUBLIC_CACHE_TTL_SECONDS` | `300` | Default R2 TTL for public-tier GETs; public keys reject `corx-ttl` |
 | `DEMO_KEY` (secret) | `""` | Raw value of the injection-demo key shown on the landing page. Its host allowlist must cover this deployment (that is also the check that hides the demo), and its rules inject a fake credential into `/demo/echo` — see [See secret injection work](#see-secret-injection-work) |
+
+### Rotating `INJECTION_KEK`
+
+Changing the secret without re-wrapping makes every stored value unreadable —
+injection fails closed (requests still work, no secret attached) and the console
+refuses edits rather than overwriting secrets it cannot read. Rotation is a
+one-pass re-wrap: `npm run kek:rotate` (`scripts/rotate-kek.mjs`) decrypts each
+stored value with the old KEK, rewrites it with the new one, and verifies every
+fresh ciphertext before it writes.
+
+```bash
+# 1. fresh key material + a dry run (prints the per-key plan, writes nothing)
+export CORX_OLD_KEK='<the current INJECTION_KEK>'
+export CORX_NEW_KEK="$(openssl rand -base64 32)"
+npm run kek:rotate -- --remote --dry-run
+
+# 2. apply: re-wrap every stored value in one pass. The pre-rotation vars are
+#    saved to corx-kek-backup-<stamp>.json before the first UPDATE
+npm run kek:rotate -- --remote
+
+# 3. make the new KEK the live secret (takes effect on the next request)
+echo "$CORX_NEW_KEK" | npx wrangler secret put INJECTION_KEK
+
+# 4. verify injection end to end (console → a key → Playground, or a keyed
+#    request). Only then retire the old KEK — in .dev.vars, .env.production,
+#    CI secrets or a password manager — and delete the backup file
+```
+
+Between steps 2 and 3 injection pauses: the rows are under the new KEK while
+the deployed secret is still the old one, so requests keep working but carry no
+secret until the `secret put` lands.
+
+- **Wrong or missing old KEK: fail closed, nothing written.** Every value is
+  decrypted and round-tripped in memory before the first `UPDATE`. If any value
+  cannot be read, the run exits non-zero (naming the key and variable) and
+  writes nothing at all. The script never touches the deployed `INJECTION_KEK`
+  itself.
+- **A wrong *new* KEK round-trips fine in memory**, so the script cannot catch
+  it — step 4 does. That is what the backup file is for:
+  `npm run kek:rotate -- --restore corx-kek-backup-<stamp>.json --remote` puts
+  the pre-rotation ciphertext back (it needs no KEK), then re-run with the
+  correct pair.
+- **Interrupted runs resume.** Values already under the new KEK are left alone,
+  so re-running after a crash or `Ctrl-C` completes the rotation instead of
+  double-wrapping.
+- **Legacy plaintext values are encrypted** with the new KEK, exactly as a save
+  through the console would do.
+- **The Worker and the script are pinned to each other** by
+  `test/rotate-kek.test.ts`: it round-trips a key's variables across two KEKs
+  using the Worker's `app/lib/crypto.ts` and the script's standalone copy, so a
+  change to either side fails the suite.
+
+KEKs come from `CORX_OLD_KEK`/`CORX_NEW_KEK` (the `--old`/`--new` flags work but
+are visible in `ps` and shell history); `--remote` targets the deployed D1 and
+the default is the local one; `--id <key id>` re-wraps a single key; `--dry-run`
+and `--restore --dry-run` write nothing. A full
+`wrangler d1 export corx-db --remote --table api_keys --output pre-rotate.sql`
+is an optional extra safety net, not needed for the failure modes above.
 
 ## Admin console (SSR + Cloudflare login)
 
@@ -1090,7 +1150,7 @@ test/           vitest suites (guard, ip, dns-check, cache, inject,
                 admin, origins, subdomain, media, playground, preview,
                 stats, i18n, nav, access, quota, public tier, error
                 pages, seo, compare, docs, snippets, cors tester,
-                integration)
+                kek rotation, integration)
 ```
 
 ## Scripts
@@ -1100,6 +1160,7 @@ test/           vitest suites (guard, ip, dns-check, cache, inject,
 | `npm run dev` | vite dev with local D1/R2 (needs `.dev.vars`) |
 | `npm run db:seed:public` | seed the local D1 with a public-tier key (`PUBLIC_KEY` from `.dev.vars`), so `/` renders the public-key card |
 | `npm run db:seed:demo` | seed the local D1 with the injection-demo key (host allowlist = this deployment), so `/` renders the "See a key get injected" button — `-- --host <host>`, see [See secret injection work](#see-secret-injection-work) |
+| `npm run kek:rotate` | re-wrap every stored variable value for an `INJECTION_KEK` rotation (dry-run first; `--remote` for the deployed D1, `--restore` to undo), see [Rotating `INJECTION_KEK`](#rotating-injection_kek) |
 | `npm run dev:worker` | production bundle via `wrangler dev` |
 | `npm run build` | client (islands) + worker bundles into `./dist` |
 | `npm run deploy` | build + deploy to Cloudflare |

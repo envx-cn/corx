@@ -157,7 +157,10 @@ Files: `app/proxy/cache.ts`, `app/proxy/handler.ts`.
   needs them). The request path decrypts at the D1 boundary and **fails closed**
   (drops injection) if a value can't be read; edit paths throw a 400 instead of
   overwriting a secret they can't see; values written before the KEK existed are
-  plaintext and re-encrypted on the next save.
+  plaintext and re-encrypted on the next save. The KEK is rotatable:
+  `npm run kek:rotate` re-wraps every stored value from the old secret to the
+  new one in one pass (dry-run first, backup + `--restore`, fail-closed on a
+  wrong old KEK) — [README → Rotating `INJECTION_KEK`](./README.md#rotating-injection_kek).
 - Manual redirect handling is force-enabled for injecting keys (see §1).
 - **Response header rules** ride the same key: `Name: value`, `!Name` and
   `@hosts` scoping, applied to what the caller receives on both the buffered and
@@ -518,9 +521,6 @@ flagged has been fixed below.
 5. **The landing page reads D1 once per view** when `PUBLIC_KEY` is set (to
    render the enforced caps). Cheap, but it is a real read on a page that is
    otherwise static.
-6. **No KEK rotation.** Changing `INJECTION_KEK` makes existing ciphertext
-   unreadable (injection fails closed, edits are refused). Recovering means
-   re-entering the values on each key; a re-wrap migration script would fix it.
 
 Product **non-goals** are a separate list from the limitations above — not gaps
 but deliberate scope decisions with their reasons: image transforms,

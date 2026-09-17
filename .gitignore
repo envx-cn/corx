@@ -9,6 +9,8 @@ dist/
 .env
 .env.*
 !.env.example
+# Pre-rotation vars written by `npm run kek:rotate` — delete after verifying.
+corx-kek-backup-*.json
 # Committed, value-free examples (the real files above are ignore-listed).
 !.env.production.template
 .wrangler/
