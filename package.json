@@ -15,6 +15,7 @@
     "db:migrate:local": "wrangler d1 migrations apply corx-db --local",
     "db:seed:public": "node scripts/seed-public-key.mjs",
     "db:seed:demo": "node scripts/seed-demo-key.mjs",
+    "kek:rotate": "node scripts/rotate-kek.mjs",
     "bucket:create": "wrangler r2 bucket create corx-cache",
     "cf-typegen": "wrangler types worker-configuration.d.ts",
     "check": "tsc --noEmit",

@@ -72,13 +72,10 @@ interesting if it shows one of them being worse than described.
 5. **The SSRF guards can be switched off per key** (`ipCheck`/`dnsCheck`) — by
    design, for trusted internal keys, and never in combination with keyless
    access or the public tier.
-6. **No KEK rotation.** Changing `INJECTION_KEK` makes existing ciphertext
-   unreadable; injection fails closed and edits are refused rather than
-   overwriting values that cannot be read. Recovery is re-entering the values.
-7. **The hosted instance is best-effort** with no SLA, no uptime target and no
+6. **The hosted instance is best-effort** with no SLA, no uptime target and no
    support commitment ([terms](./README.md#terms-of-use)). Its availability is
    not a security boundary, and an outage is not a vulnerability.
-8. **Stripping framing headers is the operator's risk.** Response header rules
+7. **Stripping framing headers is the operator's risk.** Response header rules
    can remove `X-Frame-Options`/CSP `frame-ancestors` so a proxied document can
    be embedded: the target loses its clickjacking protection and the caller owns
    the sandbox. Only a self-hosted deployment can configure this (public-tier
