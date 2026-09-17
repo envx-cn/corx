@@ -131,6 +131,13 @@ describe("route wiring (integration)", () => {
     // The public source repo is linked from the nav and the footer.
     expect(enHtml).toContain('href="https://github.com/envx-cn/corx"');
     expect(zhHtml).toContain('href="https://github.com/envx-cn/corx"');
+    // The trust band's self-host card opens Cloudflare's one-click deploy flow
+    // (clone to the visitor's GitHub, provision D1 + R2, deploy).
+    const deployUrl = "https://deploy.workers.cloudflare.com/?url=https://github.com/envx-cn/corx";
+    expect(enHtml).toContain(`href="${deployUrl}"`);
+    expect(zhHtml).toContain(`href="${deployUrl}"`);
+    expect(enHtml).toContain("Deploy to Cloudflare");
+    expect(zhHtml).toContain("部署到 Cloudflare");
   });
 
   it("remembers an explicit /zh or /en URL in the language cookie", async () => {

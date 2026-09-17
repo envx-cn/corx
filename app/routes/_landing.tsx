@@ -21,7 +21,7 @@ import chevronDownSvg from "lucide-static/icons/chevron-down.svg?raw";
 import { Lucide } from "../components/lucide.js";
 import { SiteFooter, SiteHead, SiteNav } from "../components/site.js";
 import { HeroX } from "../components/hero-x.js";
-import { GITHUB_URL } from "../lib/site-info.js";
+import { DEPLOY_URL, GITHUB_URL } from "../lib/site-info.js";
 import { COMPARISONS } from "../lib/compare.js";
 import { DEMO_ECHO_PATH } from "../lib/demo.js";
 import { landingAlternates, landingJsonLd, OG_IMAGE, type Faq } from "../lib/seo.js";
@@ -425,10 +425,19 @@ export function LandingPage(props: {
                 </span>
                 <h3 class="font-semibold">{t("landing.trust.self.title")}</h3>
                 <p class="text-sm text-base-content/75 leading-relaxed">{t("landing.trust.self.desc")}</p>
-                <a href={GITHUB_URL} class="btn btn-sm btn-outline rounded-full! mt-auto self-start">
-                  {t("landing.trust.self.cta")}
-                  <Lucide svg={arrowUpRightSvg} />
-                </a>
+                <p class="text-xs leading-relaxed text-base-content/75">{t("landing.trust.self.deployHint")}</p>
+                {/* The conversion action from the trust argument, one click:
+                    the same Cloudflare flow the README's badge opens. The
+                    source link stays beside it for people who read first. */}
+                <div class="mt-auto flex flex-wrap items-center gap-2 self-start">
+                  <a href={DEPLOY_URL} class="btn btn-sm btn-primary rounded-full!" rel="noopener">
+                    {t("landing.trust.self.deploy")}
+                    <Lucide svg={arrowUpRightSvg} />
+                  </a>
+                  <a href={GITHUB_URL} class="btn btn-sm btn-outline rounded-full!" rel="noopener">
+                    {t("landing.trust.self.cta")}
+                  </a>
+                </div>
               </div>
             </div>
             <p class="mx-auto mt-4 max-w-3xl text-center text-xs leading-relaxed text-base-content/75">
