@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Child } from "hono/jsx";
 import type { Env } from "../../lib/types.js";
 import { queryBlockedHosts, queryKeys, queryStats, queryStatsComparison, clampStatsDays } from "../../lib/admin.js";
+import { logRetentionDays } from "../../lib/db.js";
 import type { Stats, StatsComparison, MetricDelta } from "../../lib/admin.js";
 import { humanBytes } from "../../lib/format.js";
 import { MethodBadge, StatusBadge } from "../../components/badges.js";
@@ -20,7 +21,7 @@ app.get("/", async (c) => {
   const days = clampStatsDays(Number(c.req.query("days") ?? "7") || 7);
   const [stats, trend, keys, blocked] = await Promise.all([
     queryStats(c.env.DB),
-    queryStatsComparison(c.env.DB, days),
+    queryStatsComparison(c.env.DB, days, Date.now(), logRetentionDays(c.env)),
     queryKeys(c.env.DB),
     queryBlockedHosts(c.env.DB),
   ]);

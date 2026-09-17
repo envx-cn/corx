@@ -1,4 +1,18 @@
-/** Fire-and-forget D1 logging (call via ctx.waitUntil). */
+/**
+ * Fire-and-forget D1 logging (call via ctx.waitUntil).
+ *
+ * Logging is a deployment choice, not a fixed behaviour: `LOG_REQUESTS=false`
+ * writes nothing at all (the response is unaffected — rate limiting, quota
+ * headers and `X-Corx-*` markers never depend on the log), and
+ * `LOG_RETENTION_DAYS` decides how long the raw rows are kept. The hosted
+ * instance documents 30 days in /terms; a self-hosted deployment may want less
+ * data on its own account, and that is its call.
+ */
+import type { Env } from "./types.js";
+
+/** Default raw-log retention, and the ceiling a deployment may configure. */
+export const DEFAULT_LOG_RETENTION_DAYS = 30;
+export const MAX_LOG_RETENTION_DAYS = 365;
 export interface LogRow {
   method: string;
   targetUrl: string;
@@ -21,7 +35,35 @@ export interface LogRow {
   injected?: boolean;
 }
 
-export async function logRequest(db: D1Database, row: LogRow): Promise<void> {
+/** "false"/"0"/"off"/"no" (case-insensitive) turn request logging off. */
+export function requestsLogged(env: Pick<Env, "LOG_REQUESTS">): boolean {
+  const raw = (env.LOG_REQUESTS ?? "").trim().toLowerCase();
+  return raw !== "false" && raw !== "0" && raw !== "off" && raw !== "no";
+}
+
+/**
+ * Raw-log retention in days: `LOG_RETENTION_DAYS` when it is an integer inside
+ * 1…365, the default otherwise (a junk value must not silently delete more
+ * history than intended, nor keep everything forever).
+ */
+export function logRetentionDays(env: Pick<Env, "LOG_RETENTION_DAYS">): number {
+  const raw = (env.LOG_RETENTION_DAYS ?? "").trim();
+  if (raw === "") return DEFAULT_LOG_RETENTION_DAYS;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > MAX_LOG_RETENTION_DAYS) {
+    if (import.meta.env.DEV) {
+      console.warn(
+        `LOG_RETENTION_DAYS must be an integer 1–${MAX_LOG_RETENTION_DAYS} (got "${raw}") — using ${DEFAULT_LOG_RETENTION_DAYS}.`,
+      );
+    }
+    return DEFAULT_LOG_RETENTION_DAYS;
+  }
+  return n;
+}
+
+export async function logRequest(env: Pick<Env, "DB" | "LOG_REQUESTS">, row: LogRow): Promise<void> {
+  if (!requestsLogged(env)) return;
+  const db = env.DB;
   try {
     await db
       .prepare(

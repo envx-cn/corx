@@ -541,6 +541,16 @@ Workers Paid ($5/mo lifts D1 to 50M writes and Workers to 10M requests per
 month), or by trimming writes (log sampling, edge rate limiting) — not by
 simply raising the number.
 
+**Logging is configurable, and the trade is real.** `LOG_REQUESTS=false` stops
+the `request_logs` insert at the source (`app/lib/db.ts`), so the proxy keeps
+serving but the console's logs list and 24-hour stats go quiet, and the daily
+trend only shows days that were logged. `LOG_RETENTION_DAYS` shortens or
+lengthens the window the cron keeps (1–365): the rollup, the prune and the
+stats read path all follow it, so a 7-day deployment does not report zeros for
+days whose rows it deleted. Neither knob changes rate limiting, quotas or the
+`X-Corx-*` markers — those are computed per request, not read back from the
+log.
+
 **Enabling it:** create a normal key in the console, tick **Public tier**, set
 the caps (the total is required), copy the raw value into the `PUBLIC_KEY`
 secret (`npx wrangler secret put PUBLIC_KEY`, or `--secrets-file`), and deploy.
@@ -665,6 +675,8 @@ vars are rewritten from the config file each time.
 | `TIMEOUT_MS` | `30000` | Upstream timeout |
 | `RATE_LIMIT_PER_MIN` | `60` | Per key (or per IP) per minute — cache hits are free |
 | `MAX_BODY_BYTES` | `10485760` | Max forwarded request body (early Content-Length check, then a buffered cap; an unreadable body is rejected, never forwarded empty) |
+| `LOG_REQUESTS` | `true` | `false`/`0`/`off`/`no` writes **nothing** to `request_logs`: no per-request rows, no per-day trend. Rate limiting, quota headers and `X-Corx-*` markers are unaffected. The hosted instance logs (it says so in /terms); a self-hosted deployment may not want to |
+| `LOG_RETENTION_DAYS` | `30` | Days of raw `request_logs` kept before the cron prune (1–365; junk falls back to 30). The daily rollup (`stats_daily`) follows the same window, and the console's stats read raw rows only while they exist — a shorter value means the trend comes from the rollup sooner |
 | `ADMIN_TOKEN` (secret) | — | Bearer token for `/api/*`; legacy HMAC key for console sessions |
 | `SESSION_SECRET` (secret) | — | HMAC key for console session cookies (falls back to `ADMIN_TOKEN`) |
 | `INJECTION_KEK` (secret) | — | Encrypts injected variable values at rest (AES-256-GCM via HKDF). Empty = plaintext. Losing it makes stored secrets unreadable |
@@ -841,8 +853,9 @@ browser ──► CORX (Worker)
               ├─ rate limit (misses only) ──► D1 rate_windows (fixed window)
               ├─ fetch upstream (timeout, size caps, header filtering,
               │    manual redirects when the key injects/bounds hosts)
-              └─ log ──► D1 request_logs (waitUntil; the cron rolls each day
-                           into stats_daily before pruning raw rows > 30d)
+              └─ log ──► D1 request_logs (waitUntil; skipped entirely when
+                          LOG_REQUESTS=false; the cron rolls each day
+                           into stats_daily before pruning raw rows)
 ```
 
 ## Project layout

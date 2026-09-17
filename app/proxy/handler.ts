@@ -154,7 +154,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
 
   const finish = (status: number | null, error = "") => {
     c.executionCtx.waitUntil(
-      logRequest(c.env.DB, {
+      logRequest(c.env, {
         method: c.req.method,
         targetUrl: target,
         targetHost: host,

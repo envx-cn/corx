@@ -8,6 +8,7 @@ import { ProxyError } from "./lib/types.js";
 import type { ProxyVariables } from "./lib/auth.js";
 import { apiKeyMiddleware } from "./lib/auth.js";
 import { rollupDailyStats } from "./lib/admin.js";
+import { logRetentionDays } from "./lib/db.js";
 import { cors, withProxyCors } from "./proxy/cors.js";
 import { proxyHandler } from "./proxy/handler.js";
 import { utcDay } from "./proxy/quota.js";
@@ -216,12 +217,18 @@ export default {
         // prune below, and a day must be written before its rows are gone. If
         // the rollup fails, skip the prune too — losing raw rows we failed to
         // archive is worse than a day of extra retention.
-        const rolled = await rollupDailyStats(env.DB).then(
+        // Retention is the deployment's `LOG_RETENTION_DAYS` (default 30); the
+        // rollup window follows it, or a longer retention would leave days
+        // unaggregated. `strftime`, not `datetime`: the rows are stored as
+        // ISO-with-T, and `datetime()` would silently keep the whole boundary day.
+        const retention = logRetentionDays(env);
+        const rolled = await rollupDailyStats(env.DB, retention).then(
           () => true,
           () => false,
         );
         if (rolled) {
-          await env.DB.prepare("DELETE FROM request_logs WHERE created_at < datetime('now', '-30 days')")
+          await env.DB.prepare("DELETE FROM request_logs WHERE created_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)")
+            .bind(`-${retention} days`)
             .run()
             .catch(() => undefined);
         }
