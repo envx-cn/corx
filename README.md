@@ -456,7 +456,7 @@ one deployment's URL.
 | Surface | What it is |
 | --- | --- |
 | `robots.txt` | Public pages open, machine surfaces closed (`/console`, `/api`, `/fetch`, `/proxy`, `/health`), absolute `Sitemap:` line. The main answer engines (GPTBot, ClaudeBot, PerplexityBot, …) are named and allowed on purpose: CORX *wants* to be read and cited, and saying so in the file makes a future "block the bots" edit argue with the list. |
-| `sitemap.xml` | Every indexable URL with `lastmod`, and an `xhtml:link` hreflang cluster (`en`, `zh`, `x-default`) on each landing URL, each comparison URL, each docs URL and each snippets URL. |
+| `sitemap.xml` | Every indexable URL with `lastmod`, and an `xhtml:link` hreflang cluster (`en`, `zh`, `x-default`) on each landing URL, each comparison URL, each docs URL, each snippets URL and the tool URL. |
 | `llms.txt` | The [llmstxt.org](https://llmstxt.org) index: title, blockquote summary, `## Docs` / `## Facts` link sections, `## Optional` tail. |
 | `llms-full.txt` | The whole behaviour of the instance in one Markdown fetch — calling shapes, the `corx-*` namespace, auth tiers, caching, limits, security, console + admin API, self-hosting. |
 
@@ -546,6 +546,28 @@ hostname), that any block carrying `X-Api-Key` says it is server-side, and that
 the public-key link only renders when the instance has one. The page is linked
 from the landing's try-it section and from `/docs`, and ships the same
 canonical + hreflang + sitemap treatment as the other public documents.
+
+### CORS tester (`/tools/cors-tester`)
+
+`/tools/cors-tester` (plus `/en/tools/cors-tester` and `/zh/tools/cors-tester`)
+is the account-free diagnosis tool: paste a URL and the browser probes it — a
+plain cross-origin `fetch`, the same with `credentials: "include"`, a custom
+header that forces a preflight, and (when the plain one is blocked) an opaque
+`no-cors` probe that separates "the server answered without CORS headers" from
+"nothing answered". The verdict is *inferred* from which probes resolved,
+because browsers deliberately hide why a cross-origin fetch was blocked; the
+page says so instead of pretending to read an error. The URL is then fetched
+through this instance and rendered with the shared preview (`app/lib/preview.ts`
+— the same classifier as the landing demo and the playground), so the fix is
+shown rather than claimed, and the copy-paste calls (proxy URL, browser,
+server) are generated for this deployment, with the public key inlined when the
+instance publishes one.
+
+`app/lib/cors-check.ts` holds the testable half: input validation, the
+probe→finding mapping (`corsFindings`) and the generated calls, covered by
+`test/cors-tester.test.ts`. Linked from `/docs` and every compare page, in the
+sitemap with its own hreflang cluster, and described as a free `WebApplication`
+in JSON-LD.
 
 ## Public tier (the hosted instance)
 
@@ -1007,6 +1029,11 @@ app/              HonoX frontend (entry + console UI + API routes)
                 all three calling _snippets.tsx (page + handler), which
                 renders lib/snippets.ts. Linked from the landing try-it and
                 from /docs; own sitemap cluster.
+  routes/tools/cors-tester.ts
+                /tools/cors-tester (+ en/ and zh/), calling _cors-tester.tsx
+                (page + handler) — the tool itself is the cors-tester island,
+                probes + findings in lib/cors-check.ts. Linked from /docs and
+                the compare pages; no console login.
   components/   shared presentational primitives (badges, chart, lucide,
                 table, logo, prose — Section/SubSection for the long-form
                 public documents) plus the response viewers (response-preview,
@@ -1053,13 +1080,16 @@ app/              HonoX frontend (entry + console UI + API routes)
                 day each claim was read; docs: the /docs page's code-coupled
                 half — call shapes and the corx-* table the test checks
                 against control.ts; snippets: the /snippets code samples,
-                built from the request origin; demo: the injection demo — the
+                built from the request origin; cors-check: the CORS tester's
+                pure half — probe→finding mapping and generated calls;
+                demo: the injection demo — the
                 echo endpoint's path/header names and the "should the
                 landing show the button" check)
 test/           vitest suites (guard, ip, dns-check, cache, inject,
                 admin, origins, subdomain, media, playground, preview,
                 stats, i18n, nav, access, quota, public tier, error
-                pages, seo, compare, docs, snippets, integration)
+                pages, seo, compare, docs, snippets, cors tester,
+                integration)
 ```
 
 ## Scripts

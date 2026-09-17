@@ -100,10 +100,9 @@ describe("comparison registry", () => {
         }
       }
     }
-    // Both states exist, so both labels are actually exercised on the pages.
-    // When the last planned row flips, delete this assertion with it — the
-    // per-row rendering test below follows the registry either way.
-    expect(COMPARISONS.flatMap((c) => c.rows).some((r) => r.status === "planned")).toBe(true);
+    // Planned rows exist only while their task is open; the last one
+    // (AllOrigins' `extras`) flipped when #51 landed. The per-row rendering
+    // test below follows whatever statuses the registry carries.
   });
 });
 

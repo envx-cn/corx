@@ -164,9 +164,12 @@ export function DocsPage(props: {
               );
             })}
             <p class="mt-4 text-sm text-base-content/75 leading-relaxed">{t("docs.call.note")}</p>
-            <p class="mt-3 text-sm">
+            <p class="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm">
               <a href="/snippets" class="link link-primary">
                 {t("docs.call.snippets")}
+              </a>
+              <a href="/tools/cors-tester" class="link link-primary">
+                {t("docs.call.tester")}
               </a>
             </p>
           </Section>

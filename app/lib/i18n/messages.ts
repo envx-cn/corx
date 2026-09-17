@@ -83,6 +83,7 @@ const en = {
     cta: "Both are about a line of code away. Try the public key on the landing page first, and self-host when the traffic matters.",
     ctaLink: "Back to the landing page",
     demo: "See it live: run a real injection from the landing demo.",
+    tester: "Test any URL's CORS in your browser",
     back: "Back to home",
     row: {
       auth: "Auth model",
@@ -111,7 +112,7 @@ const en = {
       price: "Free and MIT-licensed. You pay Cloudflare for what the Worker serves; there is no subscription and no seat count.",
       setup:
         "Deploy a Worker to your own account (about ten minutes), or copy a hosted instance's public key and send GET/HEAD inside its daily quota.",
-      extras: "Proxying only: fetch, cache, inject, log. No image transforms, scraping or file conversion.",
+      extras: "Proxying only: fetch, cache, inject, log, text re-encoding (`corx-charset`) and a JSON envelope (`corx-wrap`), plus a public CORS tester. No image transforms, scraping or file conversion.",
       availability:
         "Self-hosted: as available as your own Cloudflare account. The public instance is best-effort, with no SLA and no support commitment.",
     },
@@ -185,7 +186,7 @@ const en = {
         setup:
           "Local development takes no account, no key and one URL prefix; production takes adding the domain in the dashboard and a plan sized for the traffic.",
         extras:
-          "JSONP, request/response header overrides and every file type are CORX features too; region selection, a CORS tester and the platform integration guides are theirs.",
+          "JSONP, request/response header overrides and every file type; also region selection, a CORS tester and platform integration guides.",
         availability:
           "The homepage claims \">99.9% availability, based on live data\", backed by paid plans, support and 30-day refunds. CORX's hosted instance carries no SLA at all.",
       },
@@ -203,7 +204,7 @@ const en = {
         price: "$5 Hobby, $9 Growth, $19 Scale per month; $29/year for the text-only Lite proxy; free for localhost and a production trial. VAT not included.",
         setup: "For local development: nothing at all — no registration, no key, one prefix. For production: add the domain in the dashboard and pick a plan for the traffic.",
         extras:
-          "JSONP, header overrides and all file types — CORX has those too. Region selection, a CORS tester and platform guides are theirs; nothing here changes the model.",
+          "JSONP, header overrides and all file types; also region selection, a CORS tester and platform guides.",
         availability:
           "Publishes a >99.9% availability figure from live data, with paid support and refunds behind it. CORX's hosted instance has no SLA — self-hosting is the answer it gives instead.",
       },
@@ -277,6 +278,7 @@ const en = {
         "GET and HEAD responses are cached and counted; every other method passes straight through, uncached. A caller-supplied target keeps its own query string: the target's own `key`, `ttl` or `callback` parameters are forwarded untouched, and CORX only consumes names it owns.",
       snippets:
         "Copy-paste examples for fetch, axios and ky — and for Cloudflare Pages, Vercel and Netlify — live on the snippets page.",
+      tester: "Or test a URL's CORS from your browser with the CORS tester.",
       query: {
         title: "Query parameter (recommended)",
         desc:
@@ -475,6 +477,109 @@ const en = {
       landing: "Get the public key",
       selfhost: "How to self-host",
     },
+  },
+  // The /tools/cors-tester page: the browser-side diagnosis. Probe results and
+  // snippets come from app/lib/cors-check.ts; only prose lives here.
+  corsTester: {
+    title: "CORS tester",
+    back: "Back to home",
+    lead:
+      "Paste a URL and see what your browser actually does with it: whether a cross-origin `fetch` succeeds, and if it does not, which part of the CORS handshake is missing. The tool then runs the same URL through this CORX instance and gives you the call to paste.",
+    invalid: {
+      empty: "Paste a URL first.",
+      invalid: "That does not parse as a URL.",
+      scheme: "Only http and https URLs can be tested.",
+      self: "That is this site's own origin — a same-origin request says nothing about CORS.",
+    },
+    result: {
+      allowOrigin: "Access-Control-Allow-Origin: {value}",
+      allowCredentials: "Access-Control-Allow-Credentials: {value}",
+      none: "not sent",
+    },
+    probe: {
+      title: "What the browser reported",
+      cors: "Cross-origin fetch",
+      opaque: "Opaque probe (mode: no-cors)",
+      credentials: "With credentials",
+      preflight: "Preflighted request",
+      pass: "completed",
+      fail: "blocked",
+      skip: "not reached",
+    },
+    finding: {
+      ok: {
+        title: "CORS already works",
+        body:
+          "The browser could read this response, so nothing needs a proxy for CORS. (One can still help with edge caching, hiding upstream credentials or limiting your callers — but CORS is not the problem here.)",
+      },
+      "missing-allow-origin": {
+        title: "No `Access-Control-Allow-Origin` for this page",
+        body:
+          "The server answered — the opaque probe completed — but the browser refused to hand the response to this page. The header is either missing or names other origins. That is exactly what a proxy fixes: it adds the header on the way back.",
+      },
+      unreachable: {
+        title: "The request never completed",
+        body:
+          "Even an unreadable probe failed, so nothing answered: check the hostname, the port, the network, or a page CSP (`connect-src`) blocking this origin. A proxy cannot fix a target that does not answer.",
+      },
+      "mixed-content": {
+        title: "Blocked as mixed content",
+        body:
+          "This page is https and the target is http, so the browser refuses the request before sending it. Use the target's https endpoint, or fetch it through CORX — the proxied URL is https.",
+      },
+      credentials: {
+        title: "Credentialed requests are refused",
+        body:
+          'The plain fetch worked, but the same request with `credentials: "include"` did not. Usually that means `Access-Control-Allow-Origin: *`, which browsers refuse to combine with credentials — the target must name your origin exactly and send `Access-Control-Allow-Credentials: true`. A self-hosted CORX can forward credentials; the public tier strips them.',
+      },
+      preflight: {
+        title: "The preflight fails",
+        body:
+          "A simple GET works, but a request with a custom header does not, so the OPTIONS preflight is the blocker (`Access-Control-Allow-Headers`/`-Methods` do not cover it). Through a proxy the request is same-origin, and there is no preflight to fail.",
+      },
+      framing: {
+        title: "The document refuses to be framed",
+        body:
+          "The proxied response still carries `X-Frame-Options` or a CSP `frame-ancestors` list, so it cannot go into an `<iframe>`. For a host you control, a self-hosted key can strip those headers for that host — sandbox the frame yourself.",
+      },
+    },
+    proxied: {
+      title: "The same URL through CORX",
+      note: "This instance answered {status}. Preview below; the exact call is under it.",
+      failed: "The proxied request failed: {error} — copy the call below and try it where your code runs.",
+    },
+    fix: {
+      title: "The call to paste",
+      lead:
+        "All three are the same request. The browser form is only safe with the public key (or an origin granted on a key); a private key belongs on the server.",
+      proxyUrl: "Proxy URL",
+      browser: "Browser (fetch)",
+      server: "Server (fetch, with a key)",
+    },
+    island: {
+      urlAria: "URL to test",
+      urlPh: "https://api.example.com/data",
+      run: "Test it",
+      running: "Testing…",
+      note:
+        "The probes run in your browser. The proxied request goes through this instance — subject to its terms, quotas and logging, so do not paste private URLs here.",
+    },
+    how: {
+      title: "How the test works",
+      body:
+        "Your browser fetches the URL up to three ways: a plain cross-origin request, the same with credentials, and one with a custom header that forces a preflight. When the plain request is blocked, an opaque `no-cors` probe runs too — it cannot be read, but completing proves the server answered, which separates missing CORS headers from an unreachable host. Browsers deliberately hide *why* a request was blocked, so the verdict is inferred from those probes, not read from an error.",
+    },
+    frames: {
+      title: "Frames are a separate question",
+      body:
+        "CORS decides whether `fetch` may read a response. Whether a page can be shown in an `<iframe>` is decided by the target's `X-Frame-Options` and CSP `frame-ancestors`, which CORX does not strip by default. A self-hosted key can, for a host you control.",
+      link: "The embed recipe",
+    },
+    docs: {
+      auth: "Authentication, in detail",
+      snippets: "Framework snippets",
+    },
+    more: { title: "Keep reading" },
   },
   landing: {
     title: "CORX — CORS proxy on Cloudflare",
@@ -1072,6 +1177,7 @@ const zh: Messages = {
     cta: "两者都只差一行代码。先在首页用公共 key 试试；流量重要时再自托管。",
     ctaLink: "回到首页",
     demo: "看它跑起来：在首页演示里真实执行一次注入。",
+    tester: "在浏览器里测试任意 URL 的 CORS",
     back: "返回首页",
     row: {
       auth: "鉴权模型",
@@ -1097,7 +1203,7 @@ const zh: Messages = {
       limits: "按 key 的频率限制与每日配额由你自己设定，或使用公共档位的共享配额；自托管时上限就是你 Cloudflare 套餐的上限。",
       price: "免费、MIT 许可。只为 Worker 的实际用量向 Cloudflare 付费，没有订阅，也不按席位计费。",
       setup: "把 Worker 部署到自己的账号（约十分钟）；或复制托管实例的公共 key，在每日配额内发 GET/HEAD。",
-      extras: "只做代理：抓取、缓存、注入、记日志。不做图片转换、抓取提取或文件转换。",
+      extras: "只做代理：转发、缓存、注入、日志，外加文本重编码（`corx-charset`）、JSON 包装（`corx-wrap`）与公开的 CORS 测试器。不做图片处理、网页抓取/提取或文件转换。",
       availability: "自托管：可用性取决于你自己的 Cloudflare 账号。公共实例是尽力而为，没有 SLA，也没有支持承诺。",
     },
     "corsproxy-io": {
@@ -1159,7 +1265,7 @@ const zh: Messages = {
           "Hobby/Growth/Scale 的吞吐为每 IP 60/120/180 RPM，月出站流量 25/100/500 GB；请求数本身不限。免费档：localhost 60 RPM，生产试用 1 GB + 3 个 web app。",
         price: "Hobby $5、Growth $9、Scale $19 每月，或 lite.corsfix.com 的纯文本 Lite 套餐 $29/年；价格不含增值税。",
         setup: "本地开发什么都不用：不要账号、不要 key，加一个 URL 前缀即可；生产环境则是在面板添加域名并为流量选一个套餐。",
-        extras: "JSONP、header 覆盖与全文件类型 CORX 也有；区域选择、CORS 测试工具与各平台接入指南是他们的。",
+        extras: "JSONP、header 覆盖与全文件类型；另有区域选择、CORS 测试工具与各平台接入指南。",
         availability: "首页声称「基于实时数据 >99.9% 可用性」，背后是付费套餐、支持渠道与 30 天退款。CORX 的托管实例则完全没有 SLA。",
       },
       row: {
@@ -1175,7 +1281,7 @@ const zh: Messages = {
           "各套餐请求数均不限，但吞吐按 IP 计（60/120/180 RPM），月出站流量也有限额（25/100/500 GB）。免费：localhost 60 RPM，生产试用 1 GB + 3 个 web app。Lite：600 RPM 共享、仅文本、≤1 MB。",
         price: "Hobby $5、Growth $9、Scale $19 每月；纯文本 Lite 代理 $29/年；localhost 与生产试用免费。不含增值税。",
         setup: "本地开发什么都不用——不注册、不用 key，一个前缀就够；生产环境则要在面板加域名，并按流量选套餐。",
-        extras: "JSONP、header 覆盖与全文件类型 CORX 也有；区域选择、CORS 测试工具与平台指南是他们的，不影响产品模型。",
+        extras: "JSONP、header 覆盖与全文件类型；另有区域选择、CORS 测试工具与平台指南。",
         availability: "公布「>99.9%」的实时可用性数据，背后有付费支持与退款承诺。CORX 的托管实例没有 SLA——它给出的答案是自托管。",
       },
     },
@@ -1238,6 +1344,7 @@ const zh: Messages = {
       note:
         "GET 和 HEAD 响应会被缓存并计入配额，其他方法一律直接透传、不缓存。调用方自带的目标会完整保留自己的查询串：目标自己的 `key`、`ttl`、`callback` 参数原样转发，CORX 只消费属于自己的名字。",
       snippets: "fetch、axios、ky 以及 Cloudflare Pages、Vercel、Netlify 的可复制示例，都在代码示例页。",
+      tester: "或者用 CORS 测试器直接在浏览器里测试任意 URL。",
       query: {
         title: "查询参数（推荐）",
         desc: "本文档统一使用的写法：目标 URL 经过百分号编码后放进 `?url=`。`/fetch` 和任何其他代理路由都支持。",
@@ -1419,6 +1526,107 @@ const zh: Messages = {
       landing: "获取公共 key",
       selfhost: "如何自托管",
     },
+  },
+  // /tools/cors-tester 页面：浏览器侧的诊断。探测结论与代码片段在
+  // app/lib/cors-check.ts；这里只有文案。
+  corsTester: {
+    title: "CORS 测试器",
+    back: "返回首页",
+    lead:
+      "粘贴一个 URL，看看你的浏览器实际会怎样处理它：跨域 `fetch` 能否成功；如果不能，是 CORS 握手的哪一环缺失。随后工具会把同一个 URL 跑过这个 CORX 实例，并给出可以直接粘贴的调用。",
+    invalid: {
+      empty: "请先粘贴一个 URL。",
+      invalid: "这不像是一个合法的 URL。",
+      scheme: "只能测试 http 和 https 的 URL。",
+      self: "这是本站自己的来源——同源请求说明不了 CORS。",
+    },
+    result: {
+      allowOrigin: "Access-Control-Allow-Origin: {value}",
+      allowCredentials: "Access-Control-Allow-Credentials: {value}",
+      none: "未发送",
+    },
+    probe: {
+      title: "浏览器的报告",
+      cors: "跨域 fetch",
+      opaque: "不透明探测（mode: no-cors）",
+      credentials: "携带凭证",
+      preflight: "预检请求",
+      pass: "完成",
+      fail: "被拦截",
+      skip: "未执行",
+    },
+    finding: {
+      ok: {
+        title: "CORS 已经可用",
+        body:
+          "浏览器能读到这个响应，因此 CORS 层面不需要代理。（代理仍然可以帮助你做边缘缓存、隐藏上游凭证或限制调用方——但问题不在 CORS。）",
+      },
+      "missing-allow-origin": {
+        title: "响应里没有给本站的 `Access-Control-Allow-Origin`",
+        body:
+          "服务器确实有响应——不透明探测完成了——但浏览器拒绝把响应交给本页面。该 header 要么缺失，要么写的是别的来源。这正是代理能修复的：它在回程补上这个 header。",
+      },
+      unreachable: {
+        title: "请求根本没有完成",
+        body:
+          "连不可读的探测都失败了，说明没有任何响应：检查主机名、端口、网络，或者页面 CSP（`connect-src`）是否拦截了该来源。目标本身不响应的话，代理也无能为力。",
+      },
+      "mixed-content": {
+        title: "被混合内容拦截",
+        body:
+          "本页是 https、目标是 http，浏览器在发送前就拒绝了。请改用目标的 https 端点，或者通过 CORX 获取——代理地址是 https。",
+      },
+      credentials: {
+        title: "携带凭证的请求被拒绝",
+        body:
+          '普通 fetch 成功，但同样的请求带上 `credentials: "include"` 就失败了。通常意味着 `Access-Control-Allow-Origin: *`——浏览器不允许通配符与凭证共存：目标必须精确列出你的来源并返回 `Access-Control-Allow-Credentials: true`。自托管的 CORX 可以转发凭证；公共档位会剥离它们。',
+      },
+      preflight: {
+        title: "预检失败",
+        body:
+          "简单 GET 能过，但带自定义请求头的请求过不了——问题出在 OPTIONS 预检（`Access-Control-Allow-Headers`/`-Methods` 没有覆盖它）。走代理之后请求变成同源，就没有预检可失败了。",
+      },
+      framing: {
+        title: "该文档拒绝被嵌入",
+        body:
+          "经过代理后响应仍然带着 `X-Frame-Options` 或 CSP `frame-ancestors`，因此无法放进 `<iframe>`。对于你自己控制的主机，自托管的 key 可以按主机剥掉这些 header——iframe 请自行加 sandbox。",
+      },
+    },
+    proxied: {
+      title: "同一个 URL 走 CORX",
+      note: "本实例返回了 {status}。预览如下，具体调用在下面。",
+      failed: "代理请求失败：{error}——复制下面的调用，到你的代码运行的地方再试一次。",
+    },
+    fix: {
+      title: "可以粘贴的调用",
+      lead: "三种形式是同一个请求。浏览器形式只在公共 key（或已授权来源）下安全；私有 key 只能放在服务端。",
+      proxyUrl: "代理 URL",
+      browser: "浏览器（fetch）",
+      server: "服务端（fetch，带 key）",
+    },
+    island: {
+      urlAria: "要测试的 URL",
+      urlPh: "https://api.example.com/data",
+      run: "测试",
+      running: "测试中…",
+      note: "探测在你的浏览器里执行。代理请求会经过本实例——受其条款、配额与日志约束，请不要在这里粘贴私有 URL。",
+    },
+    how: {
+      title: "测试怎么做的",
+      body:
+        "浏览器最多会用三种方式抓取该 URL：普通跨域请求、携带凭证的同一请求，以及一个带自定义请求头、会触发预检的请求。普通请求被拦截时，还会补一次不透明的 `no-cors` 探测——它读不到内容，但能完成就说明服务器有响应，从而把「缺 CORS header」与「主机不可达」区分开。浏览器刻意不告诉页面请求为何被拦截，所以结论是从这些探测推断出来的，而不是从错误里读出来的。",
+    },
+    frames: {
+      title: "嵌入是另一个问题",
+      body:
+        "CORS 决定 `fetch` 能否读取响应；页面能否放进 `<iframe>` 由目标的 `X-Frame-Options` 与 CSP `frame-ancestors` 决定，CORX 默认不会剥掉它们。自托管的 key 可以为某个你控制的主机去掉。",
+      link: "嵌入做法",
+    },
+    docs: {
+      auth: "鉴权细节",
+      snippets: "框架代码示例",
+    },
+    more: { title: "延伸阅读" },
   },
   landing: {
     title: "CORX — Cloudflare 上的 CORS 代理",

@@ -248,13 +248,10 @@ export const COMPARISONS: Comparison[] = [
         source: { url: "https://allorigins.win/", checked: CHECKED },
       },
       {
-        // The one `planned` row at the time of writing: `charset` is a real
-        // convenience CORX lacks, and #51 adds it (plus a JSON envelope).
-        // Closing #51 means re-reading their README and flipping this row.
+        // Parity after #51: CORX grew `corx-charset` and `corx-wrap=json`, so
+        // AllOrigins' `charset` + JSONP surface is no longer a row they win.
+        // The row stays (their docs still describe it) — only the badge moved.
         id: "extras",
-        theirs: true,
-        status: "planned",
-        trackedIn: "https://github.com/envx-cn/corx/issues/51",
         source: { url: "https://github.com/gnuns/allorigins", checked: CHECKED },
       },
       {

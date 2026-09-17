@@ -174,6 +174,12 @@ export function ComparePage(props: {
               </a>
             </p>
           )}
+          {/* The tool page, from the page whose whole subject is CORS failing. */}
+          <p class="mt-3 text-sm">
+            <a href="/tools/cors-tester" class="link link-primary">
+              {t("compare.tester")}
+            </a>
+          </p>
 
           <div class="mt-8 overflow-x-auto rounded-box border border-base-300">
             <table class="table table-sm w-full min-w-[44rem]">
