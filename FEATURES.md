@@ -289,6 +289,18 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
   `tsc`. Not in the nav or the hero: the only inbound link is a line under the
   FAQ, and each page sits in the sitemap with its own hreflang cluster.
   `test/compare.test.ts` enforces the honesty invariants.
+- **Usage page** (`/docs`, with `/en/` and `/zh/` URLs): the human-readable
+  manual for the instance — the four call shapes with copyable examples built
+  from the request's own origin, the whole `corx-*` table, the three auth
+  tiers and where a key must not go, caching (`X-Corx-Cache`, TTL, what
+  bypasses it), limits and the `429` + `Retry-After` contract, a security
+  summary linking `/terms` and `#trust`, and a self-hosting pointer. The
+  code-coupled half (shapes, parameter table) is data in `app/lib/docs.ts` and
+  the page renders it, so it cannot advertise a param the proxy does not
+  consume; `test/docs.test.ts` asserts the table equals `CONTROL_PARAMS` and
+  that every fact exists in both dictionaries. Linked from the landing nav
+  (not the hero), the sitemap (own hreflang cluster) and both llms files, with
+  a dated `TechArticle` node in the JSON-LD graph.
 - **Injection demo**: the try-it demo's footer grows a "See a key get
   injected" button that runs one real request through a public demo key to
   `/demo/echo` — an echo endpoint on this Worker (`app/routes/demo/echo.ts`)
@@ -360,9 +372,10 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
 - Tailwind v4 + daisyUI 5 inlined via `?inline` into `<style>`, themes
   `corx` (public) and `corx-dash` (console) built around the brand palette.
 
-Files: `app/routes/index.ts`, `_landing.tsx`, `_not-found.tsx`,
-`_error-page.tsx`, `app/components/site.tsx`, `status-page.tsx`,
-`app/lib/i18n/**`, `app/styles/app.css`, `app/assets/**`.
+Files: `app/routes/index.ts`, `_landing.tsx`, `_docs.tsx`, `docs.ts`,
+`_not-found.tsx`, `_error-page.tsx`, `app/components/site.tsx`,
+`status-page.tsx`, `app/lib/docs.ts`, `app/lib/i18n/**`, `app/styles/app.css`,
+`app/assets/**`.
 
 ## 10. Console authentication
 

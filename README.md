@@ -98,6 +98,12 @@ Options:
 Pass an API key with `X-Api-Key`, `Authorization: Bearer …`, or `?corx-key=…`
 (required when `REQUIRE_API_KEY=true`).
 
+The same facts — the four call shapes, the `corx-*` table, the auth tiers,
+caching, limits and the security model — are rendered for humans at `/docs`
+(also `/en/docs` and `/zh/docs`), with copyable examples built for the host
+you are reading. This README remains the source of truth for deploying your
+own copy.
+
 **Control params** — `corx-ttl`, `corx-no-cache`, `corx-key`, `corx-callback`,
 `corx-scheme`, `corx-port` — are consumed by the proxy and never reach the
 target. `corx-*` is CORX's namespace, so an unknown name (a typo like
@@ -308,7 +314,9 @@ secret injection, keyless browser access, playground introspection), a compact
 nine-item feature list, a **FAQ** band (native `<details>`, so no island is
 needed and the answers are plain text in the initial HTML) and a dark footer.
 The FAQ is not decoration: it is the content answer engines quote, and the same
-strings feed its `FAQPage` JSON-LD (see [SEO and GEO](#seo-and-geo)).
+strings feed its `FAQPage` JSON-LD (see [SEO and GEO](#seo-and-geo)). The sticky
+nav links the section anchors, the **Docs** page (the rendered manual at
+`/docs` — the one public link that leaves the landing) and the console.
 
 Below the public-key card sits the **agent entry** (`id="agents"`): two file
 cards (`/llms.txt`, `/llms-full.txt`), a copy-to-clipboard prompt that names
@@ -444,7 +452,7 @@ one deployment's URL.
 | Surface | What it is |
 | --- | --- |
 | `robots.txt` | Public pages open, machine surfaces closed (`/console`, `/api`, `/fetch`, `/proxy`, `/health`), absolute `Sitemap:` line. The main answer engines (GPTBot, ClaudeBot, PerplexityBot, …) are named and allowed on purpose: CORX *wants* to be read and cited, and saying so in the file makes a future "block the bots" edit argue with the list. |
-| `sitemap.xml` | Every indexable URL with `lastmod`, and an `xhtml:link` hreflang cluster (`en`, `zh`, `x-default`) on each landing URL and each comparison URL. |
+| `sitemap.xml` | Every indexable URL with `lastmod`, and an `xhtml:link` hreflang cluster (`en`, `zh`, `x-default`) on each landing URL, each comparison URL and each docs URL. |
 | `llms.txt` | The [llmstxt.org](https://llmstxt.org) index: title, blockquote summary, `## Docs` / `## Facts` link sections, `## Optional` tail. |
 | `llms-full.txt` | The whole behaviour of the instance in one Markdown fetch — calling shapes, the `corx-*` namespace, auth tiers, caching, limits, security, console + admin API, self-hosting. |
 
@@ -489,6 +497,23 @@ page linked from the FAQ and the sitemap).
 
 `CONTENT_UPDATED` in `app/lib/site-info.ts` is the sitemap's `lastmod` and the
 terms' own date; bump it whenever the public copy changes.
+
+### Usage page (`/docs`)
+
+`/docs` (plus `/en/docs` and `/zh/docs`) is the human-readable manual: the four
+call shapes with copyable examples built from the request's own origin, the
+whole `corx-*` table, the three auth tiers and where a key must not go, caching
+(`X-Corx-Cache`, TTL, what bypasses it), limits and the `429` + `Retry-After`
+contract, a security summary linking `/terms` and `#trust`, and a self-hosting
+pointer to this README and CONTRIBUTING.md.
+
+The parts that can drift from the code are data, not prose: `app/lib/docs.ts`
+holds the call shapes and the parameter table, and `test/docs.test.ts` asserts
+that table equals `CONTROL_PARAMS` (`app/lib/control.ts`), so the page cannot
+advertise a parameter the proxy does not consume — or forget one it does. The
+page is linked from the landing nav (not the hero), sits in the sitemap with
+its own hreflang cluster, is linked from `llms.txt` and `llms-full.txt`, and
+emits a dated `TechArticle` in its JSON-LD.
 
 ## Public tier (the hosted instance)
 
@@ -907,6 +932,10 @@ app/              HonoX frontend (entry + console UI + API routes)
                 en/ and zh/ variants call _compare.tsx (page + handler),
                 which reads the registry in lib/compare.ts. Not in the nav:
                 linked from the landing FAQ and the sitemap only.
+  routes/docs.ts      /docs usage page (+ docs under en/ and zh/), all three
+                calling _docs.tsx (page + handler), which renders the call
+                shapes and corx-* table from lib/docs.ts. Linked from the
+                landing nav, the sitemap and the llms files.
   components/   shared presentational primitives (badges, chart, lucide,
                 table, logo) plus the response viewers (response-preview,
                 json-tree) used by both the landing demo and the playground —
@@ -949,13 +978,15 @@ app/              HonoX frontend (entry + console UI + API routes)
                 sitemap.xml, llms.txt, llms-full.txt; site-info: the
                 origin-independent facts those all quote; compare: the
                 /compare registry — competitor name, source URLs and the
-                day each claim was read; demo: the injection demo — the
+                day each claim was read; docs: the /docs page's code-coupled
+                half — call shapes and the corx-* table the test checks
+                against control.ts; demo: the injection demo — the
                 echo endpoint's path/header names and the "should the
                 landing show the button" check)
 test/           vitest suites (guard, ip, dns-check, cache, inject,
                 admin, origins, subdomain, media, playground, preview,
                 stats, i18n, nav, access, quota, public tier, error
-                pages, seo, compare, integration)
+                pages, seo, compare, docs, integration)
 ```
 
 ## Scripts

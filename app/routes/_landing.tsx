@@ -157,6 +157,11 @@ export function LandingPage(props: {
               <a href="#features" class="block rounded-xs px-3 py-3.5 hover:bg-base-200 md:inline-block md:px-3 md:py-2">
                 {t("site.features")}
               </a>
+              {/* The usage page, not an anchor: the one nav link that leaves
+                  the landing (the hero stays free of it on purpose). */}
+              <a href="/docs" class="block rounded-xs px-3 py-3.5 hover:bg-base-200 md:inline-block md:px-3 md:py-2">
+                {t("site.docs")}
+              </a>
               <a href="#faq" class="block rounded-xs px-3 py-3.5 hover:bg-base-200 md:inline-block md:px-3 md:py-2">
                 {t("site.faq")}
               </a>
