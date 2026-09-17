@@ -42,7 +42,7 @@ export const LICENSE = { spdx: "MIT", url: "https://spdx.org/licenses/MIT.html" 
  * or terms content changes; a fabricated per-request timestamp would make the
  * sitemap useless as a freshness signal.
  */
-export const CONTENT_UPDATED = "2026-09-16";
+export const CONTENT_UPDATED = "2026-09-17";
 
 /** The two locales every public page exists in, default first. */
 export const LOCALES = ["en", "zh"] as const;
