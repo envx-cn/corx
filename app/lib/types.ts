@@ -42,6 +42,13 @@ export interface Env {
   PUBLIC_KEY?: string;
   /** Default R2 TTL for public-tier GETs, in seconds. Public keys reject corx-ttl. */
   PUBLIC_CACHE_TTL_SECONDS?: string;
+  /**
+   * Raw value of the injection-demo key rendered on the landing page
+   * (`app/lib/demo.ts`). Its host allowlist must cover this deployment, which
+   * is also the check that keeps the demo hidden when it would only 403.
+   * Empty = no demo on the site.
+   */
+  DEMO_KEY?: string;
 }
 
 export interface ApiKeyRow {

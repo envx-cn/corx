@@ -7,6 +7,7 @@ import { detectLocale, isLocale, makeT, type Locale, type TFunc } from "../lib/i
 import { setLangCookie } from "../lib/i18n/hono.js";
 import { SiteFooter, SiteHead, SiteNav } from "../components/site.js";
 import { REPO_DOCS } from "../lib/site-info.js";
+import { demoKeyInfo } from "../lib/demo.js";
 import { OG_IMAGE, compareAlternates, compareJsonLd } from "../lib/seo.js";
 import {
   comparisonBySlug,
@@ -83,6 +84,9 @@ export function compareHandler(
         locale: lang,
         t: makeT(lang),
         comparison,
+        // Only advertise the live demo when this instance actually has one —
+        // otherwise the link leads to a landing page without it.
+        demo: (await demoKeyInfo(c.env, reqUrl.hostname)) !== undefined,
       })}`,
     );
   };
@@ -95,6 +99,8 @@ export function ComparePage(props: {
   locale: Locale;
   t: TFunc;
   comparison: Comparison;
+  /** True when this instance runs the landing injection demo (app/lib/demo.ts). */
+  demo?: boolean;
 }) {
   const { t, comparison } = props;
   const title = t(pageTitleKey(comparison.slug));
@@ -158,6 +164,16 @@ export function ComparePage(props: {
             </a>
           </p>
           <p class="mt-4 text-sm text-base-content/75 leading-relaxed">{t(pageLeadKey(comparison.slug))}</p>
+          {/* The one claim on this page a reader can check by clicking: the
+              secret never reaches the browser. Only rendered when the instance
+              actually has the demo configured. */}
+          {props.demo && (
+            <p class="mt-3 text-sm">
+              <a href="/#try-it" class="link link-primary">
+                {t("compare.demo")}
+              </a>
+            </p>
+          )}
 
           <div class="mt-8 overflow-x-auto rounded-box border border-base-300">
             <table class="table table-sm w-full min-w-[44rem]">

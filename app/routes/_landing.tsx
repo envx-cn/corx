@@ -23,6 +23,7 @@ import { SiteFooter, SiteHead, SiteNav } from "../components/site.js";
 import { HeroX } from "../components/hero-x.js";
 import { GITHUB_URL } from "../lib/site-info.js";
 import { COMPARISONS } from "../lib/compare.js";
+import { DEMO_ECHO_PATH } from "../lib/demo.js";
 import { landingAlternates, landingJsonLd, OG_IMAGE, type Faq } from "../lib/seo.js";
 import type { Locale, TFunc } from "../lib/i18n/locale.js";
 import CorsDemo, { type CorsDemoI18n } from "../islands/cors-demo.js";
@@ -46,6 +47,8 @@ export function LandingPage(props: {
   t: TFunc;
   /** The public tier key + its daily caps, when this instance has one. */
   publicKey?: { key: string; perOrigin: number | null; perHost: number | null; total: number | null };
+  /** The injection-demo key, when this instance has one configured (app/lib/demo.ts). */
+  demo?: { key: string };
 }) {
   const { t } = props;
   // One source for both the visible FAQ and its JSON-LD: schema that disagrees
@@ -90,6 +93,9 @@ export function LandingPage(props: {
     tabPreview: t("corsDemo.tabPreview"),
     tabRaw: t("corsDemo.tabRaw"),
     tabHeaders: t("corsDemo.tabHeaders"),
+    injectBtn: t("corsDemo.injectBtn"),
+    injectNote: t("corsDemo.injectNote"),
+    injectBadge: t("corsDemo.injectBadge"),
     openRaw: t("preview.openRaw"),
     imageAlt: t("preview.imageAlt"),
     mediaHint: t("preview.mediaHint"),
@@ -240,7 +246,11 @@ export function LandingPage(props: {
                 <p class="mt-2 text-base-content/75">{t("landing.tryit.sub")}</p>
               </div>
               <div class="mt-8 lg:max-w-[560px]">
-                <CorsDemo base={props.origin} i18n={demo} />
+                <CorsDemo
+                  base={props.origin}
+                  i18n={demo}
+                  demo={props.demo ? { key: props.demo.key, target: `${props.origin}${DEMO_ECHO_PATH}` } : undefined}
+                />
                 <p class="mt-4 text-xs text-base-content/75 text-center lg:text-left leading-relaxed">
                   {t("landing.tryit.hint", { origin: props.origin })}
                 </p>

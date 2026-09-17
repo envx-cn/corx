@@ -32,6 +32,15 @@ ADMIN_TOKEN = "dev-admin-token-change-me"
 # landing page has a matching public-tier row.
 # PUBLIC_KEY = "corx_dev_public_key"
 
+# Injection demo ("the browser never gets the upstream credential", shown as a
+# live run on the landing page). The raw value of a key whose host allowlist is
+# this deployment and whose rules inject a fake secret into the echo endpoint
+# (/demo/echo). Set it here, then run `npm run db:seed:demo -- --host <this host>`
+# once; without a matching row — or when the request host is not the allowlisted
+# one — the demo hides itself instead of rendering a button that would 403.
+# See README -> "See secret injection work".
+# DEMO_KEY = "corx_dev_demo_key"
+
 # Cloudflare Access (Zero Trust) login for /console + /admin.
 # Leave empty for local dev (use the token form on /console/login).
 # ACCESS_TEAM_DOMAIN, ACCESS_AUD and ADMIN_EMAILS are one unit: Access login

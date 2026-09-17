@@ -281,6 +281,20 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
   `tsc`. Not in the nav or the hero: the only inbound link is a line under the
   FAQ, and each page sits in the sitemap with its own hreflang cluster.
   `test/compare.test.ts` enforces the honesty invariants.
+- **Injection demo**: the try-it demo's footer grows a "See a key get
+  injected" button that runs one real request through a public demo key to
+  `/demo/echo` — an echo endpoint on this Worker (`app/routes/demo/echo.ts`)
+  that returns the method, path, query and headers it received. The response
+  therefore shows the credential CORX attached on the way out (highlighted in
+  the headers tab, and injected into the query too) while the page only ever
+  held the demo key. Nothing is special-cased in the proxy: the demo key is an
+  ordinary row whose host allowlist is this deployment and whose rules inject a
+  fake value (`app/lib/demo.ts`, `scripts/seed-demo-key.mjs`); the button only
+  renders when that row exists *and* its allowlist covers the served host, so a
+  misconfigured instance hides the demo instead of rendering a button that
+  would 403. `/demo/echo` is a machine surface: JSON, `no-store`, `noindex`,
+  `Disallow: /demo`, and the compare pages link to the live demo only when the
+  instance has one.
 - **Trust band** (`#trust`): a two-card, plainly worded statement of the proxy's
   man-in-the-middle reality — the hosted public instance (free, shared,
   best-effort, not for secrets) next to self-hosting (MIT, free tier, the whole
