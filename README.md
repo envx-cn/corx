@@ -369,6 +369,15 @@ responses chunk-by-chunk. What works out of the box:
   secret, and a header rule `x-api-key: ${ANTHROPIC_KEY}`, then call
   `/fetch?url=https://api.anthropic.com/v1/messages` with that key. The same
   recipe covers `x-goog-api-key` and any other credential header.
+- **Choosing the credential from the page** — a key can *expose* a variable
+  instead of (or as well as) using it in a rule, so the page writes the
+  reference itself: `Authorization: Bearer ${OPENAI_KEY}` for OpenAI,
+  `api-key: ${AZURE_KEY}` for Azure, `?key=${GEMINI_KEY}` for Gemini. The proxy
+  substitutes it for the target host only, and the page still never holds the
+  value. Two exclusions: `X-Api-Key`/`X-Admin-Token` are CORX's own headers and
+  are dropped before any substitution — which is why Anthropic needs the rule
+  above — and a variable can be scoped to specific hosts, outside which the
+  reference is left literal.
 - `Accept: text/event-stream`, `anthropic-version` and every other non-reserved
   request header pass through; the SSE body is forwarded as it arrives and is
   never buffered (`text/event-stream` is excluded from the R2 cache by content

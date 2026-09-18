@@ -307,6 +307,17 @@ describe("docs discovery", () => {
     expect(full).toContain("https://corx.test/en/docs");
   });
 
+  it("carries the caller-reference facts into the agent-facing files", async () => {
+    // An agent reads these, not the rendered page, so the exposure rules and
+    // the reserved-header caveat have to be in the text too.
+    const index = await (await call("/llms.txt")).text();
+    expect(index).toContain("references a caller may use");
+    const full = await (await call("/llms-full.txt")).text();
+    expect(full).toContain("exposed to callers");
+    expect(full).toContain("a reference there never");
+    expect(full).toContain("bounded by the variable's own");
+  });
+
   it("is linked from the landing nav, not the hero", async () => {
     const html = await (await call("/en")).text();
     expect(html).toContain('href="/docs"');

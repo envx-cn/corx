@@ -774,6 +774,22 @@ describe("upstream injection + keyless access (integration)", () => {
     expect(calls[0]?.headers.get("x-b")).toBe("${NOPE}");
   });
 
+  it("never substitutes a reference in a header the proxy owns", async () => {
+    const calls = stubFetch(() => new Response("ok", { status: 200 }));
+    const { env: keyed } = envForKey(clientVarRow());
+    await call(
+      "/fetch?url=https://api.vendor.com/data",
+      { headers: { "x-api-key": "corx_k", "x-admin-token": "${PUBLIC_ID}", "x-other": "${PUBLIC_ID}" } },
+      keyed,
+    );
+    // X-Api-Key / X-Admin-Token are STRIP_REQUEST, so they are dropped before
+    // anything is resolved: neither substituted nor forwarded (a caller cannot
+    // reach the target with them at all). Everything else resolves normally.
+    expect(calls[0]?.headers.get("x-api-key")).toBeNull();
+    expect(calls[0]?.headers.get("x-admin-token")).toBeNull();
+    expect(calls[0]?.headers.get("x-other")).toBe("id-1");
+  });
+
   it("lets an operator rule win over the caller's reference", async () => {
     const row = clientVarRow({
       header_rules: JSON.stringify([
@@ -1351,3 +1367,4 @@ describe("console key form (integration)", () => {
     expect(update?.values.some((v) => typeof v === "string" && v.includes("X-Frame-Options"))).toBe(true);
   });
 });
+

@@ -386,7 +386,7 @@ const en = {
       order: {
         title: "Order, and what happens when nothing matches",
         body:
-          "On the way out, caller references resolve first and the key's rules run afterwards, removes before sets. A rule therefore always beats what the caller asked for — `!X-Debug` deletes it, a `set` replaces it — so a browser cannot spoof an injected header. Anything the proxy will not resolve (unknown name, private variable, host outside the scope) is forwarded exactly as written. That keeps the feature additive (a key with no exposed variable behaves exactly as before) and makes an unexposed name indistinguishable from a nonexistent one, so callers cannot probe what a key holds.",
+          "On the way out, caller references resolve first and the key's rules run afterwards, removes before sets. A rule therefore always beats what the caller asked for — `!X-Debug` deletes it, a `set` replaces it — so a browser cannot spoof an injected header. Anything the proxy will not resolve (unknown name, private variable, host outside the scope) is forwarded exactly as written. That keeps the feature additive (a key with no exposed variable behaves exactly as before) and makes an unexposed name indistinguishable from a nonexistent one, so callers cannot probe what a key holds. Headers CORX owns — `X-Api-Key`, `X-Admin-Token` and the hop-by-hop set — are dropped before anything resolves, so a reference written there is neither substituted nor forwarded; that is why a vendor requiring one of those names (Anthropic's `x-api-key`) needs a rule rather than a caller reference.",
       },
       example: {
         title: "One key, three upstreams",
@@ -1539,7 +1539,7 @@ const zh: Messages = {
       order: {
         title: "顺序，以及不匹配时会发生什么",
         body:
-          "转发时先解析调用方引用，再施加该 key 的规则（先 remove 后 set）。因此规则永远赢得过调用方——`!X-Debug` 会删掉它，`set` 会覆盖它——浏览器无法伪造注入的 header。代理不解析的内容（未知名字、私有变量、作用域外的 host）一律原样转发。这既保证功能是纯增量的（没有暴露任何变量的 key 行为与从前完全一致），也让「未暴露」和「不存在」表现一致，调用方无法探测 key 里有什么。",
+          "转发时先解析调用方引用，再施加该 key 的规则（先 remove 后 set）。因此规则永远赢得过调用方——`!X-Debug` 会删掉它，`set` 会覆盖它——浏览器无法伪造注入的 header。代理不解析的内容（未知名字、私有变量、作用域外的 host）一律原样转发。这既保证功能是纯增量的（没有暴露任何变量的 key 行为与从前完全一致），也让「未暴露」和「不存在」表现一致，调用方无法探测 key 里有什么。代理自己拥有的 header——`X-Api-Key`、`X-Admin-Token` 以及 hop-by-hop 那一组——在处理任何引用之前就被丢弃，所以写在其中的引用既不会被替换也不会被转发；这也是为什么要求这两个名字的厂商（Anthropic 的 `x-api-key`）必须用规则而不是调用方引用。",
       },
       example: {
         title: "一个 key，对接三个上游",
