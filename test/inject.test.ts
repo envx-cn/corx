@@ -77,6 +77,12 @@ describe("host patterns", () => {
 
   it("parses lists and dedupes", () => {
     expect(parseHostsInput("a.example, *.b.example a.example")).toEqual(["a.example", "*.b.example"]);
+    // The same separators as the origins field: commas, spaces and newlines.
+    expect(parseHostsInput("a.example\nb.example, c.example")).toEqual(["a.example", "b.example", "c.example"]);
+  });
+
+  it("names every bad entry in one message", () => {
+    expect(() => parseHostsInput("*.com https://x.com")).toThrowError(/"\*\.com".*"https:\/\/x\.com"/);
   });
 
   it("matches with a label boundary only", () => {

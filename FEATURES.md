@@ -38,7 +38,7 @@ Files: `app/proxy/handler.ts`, `app/proxy/subdomain.ts`, `app/proxy/guard.ts`, `
 
 ## 2. CORS & client access
 
-- Global `ALLOWED_ORIGINS` (`*` default) or a comma list; **per-key override**
+- Global `ALLOWED_ORIGINS` (`*` default) or a comma/whitespace list; **per-key override**
   (blank inherits the global).
 - Origin entries are canonicalized on save (`URL.origin`: lowercase host, default
   port dropped) and matched exactly, except a **loopback port wildcard**

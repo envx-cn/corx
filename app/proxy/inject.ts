@@ -31,6 +31,7 @@
  */
 import { ProxyError } from "../lib/types.js";
 import { CONTROL_PARAMS } from "../lib/control.js";
+import { splitListInput } from "./list-input.js";
 
 export interface InjectionVar {
   name: string;
@@ -387,17 +388,31 @@ export function normalizeHostPattern(raw: string): string {
 /** Parse a comma/whitespace separated host list (textarea, array, or CSV). */
 export function parseHostsInput(input: unknown): string[] {
   let parts: string[];
-  if (typeof input === "string") parts = input.split(/[\s,]+/);
+  if (typeof input === "string") parts = splitListInput(input);
   else if (Array.isArray(input)) parts = input.map((p) => String(p));
   else if (input == null) parts = [];
   else throw new ProxyError(400, "allowedHosts: expected text or an array");
 
   const out: string[] = [];
+  const bad: string[] = [];
   for (const part of parts) {
     const t = part.trim();
     if (!t) continue;
-    const pat = normalizeHostPattern(t);
-    if (!out.includes(pat)) out.push(pat);
+    try {
+      const pat = normalizeHostPattern(t);
+      if (!out.includes(pat)) out.push(pat);
+    } catch (err) {
+      if (!(err instanceof ProxyError)) throw err;
+      bad.push(t);
+    }
+  }
+  // Name every bad entry in one message: the field can show them together,
+  // instead of sending the operator back once per typo.
+  if (bad.length > 0) {
+    throw new ProxyError(
+      400,
+      `Invalid ${bad.length === 1 ? "host pattern" : "host patterns"}: ${bad.map((b) => `"${b}"`).join(", ")}`,
+    );
   }
   if (out.length > MAX_HOSTS) throw new ProxyError(400, `Too many allowed hosts (max ${MAX_HOSTS})`);
   return out;

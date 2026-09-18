@@ -58,6 +58,21 @@ describe("normalizeOriginsInput", () => {
       expect(() => normalizeOriginsInput(bad), bad).toThrowError(ProxyError);
     }
   });
+
+  it("splits on commas and whitespace, like the host list", () => {
+    expect(normalizeOriginsInput("https://a.example https://b.example, https://c.example")).toBe(
+      "https://a.example, https://b.example, https://c.example",
+    );
+    expect(normalizeOriginsInput("https://a.example\nhttps://b.example")).toBe("https://a.example, https://b.example");
+    expect(parseOrigins("https://a.example\nhttps://b.example")).toEqual(["https://a.example", "https://b.example"]);
+  });
+
+  it("names every invalid entry in one message", () => {
+    expect(() => normalizeOriginsInput("not-a-url, ftp://x.example")).toThrowError(/: "not-a-url", "ftp:\/\/x\.example"/);
+    expect(() => normalizeOriginsInput("https://*.example.com bad")).toThrowError(
+      /only valid as a loopback port.*"bad"/,
+    );
+  });
 });
 
 describe("origin patterns", () => {

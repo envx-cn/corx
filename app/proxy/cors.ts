@@ -3,6 +3,7 @@ import type { ApiKeyRow, Env } from "../lib/types.js";
 import { ProxyError } from "../lib/types.js";
 import type { ProxyVariables } from "../lib/auth.js";
 import { resolveRawTarget } from "./subdomain.js";
+import { splitListInput } from "./list-input.js";
 
 type Ctx = Context<{ Bindings: Env; Variables: ProxyVariables }>;
 
@@ -115,9 +116,8 @@ export function parseOrigins(raw: string | null | undefined): string[] | "*" | n
   const t = raw.trim();
   if (t === "") return null;
   if (t === "*") return "*";
-  const list = t
-    .split(",")
-    .map((s) => s.trim().replace(/\/+$/, ""))
+  const list = splitListInput(t)
+    .map((s) => s.replace(/\/+$/, ""))
     .filter(Boolean);
   return list.length > 0 ? list : null;
 }
@@ -130,12 +130,10 @@ export function normalizeOriginsInput(raw: string): string | null {
   const t = raw.trim();
   if (t === "") return null;
   if (t === "*") return "*";
-  const parts = t
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const parts = splitListInput(t);
   if (parts.length === 0) return null;
   const out: string[] = [];
+  const bad: string[] = [];
   for (const p of parts) {
     const pattern = normalizeOriginPattern(p);
     if (pattern && pattern !== "*") {
@@ -144,10 +142,13 @@ export function normalizeOriginsInput(raw: string): string | null {
     }
     // A `*` that survives normalization only as the whole value; anywhere else
     // it is a host wildcard (rejected) or a non-loopback port wildcard.
-    if (p.includes("*")) {
-      throw new ProxyError(400, `Origin wildcards are only allowed as a loopback port, e.g. http://localhost:*: ${p}`);
-    }
-    throw new ProxyError(400, `Invalid origin: ${p}`);
+    bad.push(p.includes("*") ? `${p} (a wildcard is only valid as a loopback port, e.g. http://localhost:*)` : p);
+  }
+  if (bad.length > 0) {
+    throw new ProxyError(
+      400,
+      `Invalid ${bad.length === 1 ? "origin" : "origins"}: ${bad.map((b) => `"${b}"`).join(", ")}`,
+    );
   }
   return out.join(", ");
 }

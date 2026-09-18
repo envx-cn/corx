@@ -2126,7 +2126,7 @@ const zh: Messages = {
       dailyLimitPh: "如 3000",
       badgePublic: "公共",
       allowedHosts: "允许的目标主机",
-      allowedHostsPh: "api.vendor.com, *.vendor.com（配置注入时必填）",
+      allowedHostsPh: "api.vendor.com, *.vendor.com——逗号或空格分隔；配置注入时必填",
       injection: "上游注入",
       injectionHint: "变量会在转发时注入到 Header / Query。每行一条规则；@hosts 为下方规则限定作用域，!Name 表示删除，${var} 插入变量。同一个 header 可以在不同 host 下各设一次（@host1 / @host2），因此一个 key 能为每个上游各带一套凭证。",
       injectionHostsHint: "至少需要一个允许的目标主机（在“高级策略”中）——否则变量和规则会被拒绝保存。",

@@ -897,7 +897,7 @@ vars are rewritten from the config file each time.
 | Var | Default | Meaning |
 | --- | --- | --- |
 | `PROXY_ZONE` (secret) | `""` | Suffix for subdomain mode (`example.corx.com` → `example.com`); empty = auto-detect from the request Host |
-| `ALLOWED_ORIGINS` | `*` | `*` or comma-separated origins allowed to use the **proxy routes only** (console/API never get CORS headers); a loopback port wildcard (`http://localhost:*`) is allowed |
+| `ALLOWED_ORIGINS` | `*` | `*` or comma/whitespace-separated origins allowed to use the **proxy routes only** (console/API never get CORS headers); a loopback port wildcard (`http://localhost:*`) is allowed |
 | `REQUIRE_API_KEY` | `false` | `"true"` to require an API key |
 | `CACHE_TTL_SECONDS` | `3600` | Default R2 TTL for GET 200s; also caps per-request `?corx-ttl=` |
 | `TIMEOUT_MS` | `30000` | Upstream timeout |
@@ -1103,7 +1103,7 @@ curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: applicati
   https://corx.<you>.workers.dev/api/keys
 
 # per-key CORS origins: override the global ALLOWED_ORIGINS for callers of that key
-# ("*", comma-separated origins, or "" to inherit the global). Update anytime.
+# ("*", comma/whitespace-separated origins, or "" to inherit the global). Update anytime.
 # Origins are canonicalized (lowercase host, default port dropped); the only
 # wildcard is a loopback port: "http://localhost:*" covers any localhost port.
 # ipCheck / dnsCheck turn the SSRF guards off for this key (default true):
