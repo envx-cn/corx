@@ -71,14 +71,29 @@ describe("comparison registry", () => {
     }
   });
 
-  it("marks at least one row per page as the competitor's, and keeps dates consistent", () => {
+  it("marks at least one row per page as the competitor's", () => {
     for (const comparison of COMPARISONS) {
       const theirs = comparison.rows.filter((r) => r.theirs).length;
       // A table the competitor never wins is marketing, not a comparison.
       expect(theirs, `${comparison.slug} has no row the competitor wins`).toBeGreaterThan(0);
-      for (const row of comparison.rows) {
-        expect(row.source.checked, `${comparison.slug}/${row.id} date drift`).toBe(comparison.checked);
-      }
+    }
+  });
+
+  it("dates every claim, and the page by its most recent claim", () => {
+    // A later pass over one page must not re-date the rows nobody re-read, so
+    // dates are per row and the page-level date (header + JSON-LD) is the
+    // freshest of them — it can never understate how recent the page is.
+    const today = new Date().toISOString().slice(0, 10);
+    for (const comparison of COMPARISONS) {
+      const dates = comparison.rows.map((row) => {
+        const where = `${comparison.slug}/${row.id}`;
+        expect(row.source.checked, where).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        expect(row.source.checked <= today, `${where}: source dated in the future`).toBe(true);
+        return row.source.checked;
+      });
+      expect(comparison.checked, `${comparison.slug}: page date is not its latest claim`).toBe(
+        [...dates].sort().at(-1),
+      );
     }
   });
 
@@ -191,6 +206,17 @@ describe("compare page contract", () => {
     const zh = await (await call("/zh/compare/corsproxy-io")).text();
     expect(zh).toContain("Header 覆盖走查询参数");
     expect(zh).not.toContain("Header overrides are query parameters");
+  });
+
+  it("renders the credential-scoping row with its own source and date", async () => {
+    const en = await (await call("/compare/corsfix")).text();
+    expect(en).toContain("Credential scoping");
+    // Its own source, dated later than the page's original pass.
+    expect(en).toContain('href="https://corsfix.com/docs/dashboard/application"');
+    expect(en).toContain("Last checked 2026-09-18");
+    const zh = await (await call("/zh/compare/corsfix")).text();
+    expect(zh).toContain("凭证作用域");
+    expect(zh).toContain("https://corsfix.com/docs/dashboard/application");
   });
 
   it("404s an unknown comparison with the branded page", async () => {
