@@ -1604,15 +1604,19 @@ describe("console key form (integration)", () => {
     const createHtml = await create.text();
     expect(createHtml).toContain("beforeunload");
     expect(createHtml).toContain("form[data-corx-dirty]");
-    expect(createHtml).toMatch(/action="\/console\/keys\/new"[^>]*data-corx-dirty/);
+    // Snapshots are keyed by the form's id, not by node: an island's hydration
+    // replaces its subtree (the injection form), so a captured element can be
+    // detached by unload time.
+    expect(createHtml).toContain('getAttribute("data-corx-dirty")');
+    expect(createHtml).toMatch(/action="\/console\/keys\/new"[^>]*data-corx-dirty="create"/);
 
     const { env: withDb } = updateDb(injectingKey);
     const key = await call("/console/keys/key-1", { headers: { cookie: `corx_session=${sessionCookie}` } }, withDb);
     const keyHtml = await key.text();
     // Both forms on the key page opt in — policy markup and the injection island.
-    expect(keyHtml).toMatch(/action="\/console\/keys\/key-1\/policy"[^>]*data-corx-dirty/);
-    expect(keyHtml).toMatch(/action="\/console\/keys\/key-1\/injection"[^>]*data-corx-dirty/);
-    expect(injectionFormSrc).toContain("data-corx-dirty");
+    expect(keyHtml).toMatch(/action="\/console\/keys\/key-1\/policy"[^>]*data-corx-dirty="policy"/);
+    expect(keyHtml).toMatch(/action="\/console\/keys\/key-1\/injection"[^>]*data-corx-dirty="injection"/);
+    expect(injectionFormSrc).toContain('data-corx-dirty="injection"');
   });
 
   it("renders a failed injection save inline, next to the rule field", async () => {

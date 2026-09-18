@@ -220,7 +220,7 @@ function KeyPage(props: {
           method="post"
           action={`/console/keys/${encodeURIComponent(keyRow.id)}/policy`}
           data-corx-busy
-          data-corx-dirty
+          data-corx-dirty="policy"
           data-saving={t("console.keys.saving")}
           class="mt-3"
         >

@@ -120,39 +120,42 @@ function Doc(props: { title: string; locale: Locale; children: Child; scripts?: 
     });
   }
   // Leaving a form half-filled loses the draft: forms opt in with
-  // data-corx-dirty, the snapshot is taken at parse time (values are already
-  // rendered), and beforeunload compares the live fields to it. This is the
-  // browser's own prompt — the only mechanism that covers every exit (links,
-  // back, tab close, URL bar), and its text cannot be localized. Dynamic
-  // rows count too: a field that was not in the snapshot, or one that
-  // disappeared, is a change unless it was empty.
+  // data-corx-dirty="<id>", the snapshot is taken at parse time (values are
+  // already rendered), and beforeunload re-finds the live forms and compares
+  // them to it. Keyed by id, not by node: an island's hydration replaces its
+  // subtree (the injection form is one), so the captured element can be a
+  // detached copy by the time the page unloads.
   function wireDirtyForms() {
-    var forms = [];
-    document.querySelectorAll("form[data-corx-dirty]").forEach(function (form) {
+    var snaps = {};
+    document.querySelectorAll("form[data-corx-dirty]").forEach(function (form, i) {
       var snap = {};
       form.querySelectorAll("input[name], textarea[name]").forEach(function (el) {
-        snap[el.name] = { value: el.value, checked: el.checked };
+        snap[el.name] = { value: el.value, checked: el.checked, checkbox: el.type === "checkbox" };
       });
-      form._corxSnap = snap;
-      forms.push(form);
+      snaps[form.getAttribute("data-corx-dirty") || "form-" + i] = snap;
     });
-    if (!forms.length) return;
-    function isDirty(form) {
-      var snap = form._corxSnap;
+    if (!Object.keys(snaps).length) return;
+    function isDirty(form, snap) {
       var seen = {};
       var dirty = false;
       form.querySelectorAll("input[name], textarea[name]").forEach(function (el) {
         seen[el.name] = 1;
         var before = snap[el.name];
         if (!before) {
-          if (el.value !== "" || el.checked) dirty = true;
+          // A row that was not in the snapshot (the variable editor clones
+          // rows) counts once it carries anything — for a checkbox that is
+          // its checked state, never its "on" value attribute.
+          var filled = el.type === "checkbox" ? el.checked : el.value !== "";
+          if (filled) dirty = true;
           return;
         }
         if (el.type === "checkbox" ? el.checked !== before.checked : el.value !== before.value) dirty = true;
       });
       for (var name in snap) {
         if (seen[name]) continue;
-        if (snap[name].value !== "" || snap[name].checked) dirty = true;
+        // A removed row only counts if it had something in it.
+        var had = snap[name].checkbox ? snap[name].checked : snap[name].value !== "";
+        if (had) dirty = true;
       }
       return dirty;
     }
@@ -161,7 +164,12 @@ function Doc(props: { title: string; locale: Locale; children: Child; scripts?: 
     document.addEventListener("submit", function () { submitting = true; }, true);
     window.addEventListener("beforeunload", function (e) {
       if (submitting) return;
-      if (!forms.some(isDirty)) return;
+      var dirty = false;
+      document.querySelectorAll("form[data-corx-dirty]").forEach(function (form, i) {
+        var snap = snaps[form.getAttribute("data-corx-dirty") || "form-" + i];
+        if (snap && isDirty(form, snap)) dirty = true;
+      });
+      if (!dirty) return;
       e.preventDefault();
       e.returnValue = "";
     });
