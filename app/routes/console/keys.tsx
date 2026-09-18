@@ -289,6 +289,11 @@ function KeysContent(props: {
   const labels = panelLabels(t);
   // Revoked keys (API-side kill switch) are dead: not listed, not editable.
   const keys = props.keys.filter((k) => !k.revoked_at);
+  // A failed save re-opens exactly one panel, and the message belongs inside
+  // it: a top-layer <dialog> covers the page alert. The page alert stays for
+  // failures with no panel to land in (e.g. an unknown key on delete).
+  const editOpen = props.editDraft != null && keys.some((k) => k.id === props.editDraft?.id);
+  const panelOpen = props.createDraft != null || editOpen;
   return (
     <>
       <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
@@ -301,12 +306,13 @@ function KeysContent(props: {
           action="/console/keys"
           values={props.createDraft}
           open={props.createDraft != null}
+          error={props.createDraft ? props.error : null}
           csrf={props.csrf}
           labels={labels}
         />
       </div>
 
-      {props.error && (
+      {props.error && !panelOpen && (
         <div role="alert" class="alert alert-error mb-4">
           <span>{props.error}</span>
         </div>
@@ -378,6 +384,7 @@ function KeysContent(props: {
                       action={`/console/keys/${k.id}`}
                       values={props.editDraft?.id === k.id ? props.editDraft.values : rowValues(k)}
                       open={props.editDraft?.id === k.id}
+                      error={props.editDraft?.id === k.id ? props.error : null}
                       deleteAction={`/console/keys/${k.id}/delete`}
                       keyName={k.name}
                       csrf={props.csrf}

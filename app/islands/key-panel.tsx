@@ -134,6 +134,8 @@ export default function KeyPanel(props: {
   values?: KeyFormValues;
   /** Re-open right after hydration (the server echoed a failed save). */
   open?: boolean;
+  /** Server message for a failed save — shown inside the dialog, not behind it. */
+  error?: string | null;
   /** Delete endpoint — set on the edit panel to render the danger zone. */
   deleteAction?: string;
   /** Session-bound CSRF token, rendered into both POST forms. */
@@ -186,6 +188,14 @@ export default function KeyPanel(props: {
           <h3 id={titleId} class="text-lg font-semibold">
             {props.title}
           </h3>
+          {/* A re-opened dialog is top-layer: a page-level alert behind it is
+              invisible. The server message is rendered here verbatim (line
+              prefixes and all) so the failed save explains itself. */}
+          {props.error ? (
+            <div role="alert" class="alert alert-error mt-4">
+              <span>{props.error}</span>
+            </div>
+          ) : null}
           <form method="post" action={props.action} class="mt-4">
             {/* Marker: a hand-rolled POST without it (script, stale form) gets
                 the safe defaults (both checks on) instead of an absent -

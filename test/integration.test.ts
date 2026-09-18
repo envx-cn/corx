@@ -1321,7 +1321,7 @@ describe("console key form (integration)", () => {
           return { meta: { changes: 1 } };
         },
         first: async () => (sql.includes("FROM api_keys") ? current : null),
-        all: async () => ({ results: [] }),
+        all: async () => ({ results: sql.includes("FROM api_keys") ? [current] : [] }),
       };
       return stmt;
     };
@@ -1329,6 +1329,8 @@ describe("console key form (integration)", () => {
   }
 
   const storedKey = {
+    id: "key-1",
+    name: "my-app",
     vars: "[]",
     header_rules: "[]",
     param_rules: "[]",
@@ -1365,6 +1367,40 @@ describe("console key form (integration)", () => {
     const update = updates.find((u) => u.sql.includes("response_rules = ?"));
     expect(update, "the update must carry the response rules column").toBeDefined();
     expect(update?.values.some((v) => typeof v === "string" && v.includes("X-Frame-Options"))).toBe(true);
+  });
+
+  it("renders a failed save inside the re-opened edit panel, not behind it", async () => {
+    // The keys table has to render the row, otherwise there is no edit panel
+    // to re-open — that is the state a failed save comes back in.
+    const row = { ...storedKey, created_at: "2026-01-02T03:04:05Z" };
+    const { env: withDb } = updateDb(row);
+    const csrf = await csrfFrom("/console/keys", withDb);
+    const res = await call(
+      "/console/keys/key-1",
+      {
+        method: "POST",
+        headers: {
+          cookie: `corx_session=${sessionCookie}`,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body:
+          `csrf=${csrf}&checks=1&name=my-app&allowedHosts=${encodeURIComponent("api.vendor.com")}` +
+          `&headerRules=${encodeURIComponent("X-A: 1\nX-B: 2\nX-C: 3\n=bad")}`,
+      },
+      withDb,
+    );
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    // The server's line prefix survives, so the operator can find line 4.
+    expect(html).toContain("Header rules line 4");
+    // The message lands in the edit dialog that hydration re-opens over the page
+    // (the island-prop copy outside the dialogs is the hydration payload).
+    const dialogs = html.match(/<dialog[\s\S]*?<\/dialog>/g) ?? [];
+    const withError = dialogs.filter((d) => d.includes("Header rules line 4"));
+    expect(withError).toHaveLength(1);
+    expect(withError[0]).toContain('action="/console/keys/key-1"');
+    // ...not in the page-level alert, which the top layer would cover.
+    expect(html).not.toContain("alert-error mb-4");
   });
 });
 
