@@ -83,8 +83,9 @@ Files: `app/proxy/cors.ts`, `app/lib/auth.ts`, `app/lib/admin.ts`.
   names only (`redactKeyRow`); `key_hash` is never selected by the console.
 
 Files: `app/lib/auth.ts`, `app/lib/admin.ts`, `app/routes/api/keys*`,
-`app/routes/console/keys.tsx`, `app/routes/console/keys/[id].tsx`,
-`app/islands/key-panel.tsx`, `app/islands/injection-form.tsx`.
+`app/routes/console/keys.tsx`, `app/routes/console/keys/new.tsx`,
+`app/routes/console/keys/[id].tsx`, `app/routes/console/keys/_form.tsx`,
+`app/islands/injection-form.tsx`.
 
 ## 4. SSRF & abuse protection
 
@@ -215,7 +216,7 @@ Files: `app/proxy/cache.ts`, `app/proxy/handler.ts`.
 
 Files: `app/proxy/inject.ts`, `app/lib/admin.ts`, `app/lib/injection-preview.ts`,
 `app/routes/console/keys.tsx`, `app/routes/console/keys/[id].tsx`,
-`app/islands/key-panel.tsx`, `app/islands/injection-form.tsx`.
+`app/islands/injection-form.tsx`.
 
 ## 7. Admin API (JSON)
 
@@ -250,25 +251,21 @@ Files: `app/routes/api/**`, `app/lib/admin.ts`, `app/lib/access.ts`.
   request/traffic/cache-saved/error cards, requests-per-hour
   chart, Breakdown tabs (status / method / country), top hosts, top keys,
   recent errors.
-- **Keys**: create/edit modal panel (native `<dialog>`, state-less island so
-  fields never re-render while typing) for the policy — name, rate, origins,
-  cache, keyless, the SSRF guards and the public tier, with the rarely-touched
-  fields behind a native `<details>` and presets (local development, public
-  tier) that pre-fill the create form server-side; the deployment's effective
-  defaults (rate, origins, cache TTL) are shown as “blank = …” under the
-  fields, and closing a dirty panel asks first; raw key shown once with a
-  copy button;
-  revoke and delete behind type-the-name confirmations (revoke = kill switch,
-  delete = cleanup), a revoked badge, and a “show revoked” toggle so dead keys
-  and their logs stay attributable; a revoked key's panel opens read-only. The
-  table shows a **Last used** column (from the raw-log window — a dash means
-  no request in the window, never a guessed timestamp), a name/host/origin
-  filter, sortable columns, and per-row Logs / Playground links that open the
-  target page already filtered or selected. Injection lives on its own page (`/console/keys/:id`, state-less form island)
-  — variables as rows (name, write-only value, client toggle, host scope), the
-  header/query/response rule textareas with line-anchored errors, and a masked
-  preview of what the upstream receives; saving it is a partial update, so it
-  can never clear policy and policy edits never touch injection.
+- **Keys**: a list with a **Last used** column (read from the raw-log window
+  — a dash means no request there, never a guessed timestamp), a
+  name/host/origin filter, sortable columns, per-row Logs / Playground links,
+  and a “show revoked” toggle so dead keys stay inspectable. Creating is its
+  own page (`/console/keys/new`): basics first, the advanced policy
+  (cache, SSRF guards, public tier) behind a native `<details>`, presets
+  (local development, public tier) as server-side pre-fills, the deployment's
+  effective defaults shown as “blank = …”, the raw key shown once with a copy
+  button, and a link straight to the optional injection step. The key page
+  (`/console/keys/:id`) edits everything on one URL: the policy and the
+  injection each have their own form and POST (absent fields mean “keep”, so
+  neither can clear the other) — variables as rows (name, write-only value,
+  client toggle, host scope), the three rule textareas with line-anchored
+  errors, and a masked preview; revoke and delete sit at the bottom behind
+  type-the-name confirmations, and a revoked key renders read-only.
 - **Playground**: composes a proxy request (method, route style `/fetch` /
   `/proxy/*` / bare path / simulated subdomain, headers, body, `ttl` /
   `no-cache`, Origin, simulated client IP, anonymous / stored / pasted key)

@@ -48,11 +48,14 @@ function Doc(props: { title: string; locale: Locale; children: Child; scripts?: 
             activation here — the button calls checkbox.click(), which does
             invalidate.
 
-            Confirm dialogs (logout, blocklist remove): server-rendered in
-            _confirm.tsx with a [data-corx-confirm] trigger, so this script
-            only has to open them — and reparent them to <body>, because a
-            closed daisyUI dropdown is display:none and would hide the dialog
-            with it. Cancel/backdrop close via <form method="dialog">. */}
+            Confirm dialogs (logout, blocklist remove, revoke/delete):
+            server-rendered in _confirm.tsx with a [data-corx-confirm] trigger,
+            so this script only has to open them — and reparent them to <body>,
+            because a closed daisyUI dropdown is display:none and would hide the
+            dialog with it. Cancel/backdrop close via <form method="dialog">.
+            Type-the-name dialogs carry data-corx-confirm-name; the script
+            enables their submit only on a match and resets on close. Busy
+            forms (data-corx-busy) disable their submit from the first paint. */}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function () {
@@ -88,11 +91,37 @@ function Doc(props: { title: string; locale: Locale; children: Child; scripts?: 
         if (typeof dialog.showModal === "function") { if (!dialog.open) dialog.showModal(); }
         else dialog.setAttribute("open", "");
       });
+      // Type-the-name confirmations (revoke, delete): the submit stays off
+      // until the typed name matches, and resets when the dialog closes.
+      var name = dialog.getAttribute("data-corx-confirm-name");
+      var input = dialog.querySelector("[data-corx-confirm-input]");
+      var submit = dialog.querySelector("[data-corx-confirm-submit]");
+      if (!name || !input || !submit) return;
+      var sync = function () { submit.disabled = input.value.trim() !== name; };
+      input.addEventListener("input", sync);
+      dialog.addEventListener("close", function () { input.value = ""; sync(); });
+      sync();
+    });
+  }
+  // One POST per form, from the first paint: mark the form busy and disable
+  // its submit while the server answers. Plain script (not an island) so a
+  // double click is caught even before hydration.
+  function wireBusyForms() {
+    document.querySelectorAll("form[data-corx-busy]").forEach(function (form) {
+      form.addEventListener("submit", function () {
+        form.setAttribute("aria-busy", "true");
+        var btn = form.querySelector('button[type="submit"]');
+        if (!btn || btn.disabled) return;
+        btn.disabled = true;
+        var saving = form.getAttribute("data-saving");
+        if (saving) btn.textContent = saving;
+      });
     });
   }
   function init() {
     try { wireSidebar(); } catch (e) { console.error(e); }
     try { wireConfirms(); } catch (e) { console.error(e); }
+    try { wireBusyForms(); } catch (e) { console.error(e); }
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();

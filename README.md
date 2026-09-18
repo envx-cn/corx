@@ -983,21 +983,20 @@ crawler can dominate requests, plus a daily bar chart split at the period
 boundary; the window ends yesterday so both periods are complete. Below it,
 the 24h requests, traffic in/out, cache bandwidth saved, Requests per
 hour chart, a **Breakdown** selector with vertical bar charts for status /
-method / country, top hosts/keys, recent errors) · API keys (create and edit
-in a modal panel — name, rate limit, per-key origins/cache policy, keyless
-access, the SSRF guards and the public-tier quotas, with the rarely-touched
-fields behind an **Advanced policy** disclosure and presets (local
-development, public tier) that pre-fill the form; each key also has its own
-injection page (`/console/keys/:id`) where the variables are rows (a
-write-only value, client exposure, host scope), the header/query/response
-rules are textareas with line-anchored errors, and a masked preview shows
-what the upstream receives; the raw key is shown once; revoke and delete both
-ask you to type the key name — revoke is the kill switch, delete removes the
-row, and a “show revoked” toggle keeps dead keys inspectable so their logs
-stay attributable. The table adds a **Last used** column read from the
-raw-log window, a name/host/origin filter, sortable columns, and per-row
-**Logs** / **Playground** links that land with that key already selected or
-filtered) ·
+method / country, top hosts/keys, recent errors) · API keys (a list with a
+**Last used** column, a name/host/origin filter, sortable columns and per-row
+**Logs** / **Playground** links; creating is its own page (`/console/keys/new`)
+— name, rate, per-key origins/cache policy, keyless, the SSRF guards and the
+public tier, with the rarely-touched fields behind an **Advanced policy**
+disclosure and presets (local development, public tier) that pre-fill the
+form; the raw key is shown once, then the key's page (`/console/keys/:id`)
+edits everything on one URL: the same policy form plus the injection form,
+where the variables are rows (a write-only value, client exposure, host
+scope), the header/query/response rules are textareas with line-anchored
+errors, and a masked preview shows what the upstream receives; revoke and
+delete both ask you to type the key name — revoke is the kill switch, delete
+removes the row, and a “show revoked” toggle keeps dead keys inspectable so
+their logs stay attributable) ·
 Playground (compose a proxy request — method, route style `/fetch` /
 `/proxy/*` / bare path / simulated subdomain, headers, body, `ttl` / `no-cache`,
 Origin, simulated client IP, anonymous / stored / pasted key — and inspect the
@@ -1221,28 +1220,30 @@ app/              HonoX frontend (entry + console UI + API routes)
   routes/console/   console pages as file routes (_renderer dash shell,
                 _middleware login guard, _layout document shell, colocated
                 chrome _nav/_sidebar/_topbar, and
-                index/keys/[id]/logs/blocked/profile/login pages
-                via c.render(); the [id] file is the per-key injection
-                page and its own POST). The sidebar collapse pin + hover-float
+                index/keys/new/[id]/logs/blocked/profile/login pages
+                via c.render(); keys/new is the create page, keys/[id] the
+                key page with its own policy/injection/revoke/delete POSTs,
+                and keys/_form.tsx the shared policy fields). The sidebar
+                collapse pin + hover-float
                 is a plain inline <script> in _layout (honox islands
                 re-render their own DOM, and Chromium :has/label quirks
                 make checkbox + script the reliable combo).
                 Island hydration is honox-managed: the renderer uses
                 <HasIslands/> so the client script loads only on pages
-                that import an island. Console forms that need a panel
-                (API keys) use a state-less island around a native
-                <dialog class="modal">: showModal() puts it in the top
-                layer from anywhere in the table, and with no state the
-                form fields are never re-rendered while typing. A second
-                dialog (delete confirmation) is a sibling of the first,
-                never a descendant — daisyUI's .modal-box is scaled, which
-                would reposition a fixed-position child. The <honox-island>
+                that import an island. The keys console has no modal: policy
+                and create are plain page forms (routes/console/keys/*), the
+                injection page keeps a state-less island for its variable
+                rows and pre-submit checks, and the Doc's inline script wires
+                the rest (data-corx-busy forms disable their submit from the
+                first paint; [data-corx-confirm] dialogs open and
+                type-the-name ones enable their submit on a match), so the
+                guards hold even before hydration. The <honox-island>
                 wrapper is made display:contents in app.css so an island's
                 own root is what participates in layout (flex rows, daisyUI
-                menu items). Confirm dialogs (logout, blocklist remove) are
-                deliberately NOT islands: routes/console/_confirm.tsx renders
-                them server-side and the Doc's inline script wires
-                [data-corx-confirm] → showModal() and reparents the dialog to
+                menu items). Confirm dialogs (logout, blocklist remove,
+                revoke/delete) are deliberately NOT islands:
+                routes/console/_confirm.tsx renders them server-side and the
+                Doc's inline script opens them and reparents the dialog to
                 <body> (a closed dropdown is display:none), so they keep
                 working even when island hydration doesn't.
   routes/index.ts     landing page file route (subdomain-aware)
@@ -1299,7 +1300,7 @@ app/              HonoX frontend (entry + console UI + API routes)
                 slate-tinted neutrals.
   client.ts     island hydration entry (builds to /static/client.js)
   islands/      interactive components (CopyButton, CorsDemo — landing
-                demo, KeyPanel, LogsRange, Playground, StatsTabs)
+                demo, InjectionForm, LogsRange, Playground, StatsTabs)
   proxy/        proxy feature: handler, guard (SSRF), dns-check, ip
                 classification, subdomain mode, CORS, R2 cache,
                 D1 rate limit, daily quotas (quota), inject

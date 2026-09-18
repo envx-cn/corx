@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../app/server.js";
-import keyPanelSrc from "../app/islands/key-panel.tsx?raw";
 import injectionFormSrc from "../app/islands/injection-form.tsx?raw";
 import { signSession } from "../app/lib/session.js";
 import type { Env } from "../app/lib/types.js";
@@ -202,42 +201,57 @@ describe("route wiring (integration)", () => {
     expect(res.headers.get("location")).toBe("/console/login");
   });
 
-  it("authenticated console pages render; creating a key shows the Copy island", async () => {
+  it("renders the keys list and the create page, with no modal anywhere", async () => {
     const res = await call("/console/keys", { headers: { cookie: `corx_session=${sessionCookie}` } });
     expect(res.status).toBe(200);
     const page = await res.text();
     expect(page).toContain("API keys");
-    expect(page).toContain("Keyless access");
-    // Create opens on the fast path: name/rate/origins and keyless. The
-    // advanced policy is a collapsed <details> whose inputs still submit.
-    expect(page).toContain("Advanced policy");
-    expect(page).not.toMatch(/<details[^>]*\sopen/);
-    // Injection has its own page now; the modal must not render its fields,
-    // or a policy save would carry empty strings and clear them.
+    // Creating is its own page now; rows link to the key page, and the list
+    // itself has no POST form at all (the logout confirm dialog is chrome).
+    expect(page).toContain('href="/console/keys/new"');
+    expect(page).not.toContain('name="checks"');
     expect(page).not.toContain('name="vars"');
-    expect(page).not.toContain('name="headerRules"');
-    expect(page).not.toContain('name="clientVars"');
-    expect(page).not.toContain('name="allowedHosts"');
-    // Public tier: the shared-key switch and its three daily caps.
-    expect(page).toContain('name="tier"');
-    expect(page).toContain('name="dailyLimitPerOrigin"');
-    expect(page).toContain('name="dailyLimitTotal"');
+
+    const create = await call("/console/keys/new", { headers: { cookie: `corx_session=${sessionCookie}` } });
+    expect(create.status).toBe(200);
+    const createHtml = await create.text();
+    expect(createHtml).toContain("Create API key");
+    // The fast path is visible; the advanced policy is a collapsed <details>
+    // whose inputs still submit.
+    expect(createHtml).toContain("Advanced policy");
+    expect(createHtml).not.toMatch(/<details[^>]*\sopen/);
+    expect(createHtml).toContain('name="tier"');
+    expect(createHtml).toContain('name="dailyLimitTotal"');
+    // Injection needs the key to exist: it is never a field on this page.
+    expect(createHtml).not.toContain('name="headerRules"');
+    expect(createHtml).not.toContain('name="allowedHosts"');
+    // The double-submit guard is markup, wired by the Doc script from the
+    // first paint (no island, so it works before hydration too).
+    expect(createHtml).toContain("data-corx-busy");
 
     // Creating a key renders the CopyButton island (assert SSR output — the
-    // hydration meta itself is injected at build time by the honox plugin).
-    const created = await call("/console/keys", {
+    // hydration meta itself is injected at build time by the honox plugin),
+    // and the optional injection step is one link away.
+    const created = await call("/console/keys/new", {
       method: "POST",
       headers: {
         cookie: `corx_session=${sessionCookie}`,
         "content-type": "application/x-www-form-urlencoded",
       },
-      body: `name=my-app&csrf=${await csrfFrom("/console/keys")}`,
+      body: `name=my-app&csrf=${await csrfFrom("/console/keys/new")}`,
     });
     expect(created.status).toBe(200);
     const html = await created.text();
     expect(html).toContain("New key created");
     expect(html).toContain("Copy");
     expect(html).toContain('type="button"');
+    expect(html).toContain("Continue to injection");
+  });
+
+  it("serves the create page at /console/keys/new, not as a key id", async () => {
+    const res = await call("/console/keys/new", { headers: { cookie: `corx_session=${sessionCookie}` } });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Create API key");
   });
 
   it("requires an API key name on the admin API", async () => {
@@ -305,17 +319,17 @@ describe("route wiring (integration)", () => {
     expect(viaAccess.headers.get("location")).toBe("https://envx.cloudflareaccess.com/cdn-cgi/access/logout");
   });
 
-  it("delete route reports an unknown key instead of deleting", async () => {
+  it("an unknown key id bounces delete back to the list", async () => {
     const res = await call("/console/keys/nope/delete", {
       method: "POST",
       headers: {
         cookie: `corx_session=${sessionCookie}`,
         "content-type": "application/x-www-form-urlencoded",
       },
-      body: `confirmName=x&csrf=${await csrfFrom("/console/keys")}`,
+      body: `confirmName=x&csrf=${await csrfFrom("/console/keys/new")}`,
     });
-    expect(res.status).toBe(200);
-    expect(await res.text()).toContain("Failed to delete key");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/console/keys");
   });
 
   it("unknown /console/* paths redirect to the console root", async () => {
@@ -1409,15 +1423,19 @@ describe("console key form (integration)", () => {
     return { ...env, DB: { prepare } } as unknown as Env;
   }
 
-  it("pre-fills the create panel from ?preset= and the server accepts it", async () => {
-    const local = await call("/console/keys?preset=local", { headers: { cookie: `corx_session=${sessionCookie}` } });
+  it("pre-fills the create page from ?preset= and the server accepts it", async () => {
+    const local = await call("/console/keys/new?preset=local", {
+      headers: { cookie: `corx_session=${sessionCookie}` },
+    });
     const localHtml = await local.text();
     expect(localHtml).toContain('value="http://localhost:*"');
     expect(localHtml).toMatch(/name="keyless"[^>]*checked/);
-    // The panel offers the other preset as a link (server-side pre-fill).
-    expect(localHtml).toContain('href="/console/keys?preset=public"');
+    // The page offers the other preset as a link (server-side pre-fill).
+    expect(localHtml).toContain('href="/console/keys/new?preset=public"');
 
-    const pub = await call("/console/keys?preset=public", { headers: { cookie: `corx_session=${sessionCookie}` } });
+    const pub = await call("/console/keys/new?preset=public", {
+      headers: { cookie: `corx_session=${sessionCookie}` },
+    });
     const pubHtml = await pub.text();
     expect(pubHtml).toMatch(/name="tier"[^>]*checked/);
     expect(pubHtml).toContain('value="15000"');
@@ -1426,8 +1444,8 @@ describe("console key form (integration)", () => {
 
     // Each preset is a key the server accepts without further edits.
     const localKey = await post(
-      "/console/keys",
-      `csrf=${await csrfFrom("/console/keys")}&checks=1&name=local-dev` +
+      "/console/keys/new",
+      `csrf=${await csrfFrom("/console/keys/new")}&checks=1&name=local-dev` +
         `&allowedOrigins=${encodeURIComponent("http://localhost:*")}&keyless=on&ipCheck=on&dnsCheck=on`,
       env,
     );
@@ -1435,8 +1453,8 @@ describe("console key form (integration)", () => {
     expect(await localKey.text()).toContain("New key created");
 
     const publicKey = await post(
-      "/console/keys",
-      `csrf=${await csrfFrom("/console/keys")}&checks=1&name=hosted-public&tier=on&ipCheck=on&dnsCheck=on` +
+      "/console/keys/new",
+      `csrf=${await csrfFrom("/console/keys/new")}&checks=1&name=hosted-public&tier=on&ipCheck=on&dnsCheck=on` +
         `&dailyLimitPerOrigin=3000&dailyLimitPerHost=5000&dailyLimitTotal=15000`,
       env,
     );
@@ -1516,7 +1534,7 @@ describe("console key form (integration)", () => {
 
   it("saves the injection page's variables and rules", async () => {
     const { env: withDb, updates } = updateDb(injectingKey);
-    const csrf = await csrfFrom("/console/keys", withDb);
+    const csrf = await csrfFrom("/console/keys/key-1", withDb);
     const res = await post(
       "/console/keys/key-1/injection",
       `csrf=${csrf}&varsPresent=1&allowedHosts=${encodeURIComponent("api.vendor.com")}` +
@@ -1544,41 +1562,31 @@ describe("console key form (integration)", () => {
       CACHE_TTL_SECONDS: "1200",
       PUBLIC_CACHE_TTL_SECONDS: "60",
     } as unknown as Env;
-    const res = await call("/console/keys", { headers: { cookie: `corx_session=${sessionCookie}` } }, defaultsEnv);
+    const res = await call("/console/keys/new", { headers: { cookie: `corx_session=${sessionCookie}` } }, defaultsEnv);
     const html = await res.text();
-    // The panel's "blank = …" lines read the proxy's own env, not a copy.
+    // The "blank = …" lines read the proxy's own env, not a copy.
     expect(html).toContain("blank = 77/min");
     expect(html).toContain("blank = global (https://a.example)");
     expect(html).toContain("blank = global 1200s (public tier 60s)");
   });
 
-  it("carries the save form's double-submit guard", async () => {
-    // The double click itself has no DOM harness here (the issue says so), and
-    // an island's onSubmit never reaches the SSR markup — so this pins the
-    // guard at the island's source, like the referrer-policy assertions in
-    // test/auth.test.ts. It fails if the guard is dropped.
-    expect(keyPanelSrc).toContain("onSubmit={onSubmit}");
-    expect(keyPanelSrc).toContain('setAttribute("aria-busy", "true")');
-    expect(keyPanelSrc).toContain("submitRef.current.disabled = true");
-    expect(keyPanelSrc).toContain("submitRef.current.textContent = labels.saving");
-    // ...the form it guards is on the console page it is rendered into.
-    const res = await call("/console/keys", { headers: { cookie: `corx_session=${sessionCookie}` } });
-    const html = await res.text();
-    expect(html).toContain('action="/console/keys"');
-    expect(html).toContain('type="submit"');
-  });
-
-  it("closes the panel only after confirming unsaved changes", () => {
-    // window.confirm has no DOM harness: pin the wiring at the source.
-    expect(keyPanelSrc).toContain("const dirty = () =>");
-    expect(keyPanelSrc).toContain("discardConfirm");
-    expect(keyPanelSrc).toContain("onClick={requestClose}");
-    expect(keyPanelSrc).toContain("onCancel={onCancel}");
+  it("carries the double-submit guard on the create and policy forms", async () => {
+    // The DOM behavior has no harness; the guard is markup (data-corx-busy)
+    // wired by the Doc's inline script from the first paint, so it holds even
+    // before any island hydrates.
+    const create = await call("/console/keys/new", { headers: { cookie: `corx_session=${sessionCookie}` } });
+    const createHtml = await create.text();
+    expect(createHtml).toContain("data-corx-busy");
+    expect(createHtml).toContain('data-saving="Saving…"');
+    expect(createHtml).toContain("form[data-corx-busy]"); // the wiring script
+    const { env: withDb } = updateDb(storedKey);
+    const key = await call("/console/keys/key-1", { headers: { cookie: `corx_session=${sessionCookie}` } }, withDb);
+    expect(await key.text()).toContain("data-corx-busy");
   });
 
   it("renders a failed injection save inline, next to the rule field", async () => {
     const { env: withDb } = updateDb(injectingKey);
-    const csrf = await csrfFrom("/console/keys", withDb);
+    const csrf = await csrfFrom("/console/keys/key-1", withDb);
     const res = await post(
       "/console/keys/key-1/injection",
       `csrf=${csrf}&varsPresent=1&allowedHosts=${encodeURIComponent("api.vendor.com")}` +
@@ -1597,7 +1605,7 @@ describe("console key form (integration)", () => {
 
   it("shows the missing-allowed-hosts error next to that field", async () => {
     const { env: withDb } = updateDb(storedKey);
-    const csrf = await csrfFrom("/console/keys", withDb);
+    const csrf = await csrfFrom("/console/keys/key-1", withDb);
     const res = await post(
       "/console/keys/key-1/injection",
       `csrf=${csrf}&allowedHosts=&varsPresent=1&var_name_0=NEW_KEY&var_value_0=x`,
@@ -1611,12 +1619,17 @@ describe("console key form (integration)", () => {
     expect(html).toContain('value="NEW_KEY"');
   });
 
-  it("renders the injection page: rows, rules and a masked preview", async () => {
+  it("renders the key page: policy, injection rows, rules and a masked preview", async () => {
     const { env: withDb } = updateDb(injectingKey);
     const res = await call("/console/keys/key-1", { headers: { cookie: `corx_session=${sessionCookie}` } }, withDb);
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("Back to keys");
+    // Both halves are on the page, each with its own form/POST.
+    expect(html).toContain('action="/console/keys/key-1/policy"');
+    expect(html).toContain('action="/console/keys/key-1/injection"');
+    expect(html).toContain('name="rateLimitPerMin"');
+    expect(html).toContain('name="dailyLimitTotal"');
     // Variable rows: name, scope and the client toggle, value always blank.
     expect(html).toContain('name="var_name_0"');
     expect(html).toContain('name="var_hosts_0"');
@@ -1627,12 +1640,17 @@ describe("console key form (integration)", () => {
     // Secret values never reach the page — the preview masks them as ***.
     expect(html).not.toContain("sk-live-1");
     expect(html).toContain("***");
+    // Danger zone: both destructive actions are type-the-name dialogs wired by
+    // the Doc script, with the submit disabled until the name matches.
+    expect(html).toContain('data-corx-confirm-name="my-app"');
+    expect(html).toContain("data-corx-confirm-input");
+    expect(html).toMatch(/data-corx-confirm-submit[^>]*disabled/);
   });
 
   it("a policy save never touches the injection fields", async () => {
     const { env: withDb, updates } = updateDb(injectingKey);
-    const csrf = await csrfFrom("/console/keys", withDb);
-    const res = await post("/console/keys/key-1", `csrf=${csrf}&checks=1&name=my-app`, withDb);
+    const csrf = await csrfFrom("/console/keys/key-1", withDb);
+    const res = await post("/console/keys/key-1/policy", `csrf=${csrf}&checks=1&name=my-app`, withDb);
     expect(res.status).toBe(302);
     const update = updates.find((u) => u.sql.startsWith("UPDATE api_keys"));
     expect(update).toBeDefined();
@@ -1644,7 +1662,7 @@ describe("console key form (integration)", () => {
 
   it("an injection save that omits a field leaves the stored value alone", async () => {
     const { env: withDb, updates } = updateDb(injectingKey);
-    const csrf = await csrfFrom("/console/keys", withDb);
+    const csrf = await csrfFrom("/console/keys/key-1", withDb);
     const res = await post(
       "/console/keys/key-1/injection",
       `csrf=${csrf}&headerRules=${encodeURIComponent("X-A: 1")}`,
@@ -1669,13 +1687,17 @@ describe("console key form (integration)", () => {
     expect(injectionFormSrc).toContain('setAttribute("aria-busy", "true")');
   });
 
-  it("renders a revoked key's injection page read-only", async () => {
+  it("renders a revoked key's page read-only, with Delete as the only action", async () => {
     const { env: withDb } = updateDb({ ...injectingKey, revoked_at: "2026-01-03T00:00:00Z" });
     const res = await call("/console/keys/key-1", { headers: { cookie: `corx_session=${sessionCookie}` } }, withDb);
     const html = await res.text();
     expect(html).toContain("This key is revoked");
     expect(html).toContain("<fieldset disabled");
+    // No save buttons and no revoke dialog; the delete form stays.
     expect(html).not.toContain(">Save injection</button>");
+    expect(html).not.toContain(">Save</button>");
+    expect(html).not.toContain('action="/console/keys/key-1/revoke"');
+    expect(html).toContain('action="/console/keys/key-1/delete"');
   });
 
   it("bounces an unknown key id back to the list", async () => {
@@ -1698,18 +1720,16 @@ describe("console key form (integration)", () => {
     expect(shownHtml).toContain("old-app");
     expect(shownHtml).toContain(">revoked</span>");
     expect(shownHtml).toContain("Hide revoked");
-    // Policy is history: the panel opens read-only (every control disabled)
-    // with no Save button — and Delete stays available for cleanup.
-    expect(shownHtml).toContain("<fieldset disabled");
-    expect(shownHtml).not.toContain(">Save</button>");
-    expect(shownHtml).toContain("This key is revoked");
-    // Nothing left to revoke: no revoke dialog and no revoke button.
+    // The row links to the key page; a revoked key reads as View, and has no
+    // revoke link anywhere (nothing left to revoke).
+    expect(shownHtml).toContain('href="/console/keys/key-dead"');
+    expect(shownHtml).toContain(">View</a>");
     expect(shownHtml).not.toContain("/console/keys/key-dead/revoke");
   });
 
   it("revokes from the console behind the type-the-name check, keeping the row", async () => {
     const { env: withDb, updates } = updateDb(storedKey);
-    const csrf = await csrfFrom("/console/keys", withDb);
+    const csrf = await csrfFrom("/console/keys/key-1", withDb);
     const post = (body: string) =>
       call(
         "/console/keys/key-1/revoke",
@@ -1731,8 +1751,8 @@ describe("console key form (integration)", () => {
 
     const ok = await post(`confirmName=my-app&csrf=${csrf}`);
     expect(ok.status).toBe(302);
-    // The redirect turns the toggle on: the dead key is still visible.
-    expect(ok.headers.get("location")).toBe("/console/keys?revoked=1");
+    // Back to the key's page, which now renders the revoked, read-only state.
+    expect(ok.headers.get("location")).toBe("/console/keys/key-1");
     const revoke = updates.find((u) => u.sql.includes("revoked_at"));
     expect(revoke, "revoke must set revoked_at").toBeDefined();
     expect(revoke?.values).toContain("key-1");

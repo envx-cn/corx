@@ -13,6 +13,17 @@ import InjectionForm, {
   type InjectionFormI18n,
   type InjectionFormValues,
 } from "../../../islands/injection-form.js";
+import { ConfirmByNameButton } from "../_confirm.js";
+import {
+  PolicyAdvanced,
+  PolicyBasics,
+  panelDefaults,
+  policyLabels,
+  policyUpdate,
+  readKeyForm,
+  valuesFromKeyRow,
+  type KeyFormValues,
+} from "./_form.js";
 import { consoleT } from "../../../lib/i18n/hono.js";
 import type { TFunc } from "../../../lib/i18n/locale.js";
 
@@ -23,16 +34,45 @@ app.get("/", async (c) => {
   const keyRow = await queryKeyById(c.env.DB, c.req.param("id") ?? "", c.env.INJECTION_KEK);
   // A stale link (or a deleted key) belongs back at the list, not a 404 page.
   if (!keyRow) return c.redirect("/console/keys", 302);
-  return c.render(<InjectionPage keyRow={keyRow} csrf={c.get("csrfToken") ?? ""} t={t} />, {
+  return c.render(
+    <KeyPage keyRow={keyRow} defaults={panelDefaults(c.env)} csrf={c.get("csrfToken") ?? ""} t={t} />,
+    {
     title: keyRow.name || t("console.title.keys"),
   });
 });
 
 /**
- * Save the injection half of a key on its own. Partial by design: a field the
- * POST does not carry is left alone, so this form can never clear policy, and
- * the policy form (which no longer carries injection) can never clear this.
+ * Save the policy half on its own. Partial by design: the form never carries
+ * injection fields, so a policy save cannot clear them — and the injection
+ * form cannot clear policy.
  */
+app.post("/policy", async (c) => {
+  const t = consoleT(c);
+  const id = c.req.param("id") ?? "";
+  const values = readKeyForm(await c.req.parseBody());
+  try {
+    await updateApiKey(c.env.DB, id, { ...policyUpdate(values), name: values.name }, c.env.INJECTION_KEK);
+    return c.redirect(`/console/keys/${encodeURIComponent(id)}`, 302);
+  } catch (err) {
+    const keyRow = await queryKeyById(c.env.DB, id, c.env.INJECTION_KEK);
+    if (!keyRow) return c.redirect("/console/keys", 302);
+    const error = err instanceof ProxyError ? err.message : t("console.keys.saveFailed");
+    return c.render(
+      <KeyPage
+        keyRow={keyRow}
+        defaults={panelDefaults(c.env)}
+        policyDraft={values}
+        error={error}
+        csrf={c.get("csrfToken") ?? ""}
+        t={t}
+      />,
+      {
+      title: keyRow.name || t("console.title.keys"),
+    });
+  }
+});
+
+/** Save the injection half — the other partial update, on its own endpoint. */
 app.post("/injection", async (c) => {
   const t = consoleT(c);
   const id = c.req.param("id") ?? "";
@@ -46,11 +86,12 @@ app.post("/injection", async (c) => {
     if (!keyRow) return c.redirect("/console/keys", 302);
     const error = err instanceof ProxyError ? err.message : t("console.keys.saveFailed");
     return c.render(
-      <InjectionPage
+      <KeyPage
         keyRow={keyRow}
-        draft={draft}
-        error={error}
-        errorField={injectionErrorField(error)}
+        defaults={panelDefaults(c.env)}
+        injectionDraft={draft}
+        injectionError={error}
+        injectionErrorField={injectionErrorField(error)}
         csrf={c.get("csrfToken") ?? ""}
         t={t}
       />,
@@ -59,9 +100,214 @@ app.post("/injection", async (c) => {
   }
 });
 
+/**
+ * Kill switch — the row survives so its logs stay attributable; Delete is the
+ * cleanup. Both type the key's name, checked here as well as in the dialog.
+ */
+app.post("/revoke", async (c) => {
+  const t = consoleT(c);
+  const id = c.req.param("id") ?? "";
+  const form = await c.req.parseBody();
+  const confirmName = String(form["confirmName"] ?? "").trim();
+  const keyRow = await queryKeyById(c.env.DB, id, c.env.INJECTION_KEK);
+  if (!keyRow) return c.redirect("/console/keys", 302);
+  if (confirmName !== keyRow.name) {
+    const error = t("console.keys.revokeMismatch", { name: keyRow.name });
+    return c.render(
+      <KeyPage keyRow={keyRow} defaults={panelDefaults(c.env)} error={error} csrf={c.get("csrfToken") ?? ""} t={t} />,
+      { title: keyRow.name || t("console.title.keys") },
+    );
+  }
+  await c.env.DB.prepare(
+    "UPDATE api_keys SET revoked_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+  )
+    .bind(id)
+    .run();
+  return c.redirect(`/console/keys/${encodeURIComponent(id)}`, 302);
+});
+
+/** Hard delete — the dialog asks the admin to type the key's name first. */
+app.post("/delete", async (c) => {
+  const t = consoleT(c);
+  const id = c.req.param("id") ?? "";
+  const form = await c.req.parseBody();
+  const confirmName = String(form["confirmName"] ?? "").trim();
+  const keyRow = await queryKeyById(c.env.DB, id, c.env.INJECTION_KEK);
+  if (!keyRow) return c.redirect("/console/keys", 302);
+  if (confirmName !== keyRow.name) {
+    const error = t("console.keys.deleteMismatch", { name: keyRow.name });
+    return c.render(
+      <KeyPage keyRow={keyRow} defaults={panelDefaults(c.env)} error={error} csrf={c.get("csrfToken") ?? ""} t={t} />,
+      { title: keyRow.name || t("console.title.keys") },
+    );
+  }
+  await c.env.DB.prepare("DELETE FROM api_keys WHERE id = ?").bind(id).run();
+  return c.redirect("/console/keys", 302);
+});
+
 export default app;
 
 // ---------- Page markup (colocated) ----------
+
+/**
+ * One key, one page: policy and injection side by side, each with its own
+ * form and POST ('absent = keep' on both, so neither can clear the other), the
+ * danger zone at the bottom. A revoked key renders read-only with Delete as
+ * the only action.
+ */
+function KeyPage(props: {
+  keyRow: ApiKeyRow;
+  /** The deployment's effective defaults (the policy fields' "blank = …" lines). */
+  defaults: { rate: string; origins: string; ttl: string; publicTtl: string };
+  /** Policy values to re-open the form with (a save failed). */
+  policyDraft?: KeyFormValues;
+  /** Page-level message (policy save, revoke/delete refusal). */
+  error?: string | null;
+  /** Injection values to re-open that form with (a save failed). */
+  injectionDraft?: InjectionFormValues;
+  injectionError?: string | null;
+  injectionErrorField?: InjectionErrorField | null;
+  csrf: string;
+  t: TFunc;
+}) {
+  const { t, keyRow } = props;
+  const labels = policyLabels(t, props.defaults);
+  const parts = readStoredInjection(keyRow);
+  const policyValues = props.policyDraft ?? valuesFromKeyRow(keyRow);
+  const injectionValues = props.injectionDraft ?? valuesFromParts(parts);
+  const sample = sampleTarget(parts);
+  const preview = injectionPreview(keyRow, sample);
+  const revoked = !!keyRow.revoked_at;
+  return (
+    <>
+      <div class="mb-4">
+        <a class="link link-hover text-xs text-base-content/75" href="/console/keys">
+          ← {t("console.keys.back")}
+        </a>
+        <div class="mt-1 flex flex-wrap items-center gap-2">
+          <h1 class="text-3xl font-semibold tracking-tight">{keyRow.name || "—"}</h1>
+          {revoked ? (
+            <span class="badge badge-error badge-outline badge-sm">{t("console.keys.badgeRevoked")}</span>
+          ) : null}
+          {keyRow.keyless ? (
+            <span class="badge badge-outline badge-sm">{t("console.keys.badgeKeyless")}</span>
+          ) : null}
+          {keyRow.tier === "public" ? (
+            <span class="badge badge-primary badge-sm">{t("console.keys.badgePublic")}</span>
+          ) : null}
+        </div>
+        <div class="text-xs text-base-content/75">
+          id: <span class="font-mono">{keyRow.id}</span>
+        </div>
+      </div>
+
+      {props.error ? (
+        <div role="alert" class="alert alert-error mb-4">
+          <span>{props.error}</span>
+        </div>
+      ) : null}
+      {revoked ? (
+        <div role="status" class="alert alert-warning mb-4">
+          <span>{t("console.keys.revokedHint")}</span>
+        </div>
+      ) : null}
+
+      <section class="rounded-box border border-base-300 p-4">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/75">
+          {t("console.keys.policy")}
+        </h2>
+        <form
+          method="post"
+          action={`/console/keys/${encodeURIComponent(keyRow.id)}/policy`}
+          data-corx-busy
+          data-saving={t("console.keys.saving")}
+          class="mt-3"
+        >
+          <input type="hidden" name="csrf" value={props.csrf} />
+          {/* Marker: a hand-rolled POST without it keeps the guards on. */}
+          <input type="hidden" name="checks" value="1" />
+          <fieldset disabled={revoked} class="m-0 min-w-0 border-0 p-0">
+            <PolicyBasics values={policyValues} labels={labels} />
+            <h3 class="mt-4 text-xs font-medium uppercase tracking-wide text-base-content/75">
+              {labels.advanced}
+            </h3>
+            <div class="mt-3">
+              <PolicyAdvanced values={policyValues} labels={labels} />
+            </div>
+          </fieldset>
+          <div class="mt-6 flex items-center justify-end gap-2">
+            {revoked ? null : (
+              <button type="submit" class="btn btn-primary">
+                {t("console.keys.save")}
+              </button>
+            )}
+          </div>
+        </form>
+      </section>
+
+      <section id="injection" class="mt-6">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/75">
+          {t("console.keys.injection")}
+        </h2>
+        <div class="mt-3">
+          <InjectionForm
+            action={`/console/keys/${encodeURIComponent(keyRow.id)}/injection`}
+            values={injectionValues}
+            previousNames={parts.vars.map((v) => v.name)}
+            error={props.injectionError}
+            errorField={props.injectionErrorField}
+            csrf={props.csrf}
+            revoked={revoked}
+            labels={injectionLabels(t)}
+          />
+        </div>
+      </section>
+
+      <PreviewCard t={t} parts={parts} preview={preview} sample={sample} />
+
+      <section class="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-box border border-error/30 bg-error/5 p-4">
+        <div>
+          <div class="text-sm font-medium text-error">{t("console.keys.danger")}</div>
+          <p class="text-xs text-base-content/75">{t("console.keys.dangerHint")}</p>
+        </div>
+        <div class="flex shrink-0 items-center gap-2">
+          {revoked ? null : (
+            <ConfirmByNameButton
+              action={`/console/keys/${encodeURIComponent(keyRow.id)}/revoke`}
+              label={t("console.keys.revoke")}
+              triggerClass="btn btn-warning btn-outline"
+              keyName={keyRow.name}
+              csrf={props.csrf}
+              i18n={{
+                title: t("console.keys.revokeTitle"),
+                hint: t("console.keys.revokeHint"),
+                placeholder: t("console.keys.deleteConfirm"),
+                submit: t("console.keys.revoke"),
+                cancel: t("ui.cancel"),
+                close: t("ui.close"),
+              }}
+            />
+          )}
+          <ConfirmByNameButton
+            action={`/console/keys/${encodeURIComponent(keyRow.id)}/delete`}
+            label={t("console.keys.delete")}
+            triggerClass="btn btn-error btn-outline"
+            keyName={keyRow.name}
+            csrf={props.csrf}
+            i18n={{
+              title: t("console.keys.deleteTitle"),
+              hint: t("console.keys.deleteHint"),
+              placeholder: t("console.keys.deleteConfirm"),
+              submit: t("console.keys.delete"),
+              cancel: t("ui.cancel"),
+              close: t("ui.close"),
+            }}
+          />
+        </div>
+      </section>
+    </>
+  );
+}
 
 /** The injection fields from a form body, in the route-layer partial-update shape. */
 function injectionUpdate(form: Record<string, unknown>): KeyUpdate {
@@ -104,7 +350,7 @@ function readVarRows(form: Record<string, unknown>): Array<{ name: string; value
   return rows;
 }
 
-/** The page's values from a form body (a save failed: echo what was typed). */
+/** The form's values from a form body (a save failed: echo what was typed). */
 function draftFromForm(form: Record<string, unknown>): InjectionFormValues {
   return {
     allowedHosts: String(form["allowedHosts"] ?? ""),
@@ -115,7 +361,7 @@ function draftFromForm(form: Record<string, unknown>): InjectionFormValues {
   };
 }
 
-/** The page's values from the stored row (values stay server-side). */
+/** The form's values from the stored row (values stay server-side). */
 function valuesFromParts(parts: InjectionParts): InjectionFormValues {
   return {
     allowedHosts: parts.hosts.join(", "),
@@ -170,59 +416,6 @@ function injectionLabels(t: TFunc): InjectionFormI18n {
   };
 }
 
-function InjectionPage(props: {
-  keyRow: ApiKeyRow;
-  /** Values to re-open the form with (a save failed). */
-  draft?: InjectionFormValues;
-  error?: string | null;
-  errorField?: InjectionErrorField | null;
-  csrf: string;
-  t: TFunc;
-}) {
-  const { t, keyRow } = props;
-  const parts = readStoredInjection(keyRow);
-  const values = props.draft ?? valuesFromParts(parts);
-  const sample = sampleTarget(parts);
-  const preview = injectionPreview(keyRow, sample);
-  return (
-    <>
-      <div class="mb-4">
-        <a class="link link-hover text-xs text-base-content/75" href="/console/keys">
-          ← {t("console.keys.back")}
-        </a>
-        <div class="mt-1 flex flex-wrap items-center gap-2">
-          <h1 class="text-3xl font-semibold tracking-tight">{keyRow.name || "—"}</h1>
-          {keyRow.revoked_at ? (
-            <span class="badge badge-error badge-outline badge-sm">{t("console.keys.badgeRevoked")}</span>
-          ) : null}
-          {keyRow.keyless ? (
-            <span class="badge badge-outline badge-sm">{t("console.keys.badgeKeyless")}</span>
-          ) : null}
-          {keyRow.tier === "public" ? (
-            <span class="badge badge-primary badge-sm">{t("console.keys.badgePublic")}</span>
-          ) : null}
-        </div>
-        <div class="text-xs text-base-content/75">
-          <span class="font-mono">{t("console.keys.injection")}</span> · id: <span class="font-mono">{keyRow.id}</span>
-        </div>
-      </div>
-
-      <InjectionForm
-        action={`/console/keys/${encodeURIComponent(keyRow.id)}/injection`}
-        values={values}
-        previousNames={parts.vars.map((v) => v.name)}
-        error={props.error}
-        errorField={props.errorField}
-        csrf={props.csrf}
-        revoked={!!keyRow.revoked_at}
-        labels={injectionLabels(t)}
-      />
-
-      <PreviewCard t={t} parts={parts} preview={preview} sample={sample} />
-    </>
-  );
-}
-
 /**
  * What upstream receives for a sample request, with every secret masked as
  * ***. The sample carries one exposed variable as a caller reference, so the
@@ -242,7 +435,7 @@ function PreviewCard(props: {
   const applied: Array<[string, string]> = [];
   headers.forEach((value, name) => applied.push([name, value]));
   return (
-    <section class="mt-8 rounded-box border border-base-300 p-4">
+    <section class="mt-6 rounded-box border border-base-300 p-4">
       <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/75">{t("console.keys.preview")}</h2>
       <p class="mt-1 text-xs text-base-content/75">{t("console.keys.previewHint")}</p>
       {preview ? (
