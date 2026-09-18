@@ -39,6 +39,10 @@ export interface KeyPanelI18n {
   checks: string;
   /** Section header for the rarely-touched fields behind a <details>. */
   advanced: string;
+  /** Preset row in the create panel (anchors; the server pre-fills the form). */
+  presets: string;
+  presetLocal: string;
+  presetPublic: string;
   ipCheck: string;
   ipCheckHint: string;
   dnsCheck: string;
@@ -186,6 +190,10 @@ export default function KeyPanel(props: {
   values?: KeyFormValues;
   /** Re-open right after hydration (the server echoed a failed save). */
   open?: boolean;
+  /** Create panel only: render the preset anchors (a server-side ?preset= prefill). */
+  presets?: boolean;
+  /** Open the advanced <details> on first render (a preset touched it). */
+  expandAdvanced?: boolean;
   /** Server message for a failed save — shown inside the dialog, not behind it. */
   error?: string | null;
   /** Delete endpoint — set on the edit panel to render the danger zone. */
@@ -262,6 +270,19 @@ export default function KeyPanel(props: {
               <span>{labels.revokedHint}</span>
             </div>
           ) : null}
+          {/* Presets are anchors, not state: the server pre-fills the form and
+              re-opens this panel, so the values render and are testable. */}
+          {props.presets ? (
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              <span class="text-xs text-base-content/75">{labels.presets}</span>
+              <a class="btn btn-xs" href="/console/keys?preset=local">
+                {labels.presetLocal}
+              </a>
+              <a class="btn btn-xs" href="/console/keys?preset=public">
+                {labels.presetPublic}
+              </a>
+            </div>
+          ) : null}
           <form ref={formRef} method="post" action={props.action} class="mt-4" onSubmit={onSubmit}>
             {/* Marker: a hand-rolled POST without it (script, stale form) gets
                 the safe defaults (both checks on) instead of an absent -
@@ -312,7 +333,7 @@ export default function KeyPanel(props: {
               {/* A failed save re-opens the panel with every section expanded,
                   so the field the server complained about is reachable without
                   a click. */}
-              <details class="mt-4 rounded-box border border-base-300" open={props.error != null}>
+              <details class="mt-4 rounded-box border border-base-300" open={props.error != null || props.expandAdvanced}>
                 <summary class="cursor-pointer select-none px-3 py-2 text-xs font-medium uppercase tracking-wide text-base-content/75">
                   {labels.advanced}
                 </summary>

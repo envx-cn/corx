@@ -1390,6 +1390,41 @@ describe("console key form (integration)", () => {
       e,
     );
 
+  it("pre-fills the create panel from ?preset= and the server accepts it", async () => {
+    const local = await call("/console/keys?preset=local", { headers: { cookie: `corx_session=${sessionCookie}` } });
+    const localHtml = await local.text();
+    expect(localHtml).toContain('value="http://localhost:*"');
+    expect(localHtml).toMatch(/name="keyless"[^>]*checked/);
+    // The panel offers the other preset as a link (server-side pre-fill).
+    expect(localHtml).toContain('href="/console/keys?preset=public"');
+
+    const pub = await call("/console/keys?preset=public", { headers: { cookie: `corx_session=${sessionCookie}` } });
+    const pubHtml = await pub.text();
+    expect(pubHtml).toMatch(/name="tier"[^>]*checked/);
+    expect(pubHtml).toContain('value="15000"');
+    // The advanced section opens so the pre-filled caps are visible.
+    expect(pubHtml).toMatch(/<details[^>]*\sopen/);
+
+    // Each preset is a key the server accepts without further edits.
+    const localKey = await post(
+      "/console/keys",
+      `csrf=${await csrfFrom("/console/keys")}&checks=1&name=local-dev` +
+        `&allowedOrigins=${encodeURIComponent("http://localhost:*")}&keyless=on&ipCheck=on&dnsCheck=on`,
+      env,
+    );
+    expect(localKey.status).toBe(200);
+    expect(await localKey.text()).toContain("New key created");
+
+    const publicKey = await post(
+      "/console/keys",
+      `csrf=${await csrfFrom("/console/keys")}&checks=1&name=hosted-public&tier=on&ipCheck=on&dnsCheck=on` +
+        `&dailyLimitPerOrigin=3000&dailyLimitPerHost=5000&dailyLimitTotal=15000`,
+      env,
+    );
+    expect(publicKey.status).toBe(200);
+    expect(await publicKey.text()).toContain("New key created");
+  });
+
   it("saves the injection page's variables and rules", async () => {
     const { env: withDb, updates } = updateDb(injectingKey);
     const csrf = await csrfFrom("/console/keys", withDb);

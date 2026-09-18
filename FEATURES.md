@@ -253,7 +253,9 @@ Files: `app/routes/api/**`, `app/lib/admin.ts`, `app/lib/access.ts`.
 - **Keys**: create/edit modal panel (native `<dialog>`, state-less island so
   fields never re-render while typing) for the policy — name, rate, origins,
   cache, keyless, the SSRF guards and the public tier, with the rarely-touched
-  fields behind a native `<details>`; raw key shown once with a copy button;
+  fields behind a native `<details>` and presets (local development, public
+  tier) that pre-fill the create form server-side; raw key shown once with a
+  copy button;
   revoke and delete behind type-the-name confirmations (revoke = kill switch,
   delete = cleanup), a revoked badge, and a “show revoked” toggle so dead keys
   and their logs stay attributable; a revoked key's panel opens read-only.

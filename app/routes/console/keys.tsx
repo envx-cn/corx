@@ -19,6 +19,7 @@ app.get("/", async (c) => {
     <KeysContent
       keys={await queryKeys(c.env.DB)}
       newKey={null}
+      createDraft={presetValues(c.req.query("preset"))}
       showRevoked={c.req.query("revoked") === "1"}
       csrf={c.get("csrfToken") ?? ""}
       t={t}
@@ -197,6 +198,48 @@ function readKeyForm(form: Record<string, unknown>): KeyFormValues {
   };
 }
 
+/** An empty create form: the SSRF guards default on, like the panel renders them. */
+function blankKeyForm(): KeyFormValues {
+  return {
+    name: "",
+    rateLimitPerMin: "",
+    allowedOrigins: "",
+    cacheTtl: "",
+    noCache: false,
+    ipCheck: true,
+    dnsCheck: true,
+    keyless: false,
+    tier: false,
+    dailyLimitPerOrigin: "",
+    dailyLimitPerHost: "",
+    dailyLimitTotal: "",
+  };
+}
+
+/**
+ * Create-panel presets (`?preset=`), as server-side pre-fills: the panel opens
+ * with them and nothing is saved until the operator creates the key. Only the
+ * shapes this panel can express — an upstream secret's hosts, variables and
+ * rules live on the key's own injection page, once it exists.
+ */
+function presetValues(name: string | undefined): KeyFormValues | undefined {
+  const base = blankKeyForm();
+  switch (name) {
+    case "local":
+      return { ...base, allowedOrigins: "http://localhost:*", keyless: true };
+    case "public":
+      return {
+        ...base,
+        tier: true,
+        dailyLimitPerOrigin: "3000",
+        dailyLimitPerHost: "5000",
+        dailyLimitTotal: "15000",
+      };
+    default:
+      return undefined;
+  }
+}
+
 /** "120" → 120; blank or junk → null (inherit the deployment default). */
 function parseRate(raw: string): number | null {
   if (raw.trim() === "") return null;
@@ -252,6 +295,9 @@ function panelLabels(t: TFunc): KeyPanelI18n {
     noCacheHint: t("console.keys.noCacheTitle"),
     checks: t("console.keys.checks"),
     advanced: t("console.keys.advanced"),
+    presets: t("console.keys.presets"),
+    presetLocal: t("console.keys.presetLocal"),
+    presetPublic: t("console.keys.presetPublic"),
     ipCheck: t("console.keys.ipCheck"),
     ipCheckHint: t("console.keys.ipCheckHint"),
     dnsCheck: t("console.keys.dnsCheck"),
@@ -326,6 +372,8 @@ function KeysContent(props: {
             action="/console/keys"
             values={props.createDraft}
             open={props.createDraft != null}
+            presets
+            expandAdvanced={props.createDraft?.tier === true}
             error={props.createDraft ? props.error : null}
             csrf={props.csrf}
             labels={labels}

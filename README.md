@@ -986,7 +986,8 @@ hour chart, a **Breakdown** selector with vertical bar charts for status /
 method / country, top hosts/keys, recent errors) · API keys (create and edit
 in a modal panel — name, rate limit, per-key origins/cache policy, keyless
 access, the SSRF guards and the public-tier quotas, with the rarely-touched
-fields behind an **Advanced policy** disclosure; each key also has its own
+fields behind an **Advanced policy** disclosure and presets (local
+development, public tier) that pre-fill the form; each key also has its own
 injection page (`/console/keys/:id`) where the variables are rows (a
 write-only value, client exposure, host scope), the header/query/response
 rules are textareas with line-anchored errors, and a masked preview shows
