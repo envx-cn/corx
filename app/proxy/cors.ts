@@ -7,8 +7,108 @@ import { resolveRawTarget } from "./subdomain.js";
 type Ctx = Context<{ Bindings: Env; Variables: ProxyVariables }>;
 
 /**
+ * Normalize an Origin header (or an allowed-origin entry) to a serialized
+ * origin. Browsers send a bare `scheme://host[:port]`; anything unparseable
+ * (or the literal "null") never matches a grant. `URL.origin` lowercases the
+ * host and drops a default port, which is why stored values are normalized
+ * through here too.
+ */
+export function normalizeOrigin(raw: string | null | undefined): string | null {
+  const t = raw?.trim();
+  if (!t || t === "null") return null;
+  try {
+    const u = new URL(t);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    return u.origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Hostnames a `scheme://host:*` port wildcard may apply to. Loopback only:
+ * the point of the wildcard is a dev server on a random port, and a loopback
+ * name is the one origin namespace that cannot belong to somebody else — so
+ * the narrow form covers the real need without opening `https://*.example.com`
+ * (a shared/subdomain-takeover surface) or a regex.
+ */
+const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** `scheme://host:*`, port position only, loopback host only. The host is exact. */
+const PORT_WILDCARD_RE = /^(https?):\/\/(\[[0-9a-f:]+\]|[a-z0-9.-]+):\*$/i;
+
+export function isLoopbackHost(hostname: string): boolean {
+  return LOOPBACK_HOSTNAMES.has(hostname.toLowerCase());
+}
+
+/**
+ * The `scheme://host:*` pattern that would cover this origin, or null when the
+ * host is not loopback (or the value is not an origin at all).
+ */
+export function portWildcardFor(origin: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(origin);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+  if (!isLoopbackHost(u.hostname)) return null;
+  return `${u.protocol}//${u.hostname}:*`;
+}
+
+/**
+ * Normalize one allowed-origin entry to its canonical form, or null when it is
+ * not one: an exact origin (`URL.origin` — lowercase host, default port
+ * dropped) or a loopback port wildcard. `*` is returned as-is; a `*` anywhere
+ * else (host position, non-loopback port) is rejected.
+ */
+export function normalizeOriginPattern(raw: string): string | null {
+  const t = raw.trim().replace(/\/+$/, "");
+  if (!t) return null;
+  if (t === "*") return "*";
+  const m = PORT_WILDCARD_RE.exec(t);
+  if (m) {
+    const scheme = m[1]!.toLowerCase();
+    const host = m[2]!.toLowerCase();
+    return isLoopbackHost(host) ? `${scheme}://${host}:*` : null;
+  }
+  // A `*` outside the port position is a host wildcard: `new URL()` happily
+  // accepts `https://*.example.com`, so reject it explicitly.
+  if (t.includes("*")) return null;
+  // An allowed origin is a bare origin, not a URL: a path/query is a config
+  // mistake worth a 400 rather than silently dropping the path.
+  let u: URL;
+  try {
+    u = new URL(t);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+  if (u.pathname !== "/" || u.search || u.hash) return null;
+  return u.origin;
+}
+
+/**
+ * Does a caller origin (already normalized) satisfy one stored pattern?
+ * The pattern is normalized here too, so values stored before normalization
+ * existed (`https://App.Example.com:443`) start matching immediately.
+ */
+export function originMatches(origin: string, pattern: string): boolean {
+  if (pattern === "*") return true;
+  const p = normalizeOriginPattern(pattern) ?? pattern;
+  if (p === origin) return true;
+  if (p.endsWith(":*")) return portWildcardFor(origin) === p;
+  return false;
+}
+
+/**
  * Parse an origins value: "*" | comma-separated list.
  * Null/undefined/"" → null (inherit from the next level up).
+ *
+ * Entries are returned verbatim — validation is `normalizeOriginsInput`'s job,
+ * and a value that does not parse is kept so the policy stays *closed* (an
+ * unparseable entry matches nothing) rather than quietly widening to `*`.
  */
 export function parseOrigins(raw: string | null | undefined): string[] | "*" | null {
   if (raw == null) return null;
@@ -32,24 +132,24 @@ export function normalizeOriginsInput(raw: string): string | null {
   if (t === "*") return "*";
   const parts = t
     .split(",")
-    .map((s) => s.trim().replace(/\/+$/, ""))
+    .map((s) => s.trim())
     .filter(Boolean);
   if (parts.length === 0) return null;
+  const out: string[] = [];
   for (const p of parts) {
-    let u: URL;
-    try {
-      u = new URL(p);
-    } catch {
-      throw new ProxyError(400, `Invalid origin: ${p}`);
+    const pattern = normalizeOriginPattern(p);
+    if (pattern && pattern !== "*") {
+      if (!out.includes(pattern)) out.push(pattern);
+      continue;
     }
-    if (u.protocol !== "http:" && u.protocol !== "https:") {
-      throw new ProxyError(400, `Origin must be http(s): ${p}`);
+    // A `*` that survives normalization only as the whole value; anywhere else
+    // it is a host wildcard (rejected) or a non-loopback port wildcard.
+    if (p.includes("*")) {
+      throw new ProxyError(400, `Origin wildcards are only allowed as a loopback port, e.g. http://localhost:*: ${p}`);
     }
-    if (u.pathname !== "/" || u.search || u.hash) {
-      throw new ProxyError(400, `Origin must not contain a path: ${p}`);
-    }
+    throw new ProxyError(400, `Invalid origin: ${p}`);
   }
-  return parts.join(", ");
+  return out.join(", ");
 }
 
 /** Effective origins: per-key value wins, otherwise the global env default. */
@@ -72,7 +172,14 @@ export function resolveAllowOrigin(req: Request, env: Env, keyRow?: Pick<ApiKeyR
   if (allow === "*") return "*";
   const origin = req.headers.get("origin");
   if (!origin) return null;
-  return allow.includes(origin) ? origin : null;
+  const normalized = normalizeOrigin(origin);
+  if (!normalized) return null;
+  return allowMatches(allow, normalized) ? origin : null;
+}
+
+/** True when any pattern in the list covers this normalized origin. */
+export function allowMatches(allow: string[], origin: string): boolean {
+  return allow.some((p) => originMatches(origin, p));
 }
 
 /** Response headers a cross-origin caller may read (public-tier quota included). */
@@ -123,8 +230,10 @@ export function cors() {
     const keyRow = c.get("apiKey");
     const allow = effectiveOrigins(c.env, keyRow);
     const origin = c.req.header("origin");
-    const allowed = allow === "*" || !origin || allow.includes(origin);
-    const acao = allow === "*" ? "*" : origin && allow.includes(origin) ? origin : null;
+    const normalized = normalizeOrigin(origin);
+    const matched = allow !== "*" && normalized !== null && allowMatches(allow, normalized);
+    const allowed = allow === "*" || !origin || matched;
+    const acao = allow === "*" ? "*" : origin && matched ? origin : null;
 
     if (c.req.method === "OPTIONS") {
       const headers = new Headers();
@@ -175,7 +284,9 @@ export function withProxyCors(c: Ctx, res: Response): Response {
   res.headers.set("X-Robots-Tag", "noindex");
   const allow = effectiveOrigins(c.env, c.get("apiKey") ?? null);
   const origin = c.req.header("origin");
-  const acao = allow === "*" ? "*" : origin && allow.includes(origin) ? origin : null;
+  const normalized = normalizeOrigin(origin);
+  const acao =
+    allow === "*" ? "*" : origin && normalized && allowMatches(allow, normalized) ? origin : null;
   if (acao) {
     res.headers.set("Access-Control-Allow-Origin", acao);
     if (acao !== "*") {

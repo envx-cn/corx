@@ -246,16 +246,25 @@ this is a self-hosting feature.
 Turn on `keyless` and browsers from the key's **allowed origins** can call the
 proxy without sending the key at all:
 
-- The caller's origin is matched exactly against the origins the key already
-  declares — `Origin` when the browser sends one, otherwise the `Referer`'s
-  origin (`app/lib/auth.ts` → `callerOrigin`). The fallback matters: browsers
-  omit `Origin` on same-origin GETs (the landing page's live demo) and on
-  no-cors subresource loads (plain `<img>`/`<script>`, JSONP), which is exactly
-  where a key cannot be attached conveniently. Keep an eye on
+- The caller's origin is matched against the origins the key already declares —
+  `Origin` when the browser sends one, otherwise the `Referer`'s origin
+  (`app/lib/auth.ts` → `callerOrigin`). The fallback matters: browsers omit
+  `Origin` on same-origin GETs (the landing page's live demo) and on no-cors
+  subresource loads (plain `<img>`/`<script>`, JSONP), which is exactly where a
+  key cannot be attached conveniently. Keep an eye on
   `Referrer-Policy: no-referrer` callers — they send neither header, fall
   through to anonymous, and need `?corx-key=` instead.
+- Entries are canonicalized on save (lowercase host, default port dropped), so
+  `https://App.Example.com:443` is stored and matched as
+  `https://app.example.com`. A **loopback port wildcard** is the one wildcard
+  form: `http://localhost:*`, `https://localhost:*`, `http://127.0.0.1:*` or
+  `http://[::1]:*` matches any port on that loopback host (scheme is still
+  pinned) — one entry covers a dev server whose port changes every run. Host
+  wildcards (`https://*.example.com`), ports on non-loopback hosts and regexes
+  are rejected with a 400.
 - Blank and `*` are rejected (keyless needs an explicit list), and an origin
   can be granted to exactly one key — the second save fails naming the holder.
+  A concrete grant wins over a loopback pattern that would also cover it.
 - The SSRF opt-outs (`ipCheck`/`dnsCheck` off) cannot be combined with keyless.
 - Keyless requests are rate-limited per `origin + IP` (not per key), and logs
   record `auth_via = origin` plus the matched origin (the console's Logs table
@@ -837,7 +846,7 @@ vars are rewritten from the config file each time.
 | Var | Default | Meaning |
 | --- | --- | --- |
 | `PROXY_ZONE` (secret) | `""` | Suffix for subdomain mode (`example.corx.com` → `example.com`); empty = auto-detect from the request Host |
-| `ALLOWED_ORIGINS` | `*` | `*` or comma-separated origins allowed to use the **proxy routes only** (console/API never get CORS headers) |
+| `ALLOWED_ORIGINS` | `*` | `*` or comma-separated origins allowed to use the **proxy routes only** (console/API never get CORS headers); a loopback port wildcard (`http://localhost:*`) is allowed |
 | `REQUIRE_API_KEY` | `false` | `"true"` to require an API key |
 | `CACHE_TTL_SECONDS` | `3600` | Default R2 TTL for GET 200s; also caps per-request `?corx-ttl=` |
 | `TIMEOUT_MS` | `30000` | Upstream timeout |
@@ -1036,7 +1045,9 @@ curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: applicati
   https://corx.<you>.workers.dev/api/keys
 
 # per-key CORS origins: override the global ALLOWED_ORIGINS for callers of that key
-# ("*", comma-separated origins, or "" to inherit the global). Update anytime:
+# ("*", comma-separated origins, or "" to inherit the global). Update anytime.
+# Origins are canonicalized (lowercase host, default port dropped); the only
+# wildcard is a loopback port: "http://localhost:*" covers any localhost port.
 # ipCheck / dnsCheck turn the SSRF guards off for this key (default true):
 curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"allowedOrigins":"https://app.example","cacheTtl":"300","ipCheck":false}' \
@@ -1053,9 +1064,10 @@ curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: applicat
   https://corx.<you>.workers.dev/api/keys/KEY_ID
 
 # keyless access: these origins may call without presenting the key
-# (blank/"*" origins are rejected; one key per origin)
+# (blank/"*" origins are rejected; one key per origin). A loopback port wildcard
+# is allowed, so one line covers a dev server on a random port:
 curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"keyless":true,"allowedOrigins":"https://app.example"}' \
+  -d '{"keyless":true,"allowedOrigins":"http://localhost:*"}' \
   https://corx.<you>.workers.dev/api/keys/KEY_ID
 
 # public tier: shared, limited, GET/HEAD-only key for the hosted instance.
@@ -1137,7 +1149,7 @@ browser ──► CORX (Worker)
 
 ```
 wrangler.jsonc          bindings (D1, R2), vars, cron
-migrations/       numbered D1 migrations (0001…0009)
+migrations/       numbered D1 migrations (0001…0011)
 app/              HonoX frontend (entry + console UI + API routes)
   server.ts     worker entry: createApp + manual mounts (proxy only).
                 File routes register at createApp time, so the manual /*

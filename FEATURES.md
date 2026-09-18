@@ -40,6 +40,14 @@ Files: `app/proxy/handler.ts`, `app/proxy/subdomain.ts`, `app/proxy/guard.ts`, `
 
 - Global `ALLOWED_ORIGINS` (`*` default) or a comma list; **per-key override**
   (blank inherits the global).
+- Origin entries are canonicalized on save (`URL.origin`: lowercase host, default
+  port dropped) and matched exactly, except a **loopback port wildcard**
+  (`http://localhost:*`, `https://localhost:*`, `http://127.0.0.1:*`,
+  `http://[::1]:*`) which covers any port on that loopback host (scheme still
+  pinned). Host wildcards (`https://*.example.com`), non-loopback port wildcards
+  and regexes are rejected with a 400 — a dev server on a random port is the
+  real need, and a subdomain wildcard would hand the key to any subdomain of a
+  possibly-shared host.
 - Preflight `OPTIONS` → 204 with echoed request method/headers, `Max-Age 86400`;
   normal responses echo the origin and add `Vary: Origin` when not `*`.
 - Proxy routes only: `/console/*`, `/api/*` and `/health` never emit ACAO.
@@ -49,7 +57,9 @@ Files: `app/proxy/handler.ts`, `app/proxy/subdomain.ts`, `app/proxy/guard.ts`, `
   `keyless_origins`; explicit origins only (blank/`*` rejected), one origin per
   key (second save names the holder), cannot be combined with SSRF opt-outs,
   metered per `origin + IP`, logged as `auth_via=origin`. Documented as quota
-  attribution, not authentication.
+  attribution, not authentication. A loopback port wildcard is a valid grant
+  ("all localhost requests"); lookup queries the exact origin plus its
+  `scheme://host:*` pattern in one indexed statement, exact grant first.
 
 Files: `app/proxy/cors.ts`, `app/lib/auth.ts`, `app/lib/admin.ts`.
 
@@ -461,9 +471,10 @@ Files: `app/lib/access.ts`, `app/lib/session.ts`, `app/lib/csrf.ts`,
   quotas, CORS origins, subdomain encoding, media/Range, playground, stats
   bucketing, i18n, the terms page and the assembled app (error pages, JSON
   wire format, body caps, `/fetch` CORS, credential stripping).
-- 9 numbered D1 migrations in `migrations/` (keys → per-key origins/cache →
+- 11 numbered D1 migrations in `migrations/` (keys → per-key origins/cache →
   log bytes → guard toggles → injection → keyless/audit → public tier +
-  quota counters → daily stats rollup).
+  quota counters → daily stats rollup → response header rules → keyless
+  origin normalization).
 
 ---
 

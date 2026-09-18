@@ -592,6 +592,70 @@ describe("upstream injection + keyless access (integration)", () => {
     );
     expect(res.status).toBe(401);
   });
+
+  it("a loopback port wildcard grant authorizes every localhost port", async () => {
+    const grants = ["http://localhost:*"];
+    const keylessRow = {
+      ...injectingRow,
+      id: "k-dev",
+      name: "dev",
+      keyless: 1,
+      allowed_origins: "http://localhost:*",
+      vars: "[]",
+      header_rules: "[]",
+      param_rules: "[]",
+      allowed_hosts: null,
+    };
+    // Emulates the keyless lookup: the statement binds the candidates first and
+    // the exact-origin tiebreak last, so matching on the binds tests the real
+    // candidate set (exact origin + loopback wildcard).
+    const stmt = (sql: string) => {
+      let values: unknown[] = [];
+      const s = {
+        bind: (...v: unknown[]) => {
+          values = v;
+          return s;
+        },
+        run: async () => ({ meta: { changes: 0 } }),
+        all: async () => ({ results: [] }),
+        first: async () => {
+          if (sql.includes("FROM api_keys")) return null; // no key presented
+          if (sql.includes("FROM keyless_origins")) {
+            const candidates = values.slice(0, -1).map(String);
+            return candidates.some((c) => grants.includes(c)) ? keylessRow : null;
+          }
+          return null;
+        },
+      };
+      return s;
+    };
+    const keyed = { ...env, DB: { prepare: stmt }, REQUIRE_API_KEY: "true" } as unknown as Env;
+    const calls = stubFetch(() => new Response("ok", { status: 200 }));
+
+    const granted = await call(
+      "/fetch?url=https://example.com/data",
+      { headers: { origin: "http://localhost:5173" } },
+      keyed,
+    );
+    expect(granted.status).toBe(200);
+    expect(calls).toHaveLength(1);
+
+    // A different loopback host is a different origin, and a lookalike host the
+    // wildcard must not reach.
+    const otherHost = await call(
+      "/fetch?url=https://example.com/data",
+      { headers: { origin: "http://127.0.0.1:5173" } },
+      keyed,
+    );
+    expect(otherHost.status).toBe(401);
+    const lookalike = await call(
+      "/fetch?url=https://example.com/data",
+      { headers: { origin: "http://localhost.evil.test" } },
+      keyed,
+    );
+    expect(lookalike.status).toBe(401);
+    expect(calls).toHaveLength(1);
+  });
 });
 
 describe("error pages (integration)", () => {

@@ -3,6 +3,7 @@ import type { ApiKeyRow, Env } from "./types.js";
 import { sha256Hex } from "./utils.js";
 import { decryptRowInjection } from "./crypto.js";
 import { readControl } from "./control.js";
+import { normalizeOrigin, portWildcardFor } from "../proxy/cors.js";
 
 /** Hono context variables set by apiKeyMiddleware (see server.ts). */
 export type ProxyVariables = {
@@ -61,23 +62,6 @@ export async function lookupApiKey(db: D1Database, raw: string, kek?: string): P
 }
 
 /**
- * Normalize an Origin header for grant matching. Browsers send a bare
- * serialized origin; anything unparseable (or the literal "null") never
- * matches a grant.
- */
-export function normalizeOrigin(raw: string | null | undefined): string | null {
-  const t = raw?.trim();
-  if (!t || t === "null") return null;
-  try {
-    const u = new URL(t);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-    return u.origin;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * The caller's origin as a browser reports it, for keyless grant matching.
  *
  * `Origin` only rides along on CORS requests and on same-origin requests that
@@ -106,6 +90,10 @@ export function callerOrigin(req: Request): string | null {
  * Null when no grant / revoked / DB error (fail-open to anonymous).
  */
 export async function lookupKeyByOrigin(db: D1Database, origin: string, kek?: string): Promise<ApiKeyRow | null> {
+  // `origin` is already normalized (`callerOrigin` -> `URL.origin`). A loopback
+  // caller also matches a `scheme://host:*` grant; an exact grant wins when
+  // both exist for the same host.
+  const candidates = [...new Set([origin, portWildcardFor(origin)].filter((c): c is string => c !== null))];
   try {
     const row = await db
       .prepare(
@@ -114,9 +102,11 @@ export async function lookupKeyByOrigin(db: D1Database, origin: string, kek?: st
                 k.tier, k.daily_limit_per_origin, k.daily_limit_per_host, k.daily_limit_total,
                 k.created_at, k.revoked_at
          FROM keyless_origins o JOIN api_keys k ON k.id = o.key_id
-         WHERE o.origin = ? AND k.keyless = 1`,
+         WHERE o.origin IN (${candidates.map(() => "?").join(", ")}) AND k.keyless = 1
+         ORDER BY (o.origin = ?) DESC
+         LIMIT 1`,
       )
-      .bind(origin)
+      .bind(...candidates, origin)
       .first<ApiKeyRow>();
     if (!row || row.revoked_at) return null;
     return decryptRowInjection(kek, row);
