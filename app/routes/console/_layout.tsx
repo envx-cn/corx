@@ -55,7 +55,8 @@ function Doc(props: { title: string; locale: Locale; children: Child; scripts?: 
             dialog with it. Cancel/backdrop close via <form method="dialog">.
             Type-the-name dialogs carry data-corx-confirm-name; the script
             enables their submit only on a match and resets on close. Busy
-            forms (data-corx-busy) disable their submit from the first paint. */}
+            forms (data-corx-busy) disable their submit from the first paint,
+            and dirty forms (data-corx-dirty) warn before the page unloads. */}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function () {
@@ -118,10 +119,58 @@ function Doc(props: { title: string; locale: Locale; children: Child; scripts?: 
       });
     });
   }
+  // Leaving a form half-filled loses the draft: forms opt in with
+  // data-corx-dirty, the snapshot is taken at parse time (values are already
+  // rendered), and beforeunload compares the live fields to it. This is the
+  // browser's own prompt — the only mechanism that covers every exit (links,
+  // back, tab close, URL bar), and its text cannot be localized. Dynamic
+  // rows count too: a field that was not in the snapshot, or one that
+  // disappeared, is a change unless it was empty.
+  function wireDirtyForms() {
+    var forms = [];
+    document.querySelectorAll("form[data-corx-dirty]").forEach(function (form) {
+      var snap = {};
+      form.querySelectorAll("input[name], textarea[name]").forEach(function (el) {
+        snap[el.name] = { value: el.value, checked: el.checked };
+      });
+      form._corxSnap = snap;
+      forms.push(form);
+    });
+    if (!forms.length) return;
+    function isDirty(form) {
+      var snap = form._corxSnap;
+      var seen = {};
+      var dirty = false;
+      form.querySelectorAll("input[name], textarea[name]").forEach(function (el) {
+        seen[el.name] = 1;
+        var before = snap[el.name];
+        if (!before) {
+          if (el.value !== "" || el.checked) dirty = true;
+          return;
+        }
+        if (el.type === "checkbox" ? el.checked !== before.checked : el.value !== before.value) dirty = true;
+      });
+      for (var name in snap) {
+        if (seen[name]) continue;
+        if (snap[name].value !== "" || snap[name].checked) dirty = true;
+      }
+      return dirty;
+    }
+    // Any submit (save, revoke, delete) navigates on purpose: never prompt for it.
+    var submitting = false;
+    document.addEventListener("submit", function () { submitting = true; }, true);
+    window.addEventListener("beforeunload", function (e) {
+      if (submitting) return;
+      if (!forms.some(isDirty)) return;
+      e.preventDefault();
+      e.returnValue = "";
+    });
+  }
   function init() {
     try { wireSidebar(); } catch (e) { console.error(e); }
     try { wireConfirms(); } catch (e) { console.error(e); }
     try { wireBusyForms(); } catch (e) { console.error(e); }
+    try { wireDirtyForms(); } catch (e) { console.error(e); }
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();

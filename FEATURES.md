@@ -265,7 +265,8 @@ Files: `app/routes/api/**`, `app/lib/admin.ts`, `app/lib/access.ts`.
   neither can clear the other) — variables as rows (name, write-only value,
   client toggle, host scope), the three rule textareas with line-anchored
   errors, and a masked preview; revoke and delete sit at the bottom behind
-  type-the-name confirmations, and a revoked key renders read-only.
+  type-the-name confirmations, a revoked key renders read-only, and leaving
+  with unsaved edits warns first (the browser's beforeunload prompt).
 - **Playground**: composes a proxy request (method, route style `/fetch` /
   `/proxy/*` / bare path / simulated subdomain, headers, body, `ttl` /
   `no-cache`, Origin, simulated client IP, anonymous / stored / pasted key)

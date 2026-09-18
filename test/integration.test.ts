@@ -254,6 +254,18 @@ describe("route wiring (integration)", () => {
     expect(await res.text()).toContain("Create API key");
   });
 
+  it("ships a console inline script that parses", async () => {
+    const res = await call("/console/keys", { headers: { cookie: `corx_session=${sessionCookie}` } });
+    const html = await res.text();
+    const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
+    for (const fn of ["wireSidebar", "wireConfirms", "wireBusyForms", "wireDirtyForms"]) {
+      expect(script, fn).toContain(fn);
+    }
+    // Compile (do not run) the client script: a syntax error would otherwise
+    // only surface in a browser.
+    expect(() => new Function(script)).not.toThrow();
+  });
+
   it("requires an API key name on the admin API", async () => {
     const res = await call("/api/keys", {
       method: "POST",
@@ -1582,6 +1594,25 @@ describe("console key form (integration)", () => {
     const { env: withDb } = updateDb(storedKey);
     const key = await call("/console/keys/key-1", { headers: { cookie: `corx_session=${sessionCookie}` } }, withDb);
     expect(await key.text()).toContain("data-corx-busy");
+  });
+
+  it("warns before leaving a form with unsaved edits", async () => {
+    // beforeunload is the only mechanism that covers every exit (links, back,
+    // tab close, URL bar); the prompt text is the browser's, so there is no
+    // copy to assert — only that the forms opt in and the wiring is present.
+    const create = await call("/console/keys/new", { headers: { cookie: `corx_session=${sessionCookie}` } });
+    const createHtml = await create.text();
+    expect(createHtml).toContain("beforeunload");
+    expect(createHtml).toContain("form[data-corx-dirty]");
+    expect(createHtml).toMatch(/action="\/console\/keys\/new"[^>]*data-corx-dirty/);
+
+    const { env: withDb } = updateDb(injectingKey);
+    const key = await call("/console/keys/key-1", { headers: { cookie: `corx_session=${sessionCookie}` } }, withDb);
+    const keyHtml = await key.text();
+    // Both forms on the key page opt in — policy markup and the injection island.
+    expect(keyHtml).toMatch(/action="\/console\/keys\/key-1\/policy"[^>]*data-corx-dirty/);
+    expect(keyHtml).toMatch(/action="\/console\/keys\/key-1\/injection"[^>]*data-corx-dirty/);
+    expect(injectionFormSrc).toContain("data-corx-dirty");
   });
 
   it("renders a failed injection save inline, next to the rule field", async () => {

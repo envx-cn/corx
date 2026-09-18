@@ -1236,8 +1236,10 @@ app/              HonoX frontend (entry + console UI + API routes)
                 rows and pre-submit checks, and the Doc's inline script wires
                 the rest (data-corx-busy forms disable their submit from the
                 first paint; [data-corx-confirm] dialogs open and
-                type-the-name ones enable their submit on a match), so the
-                guards hold even before hydration. The <honox-island>
+                type-the-name ones enable their submit on a match; and
+                data-corx-dirty forms warn before unload, the browser's own
+                beforeunload prompt), so the guards hold even before
+                hydration. The <honox-island>
                 wrapper is made display:contents in app.css so an island's
                 own root is what participates in layout (flex rows, daisyUI
                 menu items). Confirm dialogs (logout, blocklist remove,

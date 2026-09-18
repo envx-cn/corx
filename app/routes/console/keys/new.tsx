@@ -106,6 +106,7 @@ function CreatePage(props: {
         method="post"
         action="/console/keys/new"
         data-corx-busy
+        data-corx-dirty
         data-saving={t("console.keys.saving")}
         class="mt-4"
       >

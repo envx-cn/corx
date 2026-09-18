@@ -254,7 +254,7 @@ export default function InjectionForm(props: {
         {props.error && !props.errorField ? props.error : ""}
       </div>
 
-      <form ref={formRef} method="post" action={props.action} onSubmit={onSubmit}>
+      <form ref={formRef} method="post" action={props.action} onSubmit={onSubmit} data-corx-dirty>
         <input type="hidden" name="csrf" value={props.csrf} />
         {/* Marker: a hand-rolled POST without it leaves the variables alone,
             while an empty rows list is a deliberate "clear them all". */}
