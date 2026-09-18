@@ -14,7 +14,6 @@ import {
   assertVarHostScopes,
   checkInjectionForm,
   clientVarMap,
-  clientVarsToText,
   collectVarRefs,
   hostAllowed,
   normalizeHostPattern,
@@ -28,7 +27,6 @@ import {
   serializeInjection,
   substitute,
   varMap,
-  varsToText,
   withClientVars,
 } from "../app/proxy/inject.js";
 import type { InjectionParts } from "../app/proxy/inject.js";
@@ -238,12 +236,6 @@ describe("parseRulesInput (query params)", () => {
 });
 
 describe("serialize round-trip", () => {
-  it("varsToText hides values and parseVarsInput keeps them", () => {
-    const text = varsToText(VARS);
-    expect(text).toBe("TOKEN=");
-    expect(parseVarsInput(text, VARS)).toEqual(VARS);
-  });
-
   it("rulesToText re-emits sections and parses back identically", () => {
     const parsed = parseRulesInput("@a.example\nX-A: 1\n!X-A\n@b.example\nX-B: 2\n@\nX-C: 3", "header", NAMES);
     const text = rulesToText(parsed, "header");
@@ -358,19 +350,6 @@ describe("client-referencable variables", () => {
     // The array form is the Admin API shape.
     expect([...parseClientVarsInput([{ name: "A", hosts: "api.vendor.com" }]).entries()]).toEqual([
       ["A", ["api.vendor.com"]],
-    ]);
-  });
-
-  it("round-trips the exposure text", () => {
-    const vars = parseVarsInput([
-      { name: "A", value: "1", client: true, hosts: ["api.vendor.com"] },
-      { name: "B", value: "2", client: true },
-      { name: "C", value: "3" },
-    ]);
-    expect(clientVarsToText(vars)).toBe("@api.vendor.com\nA\n@\nB");
-    expect([...parseClientVarsInput(clientVarsToText(vars)).entries()]).toEqual([
-      ["A", ["api.vendor.com"]],
-      ["B", []],
     ]);
   });
 

@@ -683,34 +683,6 @@ export function serializeInjection(parts: InjectionParts): StoredInjectionFields
   };
 }
 
-/** Editor text for variables — values stay blank ("blank = keep existing"). */
-export function varsToText(vars: InjectionVar[]): string {
-  return vars.map((v) => `${v.name}=`).join("\n");
-}
-
-/**
- * Editor text for the client-exposure field: the exposed names, with `@hosts`
- * sections wherever the scope changes — the same shape `rulesToText` emits, so
- * the two textareas read alike. A variable that is not `client` is omitted.
- */
-export function clientVarsToText(vars: InjectionVar[]): string {
-  const lines: string[] = [];
-  let current: string | null = null;
-  let first = true;
-  for (const v of vars) {
-    if (!v.client) continue;
-    const hosts = v.hosts?.length ? v.hosts.join(" ") : null;
-    if (hosts !== current) {
-      if (hosts) lines.push(`@${hosts}`);
-      else if (!first) lines.push("@");
-      current = hosts;
-    }
-    first = false;
-    lines.push(v.name);
-  }
-  return lines.join("\n");
-}
-
 /** Editor text for rules, re-emitting `@hosts` sections where they change. */
 export function rulesToText(rules: InjectionRule[], kind: RuleKind): string {
   const lines: string[] = [];

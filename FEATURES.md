@@ -172,12 +172,13 @@ Files: `app/proxy/cache.ts`, `app/proxy/handler.ts`.
   the page cannot document a shape the save path rejects. `llms-full.txt`
   restates the per-target rule for agents.
 - **Caller references** (`client: true` + optional `hosts` on a variable): the
-  console has a separate **Client-referencable variables** field (`parseClientVarsInput`
-  / `clientVarsToText` / `withClientVars`), the array form of `vars` carries the
-  two flags for the Admin API, and the handler resolves `${NAME}` per hop
-  (`clientVarMap` + `resolveClientRefs`) leaving everything it may not resolve
-  literal. `assertVarHostScopes` rejects at save time any rule that could reach
-  outside a scoped variable's hosts. A key with client-referencable variables
+  console exposes them per variable row (a Client toggle plus a host scope),
+  `parseClientVarsInput` / `withClientVars` accept the Admin API's exposure
+  field and the array form of `vars` carries the two flags, and the handler
+  resolves `${NAME}` per hop (`clientVarMap` + `resolveClientRefs`), leaving
+  everything it may not resolve literal. `assertVarHostScopes` rejects at save
+  time any rule that could reach outside a scoped variable's hosts. A key with
+  client-referencable variables
   bypasses the shared R2 cache (`handler.ts`), and the playground preview masks
   resolved values like any other secret. Resolution order is fixed — references
   first (headers per hop, query once before the cache key), then the rules, so
