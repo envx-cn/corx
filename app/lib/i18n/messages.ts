@@ -33,7 +33,7 @@ const en = {
   },
   terms: {
     title: "Terms of use",
-    updated: "Last updated 2026-09-14",
+    updated: "Last updated {date}",
     lead:
       "This page covers the public CORX instance at {origin}: a free, best-effort service maintained as a personal project. By using the public key or the public pages you agree to these terms. If you do not agree, do not use them.",
     s1Title: "What this service is",
@@ -503,7 +503,7 @@ const en = {
       browser: {
         title: "Browser code — with no credential",
         lead:
-          "A key in a browser bundle is a published key. These two patterns are the safe ones: an origin grant on the server's key, and the environment-variable rule that keeps the key out of the build.",
+          "A key in a browser bundle is a published key. These patterns are the safe ones: an origin grant on the server's key, a streamed read that needs no credential at all, and the environment-variable rule that keeps the key out of the build.",
       },
       server: {
         title: "A server route that holds the key",
@@ -522,6 +522,11 @@ const en = {
         title: "Keyless origin grant",
         desc:
           "Grant the page's origin on a key in the console and the browser calls the proxy with no credential at all. Metering follows the visitor IP, so one embedded site cannot drain the key.",
+      },
+      stream: {
+        title: "Streaming a response (SSE / LLM)",
+        desc:
+          "`res.body` is a live stream: read it chunk by chunk and tokens appear as they are generated instead of after the last one. The proxy forwards `text/event-stream` unbuffered, so a keyless grant works too. An LLM chat API is `POST` with a server-held key — see the server route below.",
       },
       viteEnv: {
         title: "Vite / React environment variables",
@@ -706,7 +711,7 @@ const en = {
       sub: "The details that keep secrets, browser callers and debugging under control.",
       injection: {
         title: "Secrets stay on the edge",
-        desc: "Attach variables and header/query rules to a key; CORX injects them upstream. The browser never holds the token, and values are masked in the console and logs.",
+        desc: "Attach variables and header/query rules to a key and CORX injects them upstream, scoped per target host — so one key can hold a different credential for each vendor. A variable you expose can be referenced by the page as `${NAME}` without the value ever reaching the browser; values are masked in the console and logs.",
       },
       keyless: {
         title: "Keyless browser access",
@@ -766,7 +771,7 @@ const en = {
       },
       streaming: {
         title: "Media-ready streaming",
-        desc: "Large files and Range requests stream straight through — seeking in video and audio just works.",
+        desc: "Large files, Range requests and SSE (LLM chat APIs) stream straight through — seeking in video and audio just works, and tokens arrive as they are generated.",
       },
       console: {
         title: "Bilingual console",
@@ -968,7 +973,7 @@ const en = {
       dailyLimitPh: "e.g. 3000",
       badgePublic: "public",
       allowedHosts: "Allowed target hosts",
-      allowedHostsPh: "api.vendor.com, *.vendor.com (required for injection)",
+      allowedHostsPh: "api.vendor.com, *.vendor.com — comma or space separated (required for injection)",
       injection: "Upstream injection",
       injectionHint: "Variables are injected into headers/params on the way out. One rule per line; @hosts scopes the lines below, !Name removes, ${var} inserts a variable. The same header can be set once per host (@host1 / @host2), so one key can hold a credential per upstream.",
       injectionHostsHint:
@@ -1272,7 +1277,7 @@ const zh: Messages = {
   },
   terms: {
     title: "使用条款",
-    updated: "最后更新 2026-09-14",
+    updated: "最后更新 {date}",
     lead:
       "本页适用于 CORX 的公共实例 {origin}：一个以个人项目形式免费提供的尽力而为的服务。使用公共 key 或公共页面，即表示你同意本条款；如不同意，请勿使用。",
     s1Title: "服务说明",
@@ -1703,7 +1708,7 @@ const zh: Messages = {
       },
       browser: {
         title: "浏览器代码——不携带任何凭证",
-        lead: "打进浏览器包的 key 等于已经公开。下面两种模式才是安全的：用服务端 key 做来源授权，以及把 key 挡在构建产物之外的环境变量规则。",
+        lead: "打进浏览器包的 key 等于已经公开。下面这些模式才是安全的：用服务端 key 做来源授权、完全不需要凭证的流式读取，以及把 key 挡在构建产物之外的环境变量规则。",
       },
       server: {
         title: "在服务端持有 key 的路由",
@@ -1720,6 +1725,10 @@ const zh: Messages = {
       keyless: {
         title: "免密钥来源授权",
         desc: "在控制台把页面的来源授权给某个 key，浏览器调用代理时完全不用携带凭证。计量按访客 IP 计，因此单个嵌入站点不会耗尽 key。",
+      },
+      stream: {
+        title: "流式读取响应（SSE / LLM）",
+        desc: "`res.body` 是实时流：按块读取，token 生成即到达，而不是等最后一个 token 才返回。代理对 `text/event-stream` 不做缓冲，因此免密钥授权也能用。LLM 对话接口是 `POST` 且需要服务端持有密钥——见下面的服务端路由。",
       },
       viteEnv: {
         title: "Vite / React 环境变量",
@@ -1895,7 +1904,7 @@ const zh: Messages = {
       sub: "这些细节让密钥、浏览器调用方与调试都尽在掌控。",
       injection: {
         title: "密钥留在边缘",
-        desc: "给密钥绑定变量与请求头/查询参数规则，CORX 会在转发时注入——浏览器拿不到 token，变量值在控制台和日志中始终打码。",
+        desc: "给密钥绑定变量与请求头/查询参数规则，CORX 在转发时注入，并按目标主机限定作用域——同一个 key 可给每家厂商各带一套凭证。你选择暴露的变量还能被页面以 `${NAME}` 引用，而值从不进入浏览器；变量值在控制台和日志中始终打码。",
       },
       keyless: {
         title: "浏览器免密钥访问",
@@ -1954,7 +1963,7 @@ const zh: Messages = {
       },
       streaming: {
         title: "流式媒体",
-        desc: "大文件与 Range 请求直接流式透传——视频、音频拖动进度条即可播放。",
+        desc: "大文件、Range 请求与 SSE（LLM 对话接口）直接流式透传——视频、音频拖动进度条即可播放，token 也是生成即到达。",
       },
       console: {
         title: "双控制台",
