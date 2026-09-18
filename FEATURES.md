@@ -177,7 +177,11 @@ Files: `app/proxy/cache.ts`, `app/proxy/handler.ts`.
   literal. `assertVarHostScopes` rejects at save time any rule that could reach
   outside a scoped variable's hosts. A key with client-referencable variables
   bypasses the shared R2 cache (`handler.ts`), and the playground preview masks
-  resolved values like any other secret.
+  resolved values like any other secret. Resolution order is fixed — references
+  first (headers per hop, query once before the cache key), then the rules, so
+  rules win — and `/docs` → **Upstream credentials** spells out the two scopes
+  and tabulates what a reference becomes in each case (`DOCS_CLIENT_CASES`,
+  parsed by `test/docs.test.ts`).
 - **Allowed target hosts is mandatory** once anything is injected (confused
   deputy guard): exact, `*.suffix` (label boundary enforced), or explicit `*`
   (≤ 32 patterns). A stored row with rules but no allowlist fails closed

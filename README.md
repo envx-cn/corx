@@ -201,16 +201,27 @@ forwarding — the browser never holds the upstream secret:
 - **Caller references (`${VAR}`), opt-in per variable:** mark a variable
   *client-referencable* (console → **Client-referencable variables**, or
   `client: true` in the `vars` array) and a caller may write `${VENDOR_KEY}` in
-  its own header or query param; the proxy fills it in before forwarding. That
-  field takes the same `@hosts` sections as the rule fields, and a variable's
-  hosts bound **every** reference — a rule that could resolve it on another host
-  is a 400 at save time, and a client reference is filtered per redirect hop.
-  Anything the proxy does not allow (unknown name, private variable,
-  out-of-scope host) is left exactly as written, so the feature is additive and
-  a caller cannot probe which names exist. Rules still win over what the caller
-  sent, a key with client-referencable variables never reads or writes the
-  shared R2 cache, and the public tier cannot use the feature at all. Treat an
-  exposed variable as public to anyone who can call the key.
+  its own header or query param; the proxy fills it in before forwarding. The
+  caller learns only the name it wrote — never a value, and never which other
+  names exist.
+- **Two scopes bound it, and both must allow the host:** a rule's `@hosts` says
+  where *that rule* applies; a variable's own `hosts` (same exposure field) says
+  where *that variable* may ever resolve, and that second bound covers operator
+  rules too — a rule that could resolve a scoped variable on another host is a
+  400 at save time, a key-level rule included, because it can reach every
+  allowed host. Patterns are the usual ones: exact, `*.suffix` (label boundary),
+  or `*`. Client references are evaluated per redirect hop, so a variable scoped
+  to one host does not resolve after a redirect to another.
+- **Order and misses:** caller references resolve first, then the key's rules —
+  removes before sets — so a rule always wins (`!X-Debug` deletes it, a `set`
+  replaces it) and a browser cannot spoof an injected header. Anything not
+  resolvable (unknown name, private variable, host outside the scope) is
+  forwarded exactly as written: the feature is additive, and an unexposed name
+  is indistinguishable from a nonexistent one, so names cannot be probed. A key
+  with any client-referencable variable never reads or writes the shared R2
+  cache (the reference is caller-supplied and a redirect may resolve it later),
+  and the public tier cannot use the feature at all. Treat an exposed variable
+  as public to anyone who can call the key.
 - **Cache:** keys with header rules never read or write the shared R2 cache
   (personalized/credentialed requests, same rule as client-sent
   `Authorization`); param-only keys cache under the injected URL, so different
@@ -358,6 +369,15 @@ responses chunk-by-chunk. What works out of the box:
   secret, and a header rule `x-api-key: ${ANTHROPIC_KEY}`, then call
   `/fetch?url=https://api.anthropic.com/v1/messages` with that key. The same
   recipe covers `x-goog-api-key` and any other credential header.
+- **Choosing the credential from the page** — a key can *expose* a variable
+  instead of (or as well as) using it in a rule, so the page writes the
+  reference itself: `Authorization: Bearer ${OPENAI_KEY}` for OpenAI,
+  `api-key: ${AZURE_KEY}` for Azure, `?key=${GEMINI_KEY}` for Gemini. The proxy
+  substitutes it for the target host only, and the page still never holds the
+  value. Two exclusions: `X-Api-Key`/`X-Admin-Token` are CORX's own headers and
+  are dropped before any substitution — which is why Anthropic needs the rule
+  above — and a variable can be scoped to specific hosts, outside which the
+  reference is left literal.
 - `Accept: text/event-stream`, `anthropic-version` and every other non-reserved
   request header pass through; the SSE body is forwarded as it arrives and is
   never buffered (`text/event-stream` is excluded from the R2 cache by content

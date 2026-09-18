@@ -9,7 +9,7 @@ import { setLangCookie } from "../lib/i18n/hono.js";
 import { SiteFooter, SiteHead, SiteNav } from "../components/site.js";
 import { OG_IMAGE, docsAlternates, docsJsonLd } from "../lib/seo.js";
 import { CONTENT_UPDATED, REPO_DOCS } from "../lib/site-info.js";
-import { DOCS_INJECTION_HOSTS, DOCS_INJECTION_RULES, DOCS_INJECTION_VARS, DOCS_KEY_FORMS, DOCS_PARAMS, DOCS_SHAPES, docsShapeExample } from "../lib/docs.js";
+import { DOCS_CLIENT_CASES, DOCS_CLIENT_VARS, DOCS_INJECTION_HOSTS, DOCS_INJECTION_RULES, DOCS_INJECTION_VARS, DOCS_KEY_FORMS, DOCS_PARAMS, DOCS_SHAPES, docsShapeExample } from "../lib/docs.js";
 import CopyButton, { type CopyButtonLabels } from "../islands/copy-button.js";
 import { Section, SubSection } from "../components/prose.js";
 
@@ -223,15 +223,17 @@ export function DocsPage(props: {
             <p class="mt-2 text-sm text-base-content/75 leading-relaxed">{t("docs.upstream.lead")}</p>
             <SubSection title={t("docs.upstream.ways.title")} body={t("docs.upstream.ways.body")} />
             <SubSection title={t("docs.upstream.client.title")} body={t("docs.upstream.client.body")} />
+            <SubSection title={t("docs.upstream.scoping.title")} body={t("docs.upstream.scoping.body")} />
+            <SubSection title={t("docs.upstream.order.title")} body={t("docs.upstream.order.body")} />
             <div class="mt-6">
               <h3 class="text-base font-semibold">{t("docs.upstream.example.title")}</h3>
               <p class="mt-1.5 text-sm text-base-content/75 leading-relaxed">{t("docs.upstream.example.body")}</p>
-              {/* One key, three upstreams — the blocks are the two editor
-                  fields plus the allowlist, and test/docs.test.ts feeds them
-                  to the real parser so the page cannot document a shape it
-                  rejects. */}
+              {/* One key, three upstreams — the blocks are the editor fields
+                  plus the allowlist, and test/docs.test.ts feeds them to the
+                  real parser so the page cannot document a shape it rejects. */}
               {[
                 { label: t("docs.upstream.example.varsLabel"), text: DOCS_INJECTION_VARS.join("\n") },
+                { label: t("docs.upstream.example.clientVarsLabel"), text: DOCS_CLIENT_VARS.join("\n") },
                 { label: t("docs.upstream.example.rulesLabel"), text: DOCS_INJECTION_RULES.join("\n") },
                 { label: t("docs.upstream.example.hostsLabel"), text: DOCS_INJECTION_HOSTS },
               ].map((block) => (
@@ -246,6 +248,39 @@ export function DocsPage(props: {
                 </div>
               ))}
               <p class="mt-3 text-sm text-base-content/75 leading-relaxed">{t("docs.upstream.example.note")}</p>
+            </div>
+            {/* The precedence and resolution rules as a table: they are the part
+                that is easy to get wrong, and every row is a real case. */}
+            <div class="mt-6">
+              <h3 class="text-base font-semibold">{t("docs.upstream.matrix.title")}</h3>
+              <p class="mt-1.5 text-sm text-base-content/75 leading-relaxed">{t("docs.upstream.matrix.lead")}</p>
+              <div class="mt-3 overflow-x-auto rounded-box border border-base-300">
+                <table class="table table-sm w-full min-w-[40rem]">
+                  <thead>
+                    <tr>
+                      <th scope="col">{t("docs.upstream.matrix.sent")}</th>
+                      <th scope="col" class="w-40">{t("docs.upstream.matrix.host")}</th>
+                      <th scope="col">{t("docs.upstream.matrix.received")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {DOCS_CLIENT_CASES.map((row) => (
+                      <tr>
+                        <td class="align-top whitespace-normal">
+                          <code class="text-xs">{row.sent}</code>
+                          <div class="mt-1 text-xs text-base-content/75">{t(row.why)}</div>
+                        </td>
+                        <td class="align-top text-sm whitespace-normal">
+                          <code class="text-xs">{row.host}</code>
+                        </td>
+                        <td class="align-top text-sm whitespace-normal">
+                          <code class="text-xs">{row.received}</code>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
             <SubSection title={t("docs.upstream.uses.title")} body={t("docs.upstream.uses.body")} />
             <SubSection title={t("docs.upstream.keys.title")} body={t("docs.upstream.keys.body")} />

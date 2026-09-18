@@ -517,7 +517,8 @@ export function llmsTxt(origin: string): string {
 
 > CORX is an open-source CORS proxy that runs entirely on Cloudflare's edge. Prefix any URL with
 > /fetch?url= and fetch it cross-origin — with R2 edge caching, per-key auth, upstream secret
-> injection, keyless browser access and SSRF guards.
+> injection (server-side rules, plus per-variable references a caller may use, scoped per host),
+> keyless browser access and SSRF guards.
 
 CORX is a single Cloudflare Worker (Hono + HonoX) backed by D1 (keys, rate windows, request logs,
 host blocklist) and R2 (GET response cache). It is MIT-licensed, self-hostable in one account, and
@@ -644,7 +645,11 @@ Every \`corx-*\` parameter is namespaced, so it can never collide with the targe
 
 - **API key** — \`x-api-key: <key>\`, \`Authorization: Bearer <key>\` or \`?corx-key=<key>\`. Keys are
   stored as SHA-256 hashes. A key carries allowed origins, a per-minute rate limit, a cache TTL, an
-  allowed-host list, SSRF-check opt-outs and encrypted header/query injection rules. It can also
+  allowed-host list, SSRF-check opt-outs and encrypted header/query injection rules. A variable can
+  also be exposed to callers — \`client: true\`, optionally \`hosts\`-scoped — so a caller writes
+  \`\${NAME}\` in its own headers/query and the proxy substitutes it; \`X-Api-Key\` and
+  \`X-Admin-Token\` are the proxy's own headers and are dropped first, so a reference there never
+  resolves. It can also
   carry **response header rules** — headers corx sets or removes on the way back to the caller
   (the documented embed recipe: strip \`X-Frame-Options\`/CSP \`frame-ancestors\` for a host you
   control, then sandbox the iframe yourself). The headers corx owns are rejected at save time, and a
@@ -655,8 +660,11 @@ Every \`corx-*\` parameter is namespaced, so it can never collide with the targe
   key must declare its allowed hosts and every \`@host\` must fall inside that list; two rules for the
   same header may not overlap in host scope. A variable marked client-referencable (\`client: true\`) may
   also be referenced by the *caller* as \`\${NAME}\` in its own headers/query — opt-in per variable,
-  scoped by the variable's own hosts, resolved per redirect hop, and left literal when not allowed.
-  Keys with header rules bypass the R2 cache, query-only
+  bounded by the variable's own \`hosts\` (which also bounds operator rules: a rule that could resolve
+  it elsewhere is a save-time 400), resolved per redirect hop for headers and once for the query, and
+  left literal when the name is unknown, private or out of scope — so an unexposed name is
+  indistinguishable from a nonexistent one. A key with any client-referencable variable never uses the
+  shared cache. Keys with header rules bypass the R2 cache, query-only
   injection still caches, and the public tier cannot inject at all.
 - **Keyless browser access** — grant an origin to a key and its visitors call the proxy without
   shipping one. The grant matches on \`Origin\` (or \`Referer\` for same-origin GETs) and is metered

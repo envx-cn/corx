@@ -91,3 +91,56 @@ export const DOCS_INJECTION_RULES: readonly string[] = [
   "@api.vendor.com",
   "Authorization: Bearer ${VENDOR_KEY}",
 ];
+
+/**
+ * The exposure field of the same example: which variables a *caller* may
+ * reference, and toward which hosts. `test/docs.test.ts` checks it against the
+ * variables and allowed hosts above, so the page cannot show an exposure the
+ * save path would reject.
+ */
+export const DOCS_CLIENT_VARS: readonly string[] = ["@api.vendor.com", "VENDOR_KEY"];
+
+/** One row of the "what a caller's reference becomes" table on /docs. */
+export interface DocsClientCase {
+  /** What the caller wrote in its own request. */
+  sent: string;
+  /** Target host that request went to. */
+  host: string;
+  /** What the upstream receives. */
+  received: string;
+  /** Why, in the reader's language (`docs.upstream.matrix.<id>`). */
+  why: MessageKey;
+}
+
+export const DOCS_CLIENT_CASES: readonly DocsClientCase[] = [
+  {
+    sent: "x-vendor: Bearer ${VENDOR_KEY}",
+    host: "api.vendor.com",
+    received: "x-vendor: Bearer vendor-…",
+    why: "docs.upstream.matrix.inScope",
+  },
+  {
+    sent: "x-vendor: Bearer ${VENDOR_KEY}",
+    host: "api.other.com",
+    received: "x-vendor: Bearer ${VENDOR_KEY}",
+    why: "docs.upstream.matrix.outOfScope",
+  },
+  {
+    sent: "x-private: ${PRIVATE_KEY}",
+    host: "api.vendor.com",
+    received: "x-private: ${PRIVATE_KEY}",
+    why: "docs.upstream.matrix.privateVar",
+  },
+  {
+    sent: "x-typo: ${NOPE}",
+    host: "api.vendor.com",
+    received: "x-typo: ${NOPE}",
+    why: "docs.upstream.matrix.unknown",
+  },
+  {
+    sent: "Authorization: Bearer ${VENDOR_KEY}",
+    host: "api.vendor.com",
+    received: "Authorization: Bearer <what the rule sets>",
+    why: "docs.upstream.matrix.ruleWins",
+  },
+];
