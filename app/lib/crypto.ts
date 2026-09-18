@@ -100,7 +100,8 @@ export type DecryptResult = { ok: true; vars: InjectionVar[] } | { ok: false };
  */
 export async function encryptVars(kek: string | undefined, vars: InjectionVar[]): Promise<InjectionVar[]> {
   if (!kek || vars.length === 0) return vars;
-  return Promise.all(vars.map(async (v) => ({ name: v.name, value: await encryptSecret(kek, v.value) })));
+  // Spread, don't rebuild: `client`/`hosts` are not secret and must survive.
+  return Promise.all(vars.map(async (v) => ({ ...v, value: await encryptSecret(kek, v.value) })));
 }
 
 /**
@@ -112,7 +113,7 @@ export async function decryptVars(kek: string | undefined, vars: InjectionVar[])
   if (vars.length === 0) return { ok: true, vars };
   if (!kek) return vars.some((v) => isEncrypted(v.value)) ? { ok: false } : { ok: true, vars };
   try {
-    const out = await Promise.all(vars.map(async (v) => ({ name: v.name, value: await decryptSecret(kek, v.value) })));
+    const out = await Promise.all(vars.map(async (v) => ({ ...v, value: await decryptSecret(kek, v.value) })));
     return { ok: true, vars: out };
   } catch {
     return { ok: false };

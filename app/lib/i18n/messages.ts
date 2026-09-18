@@ -373,6 +373,11 @@ const en = {
         body:
           "Variables (`NAME=value`) hold the values; header and query rules use them. An `@host` line scopes the rules below it, so one key can carry a different credential per upstream — including the usual shape, the same header name with a different value per host (`Authorization` for two vendors). Header rules set or remove request headers (`Authorization: Bearer ${VENDOR_KEY}`, `!X-Debug`); query rules do the same with URL parameters (`api_key = ${VENDOR_KEY}`) for APIs that authenticate that way. Rules always win over what the caller sent, so a browser cannot spoof an injected header, and which rule applies is decided by the target host, not by the caller.",
       },
+      client: {
+        title: "Letting the caller reference a variable",
+        body:
+          "Mark a variable as client-referencable and a caller may write `${VENDOR_KEY}` in its own header or query param; the proxy substitutes the value before forwarding. Exposure is per variable and can carry host patterns (`@api.vendor.com`), and those bound the variable itself: a rule that could resolve it toward another host is a 400 at save time, and a client reference is filtered per redirect hop. A name the proxy does not allow — unknown, private, or scoped away from this host — is left exactly as written, so nothing is rewritten that the proxy does not own and a caller cannot discover which names exist. Rules still win over caller-supplied values, a key with client-referencable variables never reads or writes the shared R2 cache, and the public tier cannot use this at all. Treat an exposed variable as public to anyone who can call the key.",
+      },
       example: {
         title: "One key, three upstreams",
         body:
@@ -923,6 +928,10 @@ const en = {
       injectionHint: "Variables are injected into headers/params on the way out. One rule per line; @hosts scopes the lines below, !Name removes, ${var} inserts a variable. The same header can be set once per host (@host1 / @host2), so one key can hold a credential per upstream.",
       vars: "Variables",
       varsPh: "UPSTREAM_TOKEN=sk-live-… (blank = keep the stored value)",
+      clientVars: "Client-referencable variables",
+      clientVarsPh: "VENDOR_KEY (the names above a caller may reference)",
+      clientVarsHint:
+        "Names only, `@hosts` scopes the lines below (same as the rule fields). A caller may send `${NAME}` in its own headers/query and the proxy fills it in — only for the hosts listed, and only toward hosts the variable is scoped to. A listed name must exist above; anything else a caller writes stays literal. Treat an exposed variable as public to anyone who can call this key.",
       headerRules: "Header rules",
       headerRulesPh: "Authorization: Bearer ${UPSTREAM_TOKEN}",
       paramRules: "Query rules",
@@ -1493,6 +1502,11 @@ const zh: Messages = {
         body:
           "变量（`NAME=value`）保存值，header 规则与 query 规则引用它们。`@host` 行给它下面的规则限定作用域，因此一个 key 可以为每个上游携带不同的凭证——包括最常见的形态：同一个 header 名在不同 host 上用不同的值（两个厂商都用 `Authorization`）。header 规则用于设置或删除请求头（`Authorization: Bearer ${VENDOR_KEY}`、`!X-Debug`）；query 规则对应 URL 参数（`api_key = ${VENDOR_KEY}`），适用于用参数鉴权的 API。规则始终覆盖调用方发来的内容，浏览器无法伪造注入的 header；用哪条规则由目标 host 决定，而不是由调用方决定。",
       },
+      client: {
+        title: "允许调用方引用变量",
+        body:
+          "把某个变量标为「客户端可引用」后，调用方可以在自己的 header 或 query 里写 `${VENDOR_KEY}`，由代理在转发前填入真实值。暴露是逐变量的，并可带 host 作用域（`@api.vendor.com`），而这个作用域约束的是变量本身：任何可能把它解析到作用域之外 host 的规则，保存时就会 400；客户端引用则按每一次重定向跳重新求值。代理不允许的名字——未知、私有、或被作用域排除在本 host 之外——一律原样保留，因此既不会改写不属于它的内容，调用方也无法探测存在哪些名字。规则仍然优先于调用方提供的值；带客户端可引用变量的 key 不读写共享缓存；公共档位完全不可用。被暴露的变量等同于「谁能调用这个 key，谁就能引用它」。",
+      },
       example: {
         title: "一个 key，对接三个上游",
         body:
@@ -2022,6 +2036,10 @@ const zh: Messages = {
       injectionHint: "变量会在转发时注入到 Header / Query。每行一条规则；@hosts 为下方规则限定作用域，!Name 表示删除，${var} 插入变量。同一个 header 可以在不同 host 下各设一次（@host1 / @host2），因此一个 key 能为每个上游各带一套凭证。",
       vars: "变量",
       varsPh: "UPSTREAM_TOKEN=sk-live-…（留空 = 保持已有值）",
+      clientVars: "客户端可引用变量",
+      clientVarsPh: "VENDOR_KEY（只写名字，允许调用方引用）",
+      clientVarsHint:
+        "只写变量名；`@hosts` 为下方名字限定作用域（与规则字段语法一致）。调用方可以在自己的 header / query 里写 `${NAME}`，由代理填入真实值——仅限列出的 host，且不超出变量自身的作用域。名字必须在上面的变量里存在；其他情况一律原样透传。被暴露的变量等同于“谁能调用这个 key，谁就能引用它”，请谨慎放开。",
       headerRules: "Header 规则",
       headerRulesPh: "Authorization: Bearer ${UPSTREAM_TOKEN}",
       paramRules: "Query 规则",

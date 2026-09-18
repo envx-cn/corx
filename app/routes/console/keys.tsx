@@ -7,7 +7,7 @@ import { DataTable, EmptyRow } from "../../components/table.js";
 import { RelTime } from "../../components/time.js";
 import CopyButton from "../../islands/copy-button.js";
 import KeyPanel, { type KeyFormValues, type KeyPanelI18n } from "../../islands/key-panel.js";
-import { readStoredInjection, rulesToText, varsToText } from "../../proxy/inject.js";
+import { clientVarsToText, readStoredInjection, rulesToText, varsToText } from "../../proxy/inject.js";
 import { consoleT } from "../../lib/i18n/hono.js";
 import type { TFunc } from "../../lib/i18n/locale.js";
 
@@ -39,6 +39,7 @@ app.post("/", async (c) => {
       dailyLimitTotal: values.dailyLimitTotal,
       allowedHosts: values.allowedHosts,
       vars: values.vars,
+      clientVars: values.clientVars,
       headerRules: values.headerRules,
       paramRules: values.paramRules,
       responseRules: values.responseRules,
@@ -91,6 +92,7 @@ app.post("/:id", async (c) => {
       dailyLimitTotal: values.dailyLimitTotal,
       allowedHosts: values.allowedHosts,
       vars: values.vars,
+      clientVars: values.clientVars,
       headerRules: values.headerRules,
       paramRules: values.paramRules,
     }, c.env.INJECTION_KEK);
@@ -162,6 +164,7 @@ function readKeyForm(form: Record<string, unknown>): KeyFormValues {
     dailyLimitTotal: String(form["dailyLimitTotal"] ?? ""),
     allowedHosts: String(form["allowedHosts"] ?? ""),
     vars: String(form["vars"] ?? ""),
+    clientVars: String(form["clientVars"] ?? ""),
     headerRules: String(form["headerRules"] ?? ""),
     paramRules: String(form["paramRules"] ?? ""),
     responseRules: String(form["responseRules"] ?? ""),
@@ -193,6 +196,7 @@ function rowValues(k: KeyRow): KeyFormValues {
     dailyLimitTotal: k.daily_limit_total != null ? String(k.daily_limit_total) : "",
     allowedHosts: k.allowed_hosts ?? "",
     vars: varsToText(injection.vars),
+    clientVars: clientVarsToText(injection.vars),
     headerRules: rulesToText(injection.headers, "header"),
     paramRules: rulesToText(injection.params, "param"),
     responseRules: rulesToText(injection.responseHeaders, "response"),
@@ -247,6 +251,9 @@ function panelLabels(t: TFunc): KeyPanelI18n {
     injectionHint: t("console.keys.injectionHint"),
     vars: t("console.keys.vars"),
     varsPh: t("console.keys.varsPh"),
+    clientVars: t("console.keys.clientVars"),
+    clientVarsPh: t("console.keys.clientVarsPh"),
+    clientVarsHint: t("console.keys.clientVarsHint"),
     headerRules: t("console.keys.headerRules"),
     headerRulesPh: t("console.keys.headerRulesPh"),
     paramRules: t("console.keys.paramRules"),

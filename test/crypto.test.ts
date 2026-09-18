@@ -67,6 +67,16 @@ describe("encryptVars / decryptVars", () => {
     expect(await decryptVars(undefined, enc)).toEqual({ ok: false });
   });
 
+  it("keeps the client flag and host scope (they are not secret)", async () => {
+    const scoped = [
+      { name: "TOKEN", value: "sk-live", client: true, hosts: ["api.vendor.com"] },
+    ];
+    const enc = await encryptVars(KEK, scoped);
+    expect(enc[0]!.client).toBe(true);
+    expect(enc[0]!.hosts).toEqual(["api.vendor.com"]);
+    expect(await decryptVars(KEK, enc)).toEqual({ ok: true, vars: scoped });
+  });
+
   it("fails closed on a mismatched KEK", async () => {
     const enc = await encryptVars(KEK, vars);
     expect(await decryptVars(OTHER, enc)).toEqual({ ok: false });

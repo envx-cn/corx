@@ -222,6 +222,7 @@ export function DocsPage(props: {
           <Section id="upstream" title={t("docs.upstream.title")}>
             <p class="mt-2 text-sm text-base-content/75 leading-relaxed">{t("docs.upstream.lead")}</p>
             <SubSection title={t("docs.upstream.ways.title")} body={t("docs.upstream.ways.body")} />
+            <SubSection title={t("docs.upstream.client.title")} body={t("docs.upstream.client.body")} />
             <div class="mt-6">
               <h3 class="text-base font-semibold">{t("docs.upstream.example.title")}</h3>
               <p class="mt-1.5 text-sm text-base-content/75 leading-relaxed">{t("docs.upstream.example.body")}</p>

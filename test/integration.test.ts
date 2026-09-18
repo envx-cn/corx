@@ -209,6 +209,8 @@ describe("route wiring (integration)", () => {
     expect(page).toContain("Upstream injection");
     expect(page).toContain("Keyless access");
     expect(page).toContain('name="headerRules"');
+    expect(page).toContain('name="clientVars"');
+    expect(page).toContain("Client-referencable variables");
     expect(page).toContain('name="allowedHosts"');
     // Public tier: the shared-key switch and its three daily caps.
     expect(page).toContain('name="tier"');
@@ -726,6 +728,134 @@ describe("upstream injection + keyless access (integration)", () => {
     );
     expect(lookalike.status).toBe(401);
     expect(calls).toHaveLength(1);
+  });
+
+  /** One key with a host-scoped client variable, an unscoped one and a private one. */
+  function clientVarRow(over: Record<string, unknown> = {}) {
+    return {
+      ...injectingRow,
+      id: "k-cv",
+      name: "client-vars",
+      vars: JSON.stringify([
+        { name: "VENDOR_KEY", value: "vendor-secret", client: true, hosts: ["api.vendor.com"] },
+        { name: "PUBLIC_ID", value: "id-1", client: true },
+        { name: "PRIVATE_KEY", value: "private-secret" },
+      ]),
+      header_rules: "[]",
+      param_rules: "[]",
+      response_rules: "[]",
+      allowed_hosts: "api.vendor.com, api.other.com",
+      ...over,
+    };
+  }
+
+  it("resolves a caller's reference only where the variable allows", async () => {
+    const calls = stubFetch(() => new Response("ok", { status: 200 }));
+    const { env: keyed } = envForKey(clientVarRow());
+    const headers = { "x-api-key": "corx_k", "x-vendor": "Bearer ${VENDOR_KEY}" };
+    await call("/fetch?url=https://api.vendor.com/data", { headers }, keyed);
+    await call("/fetch?url=https://api.other.com/data", { headers }, keyed);
+    expect(calls.map((c) => c.headers.get("x-vendor"))).toEqual([
+      "Bearer vendor-secret",
+      "Bearer ${VENDOR_KEY}", // out of the variable's scope: left as written
+    ]);
+  });
+
+  it("leaves unknown and private references literal — no probing oracle", async () => {
+    const calls = stubFetch(() => new Response("ok", { status: 200 }));
+    const { env: keyed } = envForKey(clientVarRow());
+    const res = await call(
+      "/fetch?url=https://api.vendor.com/data",
+      { headers: { "x-api-key": "corx_k", "x-a": "${PRIVATE_KEY}", "x-b": "${NOPE}" } },
+      keyed,
+    );
+    expect(res.status).toBe(200);
+    expect(calls[0]?.headers.get("x-a")).toBe("${PRIVATE_KEY}");
+    expect(calls[0]?.headers.get("x-b")).toBe("${NOPE}");
+  });
+
+  it("lets an operator rule win over the caller's reference", async () => {
+    const row = clientVarRow({
+      header_rules: JSON.stringify([
+        { action: "set", name: "X-Vendor", value: "rule-value", hosts: ["api.vendor.com"] },
+      ]),
+    });
+    const calls = stubFetch(() => new Response("ok", { status: 200 }));
+    const { env: keyed } = envForKey(row);
+    await call(
+      "/fetch?url=https://api.vendor.com/data",
+      { headers: { "x-api-key": "corx_k", "x-vendor": "${VENDOR_KEY}" } },
+      keyed,
+    );
+    expect(calls[0]?.headers.get("x-vendor")).toBe("rule-value");
+  });
+
+  it("resolves references in the caller's query and keeps unknown ones literal", async () => {
+    const calls = stubFetch(() => new Response("ok", { status: 200 }));
+    const { env: keyed } = envForKey(clientVarRow());
+    const target = "https://api.vendor.com/data?k=${VENDOR_KEY}&n=${NOPE}";
+    await call(`/fetch?url=${encodeURIComponent(target)}`, { headers: { "x-api-key": "corx_k" } }, keyed);
+    // Resolving re-serializes the query (as param rules already do), so compare
+    // decoded values: the reference resolved, the unknown one stayed literal.
+    const sent = new URL(calls[0]?.url as string);
+    expect(sent.searchParams.get("k")).toBe("vendor-secret");
+    expect(sent.searchParams.get("n")).toBe("${NOPE}");
+  });
+
+  it("never touches the shared cache for a key with client references", async () => {
+    const calls = stubFetch(() => new Response("ok", { status: 200 }));
+    const puts: unknown[] = [];
+    const { env: keyed } = envForKey(clientVarRow());
+    const withBucket = {
+      ...keyed,
+      CACHE_BUCKET: {
+        get: async () => null,
+        put: async (...args: unknown[]) => {
+          puts.push(args);
+        },
+        list: async () => ({ objects: [] }),
+        delete: async () => undefined,
+      },
+    } as unknown as Env;
+    const first = await call("/fetch?url=https://api.vendor.com/data", { headers: { "x-api-key": "corx_k" } }, withBucket);
+    const second = await call("/fetch?url=https://api.vendor.com/data", { headers: { "x-api-key": "corx_k" } }, withBucket);
+    expect([first.headers.get("x-corx-cache"), second.headers.get("x-corx-cache")]).toEqual(["MISS", "MISS"]);
+    expect(puts).toHaveLength(0);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("re-scopes a reference on every redirect hop", async () => {
+    let hop = 0;
+    const calls = stubFetch(() => {
+      hop++;
+      if (hop === 1) return new Response(null, { status: 302, headers: { location: "https://api.other.com/next" } });
+      return new Response("ok", { status: 200 });
+    });
+    const { env: keyed } = envForKey(clientVarRow());
+    const res = await call(
+      "/fetch?url=https://api.vendor.com/data",
+      { headers: { "x-api-key": "corx_k", "x-vendor": "Bearer ${VENDOR_KEY}" } },
+      keyed,
+    );
+    expect(res.status).toBe(200);
+    expect(calls.map((c) => c.headers.get("x-vendor"))).toEqual(["Bearer vendor-secret", "Bearer ${VENDOR_KEY}"]);
+  });
+
+  it("lets a keyless caller reference an exposed variable", async () => {
+    const row = clientVarRow({
+      keyless: 1,
+      allowed_origins: "https://app.example",
+      vars: JSON.stringify([{ name: "PUBLIC_ID", value: "id-1", client: true }]),
+    });
+    const calls = stubFetch(() => new Response("ok", { status: 200 }));
+    const { env: keyed } = envForKey(row);
+    const res = await call(
+      "/fetch?url=https://api.vendor.com/data",
+      { headers: { origin: "https://app.example", "x-pub": "${PUBLIC_ID}" } },
+      { ...keyed, REQUIRE_API_KEY: "true" } as Env,
+    );
+    expect(res.status).toBe(200);
+    expect(calls[0]?.headers.get("x-pub")).toBe("id-1");
   });
 });
 

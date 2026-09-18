@@ -5,19 +5,26 @@ import {
   applyParamRules,
   assertHostAllowed,
   assertInjectionParts,
+  assertVarHostScopes,
+  clientVarMap,
+  clientVarsToText,
   collectVarRefs,
   hostAllowed,
   normalizeHostPattern,
+  parseClientVarsInput,
   parseHostsInput,
   parseRulesInput,
   parseVarsInput,
   readStoredInjection,
+  resolveClientRefs,
   rulesToText,
   serializeInjection,
   substitute,
   varMap,
   varsToText,
+  withClientVars,
 } from "../app/proxy/inject.js";
+import type { InjectionParts } from "../app/proxy/inject.js";
 
 const VARS = [{ name: "TOKEN", value: "sk-live-1" }];
 const NAMES = new Set(["TOKEN"]);
@@ -305,5 +312,137 @@ describe("applyParamRules", () => {
     const original = new URL("https://a.example/x?keep=2");
     applyParamRules(original, [{ action: "set", name: "k", value: "v" }], varMap(VARS), "a.example");
     expect(original.toString()).toBe("https://a.example/x?keep=2");
+  });
+});
+
+describe("client-referencable variables", () => {
+  it("carries client/hosts through the array form and inherits in the text form", () => {
+    const stored = parseVarsInput([
+      { name: "A", value: "1", client: true, hosts: ["api.vendor.com", "*.other.com"] },
+      { name: "B", value: "2" },
+    ]);
+    expect(stored).toEqual([
+      { name: "A", value: "1", client: true, hosts: ["api.vendor.com", "*.other.com"] },
+      { name: "B", value: "2" },
+    ]);
+    // The text editor says nothing about exposure, so it inherits (a blank value
+    // keeps the secret — the flags must survive that round-trip too).
+    expect(parseVarsInput("A=\nB=", stored)).toEqual(stored);
+    // Explicit false/[] clear.
+    expect(parseVarsInput([{ name: "A", value: "", client: false, hosts: [] }], stored)).toEqual([
+      { name: "A", value: "1" },
+    ]);
+  });
+
+  it("parses the console's exposure field with the same @hosts sections", () => {
+    const scopes = parseClientVarsInput("@api.vendor.com, *.other.com\nA\n@\nB");
+    expect([...scopes.entries()]).toEqual([
+      ["A", ["api.vendor.com", "*.other.com"]],
+      ["B", []],
+    ]);
+    expect(() => parseClientVarsInput("A\nA")).toThrowError(/duplicate/);
+    expect(() => parseClientVarsInput("not a name")).toThrowError(/invalid variable name/);
+    // The array form is the Admin API shape.
+    expect([...parseClientVarsInput([{ name: "A", hosts: "api.vendor.com" }]).entries()]).toEqual([
+      ["A", ["api.vendor.com"]],
+    ]);
+  });
+
+  it("round-trips the exposure text", () => {
+    const vars = parseVarsInput([
+      { name: "A", value: "1", client: true, hosts: ["api.vendor.com"] },
+      { name: "B", value: "2", client: true },
+      { name: "C", value: "3" },
+    ]);
+    expect(clientVarsToText(vars)).toBe("@api.vendor.com\nA\n@\nB");
+    expect([...parseClientVarsInput(clientVarsToText(vars)).entries()]).toEqual([
+      ["A", ["api.vendor.com"]],
+      ["B", []],
+    ]);
+  });
+
+  it("withClientVars is the full description: unlisted names go private again", () => {
+    const vars = parseVarsInput("A=1\nB=2", []);
+    expect(withClientVars(vars, "A")).toEqual([
+      { name: "A", value: "1", client: true },
+      { name: "B", value: "2" },
+    ]);
+    expect(() => withClientVars(vars, "C")).toThrowError(/not defined in Variables/);
+  });
+});
+
+describe("host-scoped variables bound every reference", () => {
+  const scoped = (over: Partial<InjectionParts> = {}): InjectionParts => ({
+    vars: [{ name: "K", value: "v", client: true, hosts: ["api.vendor.com"] }],
+    headers: [],
+    params: [],
+    responseHeaders: [],
+    hosts: ["api.vendor.com", "api.other.com"],
+    ...over,
+  });
+
+  it("accepts a rule whose scope is inside the variable's scope", () => {
+    const parts = scoped({ headers: parseRulesInput("@api.vendor.com\nX-K: ${K}", "header", new Set(["K"])) });
+    expect(() => assertVarHostScopes(parts)).not.toThrow();
+    // A wildcard variable scope covers a narrower wildcard rule scope.
+    const wide = scoped({
+      vars: [{ name: "K", value: "v", hosts: ["*.vendor.com"] }],
+      headers: parseRulesInput("@api.vendor.com\nX-K: ${K}", "header", new Set(["K"])),
+    });
+    expect(() => assertVarHostScopes(wide)).not.toThrow();
+  });
+
+  it("rejects a rule that could resolve the variable on another host", () => {
+    const elsewhere = scoped({ headers: parseRulesInput("@api.other.com\nX-K: ${K}", "header", new Set(["K"])) });
+    expect(() => assertVarHostScopes(elsewhere)).toThrowError(/scoped to api\.vendor\.com/);
+    // A key-level rule can reach every allowed host, so nothing bounds it.
+    const keyLevel = scoped({ headers: parseRulesInput("X-K: ${K}", "header", new Set(["K"])) });
+    expect(() => assertVarHostScopes(keyLevel)).toThrowError(/every allowed host/);
+    // Same rule, but the variable is unscoped: fine.
+    const unscoped = scoped({
+      vars: [{ name: "K", value: "v" }],
+      headers: parseRulesInput("X-K: ${K}", "header", new Set(["K"])),
+    });
+    expect(() => assertVarHostScopes(unscoped)).not.toThrow();
+  });
+
+  it("covers query and response rules too", () => {
+    for (const kind of ["param", "response"] as const) {
+      const parts = scoped({
+        params: kind === "param" ? parseRulesInput("@api.other.com\nk = ${K}", "param", new Set(["K"])) : [],
+        responseHeaders: kind === "response" ? parseRulesInput("@api.other.com\nX-K: ${K}", "response", new Set(["K"])) : [],
+      });
+      expect(() => assertVarHostScopes(parts), kind).toThrowError(/scoped to api\.vendor\.com/);
+    }
+  });
+});
+
+describe("resolveClientRefs", () => {
+  const vars = parseVarsInput([
+    { name: "SHARED", value: "vendor-1", client: true, hosts: ["api.vendor.com"] },
+    { name: "ANYWHERE", value: "id-1", client: true },
+    { name: "PRIVATE", value: "secret" },
+  ]);
+
+  it("resolves only what the host may see, leaving everything else literal", () => {
+    const here = clientVarMap(vars, "api.vendor.com");
+    expect([...here.keys()]).toEqual(["SHARED", "ANYWHERE"]);
+    expect(resolveClientRefs("Bearer ${SHARED}", here)).toEqual({ value: "Bearer vendor-1", resolved: true });
+    // Unknown and private names are untouched — no 4xx, no probing oracle.
+    expect(resolveClientRefs("${NOPE} ${PRIVATE}", here)).toEqual({ value: "${NOPE} ${PRIVATE}", resolved: false });
+  });
+
+  it("hides a host-scoped variable from every other host", () => {
+    const other = clientVarMap(vars, "api.other.com");
+    expect([...other.keys()]).toEqual(["ANYWHERE"]);
+    expect(resolveClientRefs("${SHARED}", other)).toEqual({ value: "${SHARED}", resolved: false });
+  });
+
+  it("unescapes and reports resolution per value", () => {
+    const here = clientVarMap(vars, "api.vendor.com");
+    expect(resolveClientRefs("\\${SHARED}", here)).toEqual({ value: "${SHARED}", resolved: false });
+    expect(resolveClientRefs("plain", here)).toEqual({ value: "plain", resolved: false });
+    // No exposed variables on this host: nothing is touched at all.
+    expect(resolveClientRefs("${ANYWHERE}", new Map())).toEqual({ value: "${ANYWHERE}", resolved: false });
   });
 });
