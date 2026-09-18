@@ -294,6 +294,7 @@ function panelLabels(t: TFunc): KeyPanelI18n {
     allowedHostsPh: t("console.keys.allowedHostsPh"),
     injection: t("console.keys.injection"),
     injectionHint: t("console.keys.injectionHint"),
+    injectionHostsHint: t("console.keys.injectionHostsHint"),
     vars: t("console.keys.vars"),
     varsPh: t("console.keys.varsPh"),
     clientVars: t("console.keys.clientVars"),

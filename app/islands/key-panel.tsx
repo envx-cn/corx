@@ -66,6 +66,8 @@ export interface KeyPanelI18n {
   allowedHostsPh: string;
   injection: string;
   injectionHint: string;
+  /** The allowed-hosts dependency, stated where the injection fields are. */
+  injectionHostsHint: string;
   vars: string;
   varsPh: string;
   clientVars: string;
@@ -479,6 +481,7 @@ export default function KeyPanel(props: {
               <div class="mt-4 rounded-box border border-base-300 p-3">
                 <div class="text-xs font-medium uppercase tracking-wide text-base-content/75">{labels.injection}</div>
                 <p class="mt-1 text-xs text-base-content/75">{labels.injectionHint}</p>
+                <p class="mt-1 text-xs text-warning">{labels.injectionHostsHint}</p>
                 <div class="mt-3 grid gap-3">
                   <Field label={labels.vars}>
                     <textarea

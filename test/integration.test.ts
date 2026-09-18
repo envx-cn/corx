@@ -214,6 +214,8 @@ describe("route wiring (integration)", () => {
     expect(page).toContain("Advanced policy");
     expect(page).not.toMatch(/<details[^>]*\sopen/);
     expect(page).toContain('name="allowedHosts"');
+    // The allowed-hosts dependency is stated where the injection fields are.
+    expect(page).toContain("Needs at least one allowed target host");
     expect(page).toContain('name="headerRules"');
     expect(page).toContain('name="clientVars"');
     expect(page).toContain("Client-referencable variables");

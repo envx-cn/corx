@@ -964,6 +964,8 @@ const en = {
       allowedHostsPh: "api.vendor.com, *.vendor.com (required for injection)",
       injection: "Upstream injection",
       injectionHint: "Variables are injected into headers/params on the way out. One rule per line; @hosts scopes the lines below, !Name removes, ${var} inserts a variable. The same header can be set once per host (@host1 / @host2), so one key can hold a credential per upstream.",
+      injectionHostsHint:
+        "Needs at least one allowed target host (Advanced policy) — the save is rejected without one.",
       vars: "Variables",
       varsPh: "UPSTREAM_TOKEN=sk-live-… (blank = keep the stored value)",
       clientVars: "Client-referencable variables",
@@ -2109,6 +2111,7 @@ const zh: Messages = {
       allowedHostsPh: "api.vendor.com, *.vendor.com（配置注入时必填）",
       injection: "上游注入",
       injectionHint: "变量会在转发时注入到 Header / Query。每行一条规则；@hosts 为下方规则限定作用域，!Name 表示删除，${var} 插入变量。同一个 header 可以在不同 host 下各设一次（@host1 / @host2），因此一个 key 能为每个上游各带一套凭证。",
+      injectionHostsHint: "至少需要一个允许的目标主机（在“高级策略”中）——否则变量和规则会被拒绝保存。",
       vars: "变量",
       varsPh: "UPSTREAM_TOKEN=sk-live-…（留空 = 保持已有值）",
       clientVars: "客户端可引用变量",
