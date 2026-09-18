@@ -153,7 +153,17 @@ Files: `app/proxy/cache.ts`, `app/proxy/handler.ts`.
   below (`@` alone resets to key-level), `#` comments.
 - **Query rules**: `name = value`, `!name`.
 - Rules always win over client input; removes run before sets; per-rule
-  `@hosts` narrows to a subset of the key-level allowlist.
+  `@hosts` narrows to a subset of the key-level allowlist. A name may repeat
+  across **disjoint** scopes — one key can hold a credential per target, the
+  same header name included — while overlapping scopes are rejected at parse
+  time (`hostScopesOverlap`), so "which rule wins" is never defined by line
+  order.
+- The worked multi-upstream example is code-coupled: `app/lib/docs.ts`
+  (`DOCS_INJECTION_VARS` / `DOCS_INJECTION_RULES` / `DOCS_INJECTION_HOSTS`)
+  renders it on `/docs` → **Upstream credentials** and `test/docs.test.ts` feeds
+  the same strings to `parseVarsInput`/`parseRulesInput`/`parseHostsInput`, so
+  the page cannot document a shape the save path rejects. `llms-full.txt`
+  restates the per-target rule for agents.
 - **Allowed target hosts is mandatory** once anything is injected (confused
   deputy guard): exact, `*.suffix` (label boundary enforced), or explicit `*`
   (≤ 32 patterns). A stored row with rules but no allowlist fails closed

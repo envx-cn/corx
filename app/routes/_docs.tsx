@@ -9,7 +9,7 @@ import { setLangCookie } from "../lib/i18n/hono.js";
 import { SiteFooter, SiteHead, SiteNav } from "../components/site.js";
 import { OG_IMAGE, docsAlternates, docsJsonLd } from "../lib/seo.js";
 import { CONTENT_UPDATED, REPO_DOCS } from "../lib/site-info.js";
-import { DOCS_KEY_FORMS, DOCS_PARAMS, DOCS_SHAPES, docsShapeExample } from "../lib/docs.js";
+import { DOCS_INJECTION_HOSTS, DOCS_INJECTION_RULES, DOCS_INJECTION_VARS, DOCS_KEY_FORMS, DOCS_PARAMS, DOCS_SHAPES, docsShapeExample } from "../lib/docs.js";
 import CopyButton, { type CopyButtonLabels } from "../islands/copy-button.js";
 import { Section, SubSection } from "../components/prose.js";
 
@@ -88,6 +88,7 @@ export function DocsPage(props: {
     { id: "call", label: t("docs.toc.call") },
     { id: "params", label: t("docs.toc.params") },
     { id: "auth", label: t("docs.toc.auth") },
+    { id: "upstream", label: t("docs.toc.upstream") },
     { id: "caching", label: t("docs.toc.caching") },
     { id: "limits", label: t("docs.toc.limits") },
     { id: "security", label: t("docs.toc.security") },
@@ -216,6 +217,38 @@ export function DocsPage(props: {
             <SubSection title={t("docs.auth.keyless.title")} body={t("docs.auth.keyless.body")} />
             <SubSection title={t("docs.auth.public.title")} body={t("docs.auth.public.body")} />
             <SubSection title={t("docs.auth.where.title")} body={t("docs.auth.where.body")} />
+          </Section>
+
+          <Section id="upstream" title={t("docs.upstream.title")}>
+            <p class="mt-2 text-sm text-base-content/75 leading-relaxed">{t("docs.upstream.lead")}</p>
+            <SubSection title={t("docs.upstream.ways.title")} body={t("docs.upstream.ways.body")} />
+            <div class="mt-6">
+              <h3 class="text-base font-semibold">{t("docs.upstream.example.title")}</h3>
+              <p class="mt-1.5 text-sm text-base-content/75 leading-relaxed">{t("docs.upstream.example.body")}</p>
+              {/* One key, three upstreams — the blocks are the two editor
+                  fields plus the allowlist, and test/docs.test.ts feeds them
+                  to the real parser so the page cannot document a shape it
+                  rejects. */}
+              {[
+                { label: t("docs.upstream.example.varsLabel"), text: DOCS_INJECTION_VARS.join("\n") },
+                { label: t("docs.upstream.example.rulesLabel"), text: DOCS_INJECTION_RULES.join("\n") },
+                { label: t("docs.upstream.example.hostsLabel"), text: DOCS_INJECTION_HOSTS },
+              ].map((block) => (
+                <div class="mt-3">
+                  <p class="text-xs font-medium">{block.label}</p>
+                  <div class="mt-1 flex items-start gap-2">
+                    <pre class="min-w-0 flex-1 overflow-x-auto rounded-box bg-base-200 px-3 py-2 text-xs leading-relaxed">
+                      <code>{block.text}</code>
+                    </pre>
+                    <CopyButton text={block.text} labels={copyLabels} />
+                  </div>
+                </div>
+              ))}
+              <p class="mt-3 text-sm text-base-content/75 leading-relaxed">{t("docs.upstream.example.note")}</p>
+            </div>
+            <SubSection title={t("docs.upstream.uses.title")} body={t("docs.upstream.uses.body")} />
+            <SubSection title={t("docs.upstream.keys.title")} body={t("docs.upstream.keys.body")} />
+            <SubSection title={t("docs.upstream.rails.title")} body={t("docs.upstream.rails.body")} />
           </Section>
 
           <Section id="caching" title={t("docs.caching.title")}>

@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../app/server.js";
 import type { Env } from "../app/lib/types.js";
 import { CONTROL_PARAMS } from "../app/lib/control.js";
-import { DOCS_PARAMS, DOCS_SHAPES, docsShapeExample } from "../app/lib/docs.js";
+import { DOCS_INJECTION_HOSTS, DOCS_INJECTION_RULES, DOCS_INJECTION_VARS, DOCS_PARAMS, DOCS_SHAPES, docsShapeExample } from "../app/lib/docs.js";
+import { parseHostsInput, parseRulesInput, parseVarsInput } from "../app/proxy/inject.js";
 import { makeT } from "../app/lib/i18n/locale.js";
 
 /**
@@ -88,6 +89,29 @@ describe("docs registry", () => {
     expect(examples[3]).toContain("<zone>");
     for (const example of examples) expect(example).not.toContain("corx.dev");
   });
+
+  it("ships a multi-upstream injection example the real parser accepts", () => {
+    // The /docs upstream section prints these three fields, so they must be
+    // exactly what the save path accepts — otherwise the page documents a shape
+    // the console would reject with a 400.
+    const vars = parseVarsInput(DOCS_INJECTION_VARS.join("\n"));
+    const rules = parseRulesInput(
+      DOCS_INJECTION_RULES.join("\n"),
+      "header",
+      new Set(vars.map((v) => v.name)),
+    );
+    const hosts = parseHostsInput(DOCS_INJECTION_HOSTS);
+
+    // The point of the section: the same header name on two hosts, each with
+    // its own variable (the `Authorization` shape the fix in #78 unblocked).
+    const authorization = rules.filter((r) => r.name === "Authorization");
+    expect(authorization).toHaveLength(2);
+    expect(authorization.map((r) => r.hosts)).toEqual([["api.openai.com"], ["api.vendor.com"]]);
+    // And every scoped rule sits inside the allowlist the page prints.
+    for (const rule of rules) {
+      for (const host of rule.hosts ?? []) expect(hosts, rule.name).toContain(host);
+    }
+  });
 });
 
 describe("docs page contract", () => {
@@ -127,6 +151,14 @@ describe("docs page contract", () => {
     for (const form of ["X-Api-Key", "Authorization: Bearer", "corx-key"]) {
       expect(html).toContain(form);
     }
+    // The multi-upstream example, field by field.
+    for (const block of [
+      DOCS_INJECTION_VARS.join("\n"),
+      DOCS_INJECTION_RULES.join("\n"),
+      DOCS_INJECTION_HOSTS,
+    ]) {
+      expect(html).toContain(block);
+    }
   });
 
   it("covers the auth, caching, limits, security and self-hosting facts", async () => {
@@ -135,6 +167,11 @@ describe("docs page contract", () => {
     expect(en).toContain("Keyless origin grants");
     expect(en).toContain("Public tier");
     expect(en).toContain("Where the key goes");
+    // Upstream credentials: the ways, the worked example and when to split keys.
+    expect(en).toContain("Upstream credentials");
+    expect(en).toContain("How a credential is attached");
+    expect(en).toContain("One key or several");
+    expect(en).toContain("Cache and safety");
     // Caching, with the marker header a caller can check.
     expect(en).toContain("X-Corx-Cache");
     expect(en).toContain("What bypasses the cache");
@@ -156,8 +193,11 @@ describe("docs page contract", () => {
     expect(zh).toContain('<html lang="zh"');
     expect(zh).toContain("使用文档");
     expect(zh).toContain("调用代理");
+    expect(zh).toContain("上游凭证");
+    expect(zh).toContain("一个 key 还是多个");
     expect(zh).toContain("哪些请求绕过缓存");
     expect(zh).not.toContain("What bypasses the cache");
+    expect(zh).not.toContain("One key or several");
   });
 
   it("turns ?lang= into the prefixed URL and remembers /en, /zh", async () => {
