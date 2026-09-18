@@ -1,5 +1,6 @@
 import { SiteFooter, SiteHead, SiteNav } from "../components/site.js";
 import { OG_IMAGE, termsJsonLd } from "../lib/seo.js";
+import { CONTENT_UPDATED } from "../lib/site-info.js";
 import type { Locale, TFunc } from "../lib/i18n/locale.js";
 
 /**
@@ -46,7 +47,7 @@ export function TermsPage(props: { origin: string; locale: Locale; t: TFunc; ema
         />
         <main class="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-12">
           <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight">{t("terms.title")}</h1>
-          <p class="mt-2 text-xs text-base-content/75">{t("terms.updated")}</p>
+          <p class="mt-2 text-xs text-base-content/75">{t("terms.updated", { date: CONTENT_UPDATED })}</p>
           <p class="mt-4 text-sm text-base-content/75 leading-relaxed">{description}</p>
 
           <Section title={t("terms.s1Title")} body={t("terms.s1Body")} />
