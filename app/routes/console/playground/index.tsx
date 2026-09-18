@@ -14,11 +14,21 @@ app.get("/", async (c) => {
   const keys: PlaygroundKeyOption[] = (await queryKeys(c.env.DB))
     .filter((k) => !k.revoked_at)
     .map((k) => ({ id: k.id, name: k.name }));
+  // ?key= preselects a stored key (the keys table's "Playground" link); an
+  // id that is gone or revoked falls back to no key rather than an empty label.
+  const wanted = (c.req.query("key") ?? "").trim();
+  const initialKeyId = keys.some((k) => k.id === wanted) ? wanted : "";
   return c.render(
     <>
       <h1 class="text-3xl font-semibold tracking-tight mb-1">{t("console.title.playground")}</h1>
       <p class="text-sm text-base-content/75 mb-4">{t("console.playground.sub")}</p>
-      <Playground keys={keys} csrf={c.get("csrfToken") ?? ""} i18n={playgroundI18n(t)} preview={previewI18n(t)} />
+      <Playground
+        keys={keys}
+        initialKeyId={initialKeyId}
+        csrf={c.get("csrfToken") ?? ""}
+        i18n={playgroundI18n(t)}
+        preview={previewI18n(t)}
+      />
     </>,
     { title: t("console.title.playground") },
   );

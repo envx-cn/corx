@@ -1,13 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { ProxyError } from "../app/lib/types.js";
 import {
+  DOCS_CLIENT_VARS,
+  DOCS_INJECTION_HOSTS,
+  DOCS_INJECTION_RULES,
+  DOCS_INJECTION_VARS,
+} from "../app/lib/docs.js";
+import {
   applyHeaderRules,
   applyParamRules,
   assertHostAllowed,
   assertInjectionParts,
   assertVarHostScopes,
+  checkInjectionForm,
   clientVarMap,
-  clientVarsToText,
   collectVarRefs,
   hostAllowed,
   normalizeHostPattern,
@@ -21,7 +27,6 @@ import {
   serializeInjection,
   substitute,
   varMap,
-  varsToText,
   withClientVars,
 } from "../app/proxy/inject.js";
 import type { InjectionParts } from "../app/proxy/inject.js";
@@ -70,6 +75,12 @@ describe("host patterns", () => {
 
   it("parses lists and dedupes", () => {
     expect(parseHostsInput("a.example, *.b.example a.example")).toEqual(["a.example", "*.b.example"]);
+    // The same separators as the origins field: commas, spaces and newlines.
+    expect(parseHostsInput("a.example\nb.example, c.example")).toEqual(["a.example", "b.example", "c.example"]);
+  });
+
+  it("names every bad entry in one message", () => {
+    expect(() => parseHostsInput("*.com https://x.com")).toThrowError(/"\*\.com".*"https:\/\/x\.com"/);
   });
 
   it("matches with a label boundary only", () => {
@@ -225,12 +236,6 @@ describe("parseRulesInput (query params)", () => {
 });
 
 describe("serialize round-trip", () => {
-  it("varsToText hides values and parseVarsInput keeps them", () => {
-    const text = varsToText(VARS);
-    expect(text).toBe("TOKEN=");
-    expect(parseVarsInput(text, VARS)).toEqual(VARS);
-  });
-
   it("rulesToText re-emits sections and parses back identically", () => {
     const parsed = parseRulesInput("@a.example\nX-A: 1\n!X-A\n@b.example\nX-B: 2\n@\nX-C: 3", "header", NAMES);
     const text = rulesToText(parsed, "header");
@@ -348,19 +353,6 @@ describe("client-referencable variables", () => {
     ]);
   });
 
-  it("round-trips the exposure text", () => {
-    const vars = parseVarsInput([
-      { name: "A", value: "1", client: true, hosts: ["api.vendor.com"] },
-      { name: "B", value: "2", client: true },
-      { name: "C", value: "3" },
-    ]);
-    expect(clientVarsToText(vars)).toBe("@api.vendor.com\nA\n@\nB");
-    expect([...parseClientVarsInput(clientVarsToText(vars)).entries()]).toEqual([
-      ["A", ["api.vendor.com"]],
-      ["B", []],
-    ]);
-  });
-
   it("withClientVars is the full description: unlisted names go private again", () => {
     const vars = parseVarsInput("A=1\nB=2", []);
     expect(withClientVars(vars, "A")).toEqual([
@@ -444,5 +436,83 @@ describe("resolveClientRefs", () => {
     expect(resolveClientRefs("plain", here)).toEqual({ value: "plain", resolved: false });
     // No exposed variables on this host: nothing is touched at all.
     expect(resolveClientRefs("${ANYWHERE}", new Map())).toEqual({ value: "${ANYWHERE}", resolved: false });
+  });
+});
+
+describe("checkInjectionForm (console fast path)", () => {
+  const base = {
+    vars: "",
+    clientVars: "",
+    headerRules: "",
+    paramRules: "",
+    responseRules: "",
+    allowedHosts: "api.vendor.com",
+  };
+
+  it("accepts the documented multi-upstream example", () => {
+    expect(
+      checkInjectionForm({
+        ...base,
+        vars: DOCS_INJECTION_VARS.join("\n"),
+        clientVars: DOCS_CLIENT_VARS.join("\n"),
+        headerRules: DOCS_INJECTION_RULES.join("\n"),
+        allowedHosts: DOCS_INJECTION_HOSTS,
+      }),
+    ).toBeNull();
+  });
+
+  it("flags a rule that references an undefined variable, with its line", () => {
+    expect(checkInjectionForm({ ...base, vars: "TOKEN=abc", headerRules: "# note\nAuthorization: Bearer ${OTHER}" })).toBe(
+      "Header rules line 2: unknown variable ${OTHER}",
+    );
+  });
+
+  it("flags a client-referencable name that does not exist", () => {
+    expect(checkInjectionForm({ ...base, vars: "TOKEN=abc", clientVars: "GHOST" })).toBe(
+      'Client-referencable variables: "GHOST" is not defined in Variables',
+    );
+  });
+
+  it("flags a rule reaching outside a scoped variable", () => {
+    expect(
+      checkInjectionForm({
+        ...base,
+        vars: "VENDOR_KEY=abc",
+        clientVars: "@api.vendor.com\nVENDOR_KEY",
+        headerRules: "@api.other.com\nAuthorization: Bearer ${VENDOR_KEY}",
+        allowedHosts: "api.vendor.com, api.other.com",
+      }),
+    ).toBe(
+      'Header rule "Authorization" references VENDOR_KEY, which is scoped to api.vendor.com — it cannot apply to api.other.com',
+    );
+  });
+
+  it("flags injection without an allowed target host", () => {
+    expect(checkInjectionForm({ ...base, vars: "TOKEN=abc", allowedHosts: "" })).toBe(
+      "Set at least one allowed target host before adding variables or injection rules",
+    );
+  });
+
+  it("accepts a blank value for a stored variable and requires one for a new name", () => {
+    expect(checkInjectionForm({ ...base, vars: "TOKEN=" }, ["TOKEN"])).toBeNull();
+    expect(checkInjectionForm({ ...base, vars: "TOKEN=" })).toBe('Variables line 1: value is required for "TOKEN"');
+  });
+
+  it("accepts the key page's row shape, where exposure is per row", () => {
+    // No clientVars field: the rows carry client/hosts themselves.
+    const { clientVars: _unused, ...rows } = base;
+    expect(
+      checkInjectionForm(
+        {
+          ...rows,
+          vars: [{ name: "TOKEN", value: "", client: true, hosts: "api.vendor.com" }],
+          headerRules: "@api.vendor.com\nAuthorization: Bearer ${TOKEN}",
+        },
+        ["TOKEN"],
+      ),
+    ).toBeNull();
+    expect(
+      checkInjectionForm({ ...rows, vars: [{ name: "GHOST", value: "", client: false, hosts: "" }] }),
+    ).toBe('vars[0]: value is required for "GHOST"');
   });
 });

@@ -31,6 +31,7 @@
  */
 import { ProxyError } from "../lib/types.js";
 import { CONTROL_PARAMS } from "../lib/control.js";
+import { splitListInput } from "./list-input.js";
 
 export interface InjectionVar {
   name: string;
@@ -387,17 +388,31 @@ export function normalizeHostPattern(raw: string): string {
 /** Parse a comma/whitespace separated host list (textarea, array, or CSV). */
 export function parseHostsInput(input: unknown): string[] {
   let parts: string[];
-  if (typeof input === "string") parts = input.split(/[\s,]+/);
+  if (typeof input === "string") parts = splitListInput(input);
   else if (Array.isArray(input)) parts = input.map((p) => String(p));
   else if (input == null) parts = [];
   else throw new ProxyError(400, "allowedHosts: expected text or an array");
 
   const out: string[] = [];
+  const bad: string[] = [];
   for (const part of parts) {
     const t = part.trim();
     if (!t) continue;
-    const pat = normalizeHostPattern(t);
-    if (!out.includes(pat)) out.push(pat);
+    try {
+      const pat = normalizeHostPattern(t);
+      if (!out.includes(pat)) out.push(pat);
+    } catch (err) {
+      if (!(err instanceof ProxyError)) throw err;
+      bad.push(t);
+    }
+  }
+  // Name every bad entry in one message: the field can show them together,
+  // instead of sending the operator back once per typo.
+  if (bad.length > 0) {
+    throw new ProxyError(
+      400,
+      `Invalid ${bad.length === 1 ? "host pattern" : "host patterns"}: ${bad.map((b) => `"${b}"`).join(", ")}`,
+    );
   }
   if (out.length > MAX_HOSTS) throw new ProxyError(400, `Too many allowed hosts (max ${MAX_HOSTS})`);
   return out;
@@ -610,6 +625,54 @@ export function assertVarHostScopes(
   }
 }
 
+/**
+ * The console's injection fields as the panel or the key page submit them.
+ * `vars` is editor text (`NAME=value` lines) or the per-variable rows the key
+ * page sends; `clientVars` is the textarea form only (the rows carry their own
+ * `client` / `hosts`).
+ */
+export interface InjectionFormInput {
+  vars: unknown;
+  clientVars?: unknown;
+  headerRules: string;
+  paramRules: string;
+  responseRules: string;
+  allowedHosts: string;
+}
+
+/**
+ * Fast path for the console form: replay the save-time injection checks on the
+ * typed text so a cross-reference mistake costs no round-trip. `previousNames`
+ * are the stored variable names — the editor shows `NAME=` for them and a blank
+ * value means "keep", so only names outside that set need a value (the console
+ * never receives secrets to put in the placeholders).
+ *
+ * Returns the first error message (same wording as the server's) or null. The
+ * server stays the authority: it re-runs everything against the real stored
+ * values and scopes.
+ */
+export function checkInjectionForm(input: InjectionFormInput, previousNames: string[] = []): string | null {
+  try {
+    const previous: InjectionVar[] = previousNames.map((name) => ({ name, value: "keep" }));
+    const parsed = parseVarsInput(input.vars, previous);
+    const vars = input.clientVars === undefined ? parsed : withClientVars(parsed, input.clientVars);
+    const names = new Set(vars.map((v) => v.name));
+    const parts: InjectionParts = {
+      vars,
+      headers: parseRulesInput(input.headerRules, "header", names),
+      params: parseRulesInput(input.paramRules, "param", names),
+      responseHeaders: parseRulesInput(input.responseRules, "response", names),
+      hosts: parseHostsInput(input.allowedHosts),
+    };
+    assertInjectionParts(parts);
+    assertVarHostScopes(parts);
+    return null;
+  } catch (err) {
+    if (err instanceof ProxyError) return err.message;
+    throw err;
+  }
+}
+
 export function serializeInjection(parts: InjectionParts): StoredInjectionFields {
   return {
     vars: JSON.stringify(parts.vars),
@@ -618,34 +681,6 @@ export function serializeInjection(parts: InjectionParts): StoredInjectionFields
     responseRules: JSON.stringify(parts.responseHeaders),
     allowedHosts: parts.hosts.length ? parts.hosts.join(", ") : null,
   };
-}
-
-/** Editor text for variables — values stay blank ("blank = keep existing"). */
-export function varsToText(vars: InjectionVar[]): string {
-  return vars.map((v) => `${v.name}=`).join("\n");
-}
-
-/**
- * Editor text for the client-exposure field: the exposed names, with `@hosts`
- * sections wherever the scope changes — the same shape `rulesToText` emits, so
- * the two textareas read alike. A variable that is not `client` is omitted.
- */
-export function clientVarsToText(vars: InjectionVar[]): string {
-  const lines: string[] = [];
-  let current: string | null = null;
-  let first = true;
-  for (const v of vars) {
-    if (!v.client) continue;
-    const hosts = v.hosts?.length ? v.hosts.join(" ") : null;
-    if (hosts !== current) {
-      if (hosts) lines.push(`@${hosts}`);
-      else if (!first) lines.push("@");
-      current = hosts;
-    }
-    first = false;
-    lines.push(v.name);
-  }
-  return lines.join("\n");
 }
 
 /** Editor text for rules, re-emitting `@hosts` sections where they change. */

@@ -1,13 +1,11 @@
 import { Hono } from "hono";
 import type { Env } from "../../lib/types.js";
-import { ProxyError } from "../../lib/types.js";
-import { createApiKey, queryKeys, updateApiKey } from "../../lib/admin.js";
+import { queryKeys, queryLastUsed } from "../../lib/admin.js";
 import type { KeyRow } from "../../lib/admin.js";
 import { DataTable, EmptyRow } from "../../components/table.js";
 import { RelTime } from "../../components/time.js";
-import CopyButton from "../../islands/copy-button.js";
-import KeyPanel, { type KeyFormValues, type KeyPanelI18n } from "../../islands/key-panel.js";
-import { clientVarsToText, readStoredInjection, rulesToText, varsToText } from "../../proxy/inject.js";
+import { readStoredInjection } from "../../proxy/inject.js";
+import { logRetentionDays } from "../../lib/db.js";
 import { consoleT } from "../../lib/i18n/hono.js";
 import type { TFunc } from "../../lib/i18n/locale.js";
 
@@ -15,193 +13,32 @@ const app = new Hono<{ Bindings: Env }>({ strict: false });
 
 app.get("/", async (c) => {
   const t = consoleT(c);
-  return c.render(<KeysContent keys={await queryKeys(c.env.DB)} newKey={null} csrf={c.get("csrfToken") ?? ""} t={t} />, {
-    title: t("console.title.keys"),
-  });
-});
-
-app.post("/", async (c) => {
-  const t = consoleT(c);
-  const values = readKeyForm(await c.req.parseBody());
-  try {
-    const { id, key } = await createApiKey(c.env.DB, {
-      name: values.name,
-      rateLimitPerMin: parseRate(values.rateLimitPerMin),
-      allowedOrigins: values.allowedOrigins,
-      cacheTtl: values.cacheTtl,
-      noCache: values.noCache,
-      ipCheck: values.ipCheck,
-      dnsCheck: values.dnsCheck,
-      keyless: values.keyless,
-      tier: values.tier ? "public" : "standard",
-      dailyLimitPerOrigin: values.dailyLimitPerOrigin,
-      dailyLimitPerHost: values.dailyLimitPerHost,
-      dailyLimitTotal: values.dailyLimitTotal,
-      allowedHosts: values.allowedHosts,
-      vars: values.vars,
-      clientVars: values.clientVars,
-      headerRules: values.headerRules,
-      paramRules: values.paramRules,
-      responseRules: values.responseRules,
-    }, c.env.INJECTION_KEK);
-    // The raw key is shown once — re-render with it, don't redirect.
-    return c.render(
-      <KeysContent
-        keys={await queryKeys(c.env.DB)}
-        newKey={{ id, key, name: values.name }}
-        csrf={c.get("csrfToken") ?? ""}
-        t={t}
-      />,
-      {
-        title: t("console.title.keys"),
-      },
-    );
-  } catch (err) {
-    const error = err instanceof ProxyError ? err.message : t("console.keys.createFailed");
-    return c.render(
-      <KeysContent
-        keys={await queryKeys(c.env.DB)}
-        newKey={null}
-        error={error}
-        createDraft={values}
-        csrf={c.get("csrfToken") ?? ""}
-        t={t}
-      />,
-      { title: t("console.title.keys") },
-    );
-  }
-});
-
-app.post("/:id", async (c) => {
-  const t = consoleT(c);
-  const id = c.req.param("id") ?? "";
-  const values = readKeyForm(await c.req.parseBody());
-  try {
-    await updateApiKey(c.env.DB, id, {
-      name: values.name,
-      rateLimitPerMin: parseRate(values.rateLimitPerMin),
-      allowedOrigins: values.allowedOrigins,
-      cacheTtl: values.cacheTtl,
-      noCache: values.noCache,
-      ipCheck: values.ipCheck,
-      dnsCheck: values.dnsCheck,
-      keyless: values.keyless,
-      tier: values.tier ? "public" : "standard",
-      dailyLimitPerOrigin: values.dailyLimitPerOrigin,
-      dailyLimitPerHost: values.dailyLimitPerHost,
-      dailyLimitTotal: values.dailyLimitTotal,
-      allowedHosts: values.allowedHosts,
-      vars: values.vars,
-      clientVars: values.clientVars,
-      headerRules: values.headerRules,
-      paramRules: values.paramRules,
-      responseRules: values.responseRules,
-    }, c.env.INJECTION_KEK);
-    return c.redirect("/console/keys", 302);
-  } catch (err) {
-    const error = err instanceof ProxyError ? err.message : t("console.keys.saveFailed");
-    return c.render(
-      <KeysContent
-        keys={await queryKeys(c.env.DB)}
-        newKey={null}
-        error={error}
-        editDraft={{ id, values }}
-        csrf={c.get("csrfToken") ?? ""}
-        t={t}
-      />,
-      { title: t("console.title.keys") },
-    );
-  }
-});
-
-/** Hard delete — the panel asks the admin to type the key's name first. */
-app.post("/:id/delete", async (c) => {
-  const t = consoleT(c);
-  const id = c.req.param("id") ?? "";
-  const form = await c.req.parseBody();
-  const confirm = String(form["confirmName"] ?? "").trim();
   const keys = await queryKeys(c.env.DB);
-  const key = keys.find((k) => k.id === id);
-  const fail = (error: string) =>
-    c.render(
-      <KeysContent
-        keys={keys}
-        newKey={null}
-        error={error}
-        editDraft={key ? { id, values: rowValues(key) } : undefined}
-        csrf={c.get("csrfToken") ?? ""}
-        t={t}
-      />,
-      { title: t("console.title.keys") },
-    );
-  if (!key) return fail(t("console.keys.deleteFailed"));
-  if (confirm !== key.name) return fail(t("console.keys.deleteMismatch", { name: key.name }));
-  await c.env.DB.prepare("DELETE FROM api_keys WHERE id = ?").bind(id).run();
-  return c.redirect("/console/keys", 302);
+  return c.render(
+    <KeysContent
+      keys={keys}
+      showRevoked={c.req.query("revoked") === "1"}
+      query={(c.req.query("q") ?? "").trim()}
+      sort={sortKey(c.req.query("sort"))}
+      dir={c.req.query("dir") === "desc" ? "desc" : "asc"}
+      lastUsed={await queryLastUsed(c.env.DB, logRetentionDays(c.env))}
+      logDays={logRetentionDays(c.env)}
+      t={t}
+    />,
+    {
+      title: t("console.title.keys"),
+    },
+  );
 });
 
 export default app;
 
 // ---------- Page markup (colocated) ----------
 
-/** Read the create/edit key form. Values stay raw so the server can echo them back. */
-function readKeyForm(form: Record<string, unknown>): KeyFormValues {
-  const on = (key: string) => String(form[key] ?? "") === "on";
-  // The panel sends a `checks` marker; posts without it (scripts, stale forms)
-  // keep the guards on rather than silently turning them off.
-  const panel = form["checks"] !== undefined;
-  return {
-    name: String(form["name"] ?? ""),
-    rateLimitPerMin: String(form["rateLimitPerMin"] ?? ""),
-    allowedOrigins: String(form["allowedOrigins"] ?? ""),
-    cacheTtl: String(form["cacheTtl"] ?? ""),
-    noCache: on("noCache"),
-    ipCheck: panel ? on("ipCheck") : true,
-    dnsCheck: panel ? on("dnsCheck") : true,
-    keyless: on("keyless"),
-    tier: on("tier"),
-    dailyLimitPerOrigin: String(form["dailyLimitPerOrigin"] ?? ""),
-    dailyLimitPerHost: String(form["dailyLimitPerHost"] ?? ""),
-    dailyLimitTotal: String(form["dailyLimitTotal"] ?? ""),
-    allowedHosts: String(form["allowedHosts"] ?? ""),
-    vars: String(form["vars"] ?? ""),
-    clientVars: String(form["clientVars"] ?? ""),
-    headerRules: String(form["headerRules"] ?? ""),
-    paramRules: String(form["paramRules"] ?? ""),
-    responseRules: String(form["responseRules"] ?? ""),
-  };
-}
-
-/** "120" → 120; blank or junk → null (inherit the deployment default). */
-function parseRate(raw: string): number | null {
-  if (raw.trim() === "") return null;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : null;
-}
-
-/** A key row as panel values (used as the edit panel's initial state). */
-function rowValues(k: KeyRow): KeyFormValues {
-  const injection = readStoredInjection(k);
-  return {
-    name: k.name,
-    rateLimitPerMin: k.rate_limit_per_min != null ? String(k.rate_limit_per_min) : "",
-    allowedOrigins: k.allowed_origins ?? "",
-    cacheTtl: k.cache_ttl != null ? String(k.cache_ttl) : "",
-    noCache: !!k.no_cache,
-    ipCheck: !!k.ip_check,
-    dnsCheck: !!k.dns_check,
-    keyless: !!k.keyless,
-    tier: k.tier === "public",
-    dailyLimitPerOrigin: k.daily_limit_per_origin != null ? String(k.daily_limit_per_origin) : "",
-    dailyLimitPerHost: k.daily_limit_per_host != null ? String(k.daily_limit_per_host) : "",
-    dailyLimitTotal: k.daily_limit_total != null ? String(k.daily_limit_total) : "",
-    allowedHosts: k.allowed_hosts ?? "",
-    vars: varsToText(injection.vars),
-    clientVars: clientVarsToText(injection.vars),
-    headerRules: rulesToText(injection.headers, "header"),
-    paramRules: rulesToText(injection.params, "param"),
-    responseRules: rulesToText(injection.responseHeaders, "response"),
-  };
+/** Sortable columns of the keys table; anything else falls back to created. */
+type KeySort = "name" | "rate" | "origins" | "lastUsed" | "created";
+function sortKey(raw: string | undefined): KeySort {
+  return raw === "name" || raw === "rate" || raw === "origins" || raw === "lastUsed" ? raw : "created";
 }
 
 /** How many injection entries a key carries (badge on the keys table). */
@@ -218,134 +55,164 @@ function cacheText(k: KeyRow, t: TFunc): string {
   return t("console.keys.global");
 }
 
-function panelLabels(t: TFunc): KeyPanelI18n {
-  return {
-    name: t("console.keys.name"),
-    namePh: t("console.keys.namePh"),
-    ratePerMin: t("console.keys.ratePerMin"),
-    ratePh: t("console.keys.ratePh"),
-    allowedOrigins: t("console.keys.allowedOrigins"),
-    originsPh: t("console.keys.originsPh"),
-    cacheTtl: t("console.keys.cacheTtl"),
-    cacheTtlTitle: t("console.keys.cacheTtlTitle"),
-    ttlPh: t("console.keys.ttlPh"),
-    noCache: t("console.keys.noCache"),
-    noCacheShort: t("console.keys.noCacheShort"),
-    noCacheHint: t("console.keys.noCacheTitle"),
-    checks: t("console.keys.checks"),
-    ipCheck: t("console.keys.ipCheck"),
-    ipCheckHint: t("console.keys.ipCheckHint"),
-    dnsCheck: t("console.keys.dnsCheck"),
-    dnsCheckHint: t("console.keys.dnsCheckHint"),
-    keyless: t("console.keys.keyless"),
-    keylessHint: t("console.keys.keylessHint"),
-    publicTier: t("console.keys.publicTier"),
-    publicTierHint: t("console.keys.publicTierHint"),
-    dailyLimits: t("console.keys.dailyLimits"),
-    dailyLimitPerOrigin: t("console.keys.dailyLimitPerOrigin"),
-    dailyLimitPerHost: t("console.keys.dailyLimitPerHost"),
-    dailyLimitTotal: t("console.keys.dailyLimitTotal"),
-    dailyLimitPh: t("console.keys.dailyLimitPh"),
-    allowedHosts: t("console.keys.allowedHosts"),
-    allowedHostsPh: t("console.keys.allowedHostsPh"),
-    injection: t("console.keys.injection"),
-    injectionHint: t("console.keys.injectionHint"),
-    vars: t("console.keys.vars"),
-    varsPh: t("console.keys.varsPh"),
-    clientVars: t("console.keys.clientVars"),
-    clientVarsPh: t("console.keys.clientVarsPh"),
-    clientVarsHint: t("console.keys.clientVarsHint"),
-    headerRules: t("console.keys.headerRules"),
-    headerRulesPh: t("console.keys.headerRulesPh"),
-    paramRules: t("console.keys.paramRules"),
-    paramRulesPh: t("console.keys.paramRulesPh"),
-    responseRules: t("console.keys.responseRules"),
-    responseRulesPh: t("console.keys.responseRulesPh"),
-    responseRulesHint: t("console.keys.responseRulesHint"),
-    danger: t("console.keys.danger"),
-    dangerHint: t("console.keys.dangerHint"),
-    delete: t("console.keys.delete"),
-    deleteTitle: t("console.keys.deleteTitle"),
-    deleteHint: t("console.keys.deleteHint"),
-    deleteConfirm: t("console.keys.deleteConfirm"),
-    cancel: t("ui.cancel"),
-    close: t("ui.close"),
-  };
+/**
+ * "Last used" from the raw-log window. No entry = no request in that window,
+ * which is not the same as never used — the dash says exactly that much.
+ */
+function lastUsedCell(k: KeyRow, lastUsed: Map<string, string> | undefined, t: TFunc) {
+  const at = lastUsed?.get(k.id);
+  if (!at) return <span class="text-base-content/75">—</span>;
+  return <RelTime value={at} t={t} />;
 }
 
+/**
+ * The keys list: one row per key, linking to its page (where policy, injection
+ * and the danger zone live), plus server-side filter and sort. Everything a
+ * row does is a GET, so the view is linkable and needs no island.
+ */
 function KeysContent(props: {
   keys: KeyRow[];
-  newKey: { id: string; key: string; name: string } | null;
-  error?: string | null;
-  /** Values to re-open the create panel with (a create failed). */
-  createDraft?: KeyFormValues;
-  /** Key + values to re-open the edit panel with (a save or delete failed). */
-  editDraft?: { id: string; values: KeyFormValues };
-  /** Session-bound CSRF token for every POST form on the page. */
-  csrf: string;
+  /** "Show revoked" view state (?revoked=1): dead keys stay inspectable. */
+  showRevoked?: boolean;
+  /** Name/host/origin filter text (?q=). */
+  query?: string;
+  /** Column sort (?sort= / ?dir=). */
+  sort?: KeySort;
+  dir?: "asc" | "desc";
+  /** Key id → last request inside the raw-log window. */
+  lastUsed?: Map<string, string>;
+  /** Raw-log retention, for the last-used caveat. */
+  logDays?: number;
   t: TFunc;
 }) {
   const { t } = props;
-  const labels = panelLabels(t);
-  // Revoked keys (API-side kill switch) are dead: not listed, not editable.
-  const keys = props.keys.filter((k) => !k.revoked_at);
+  // Revoked keys are dead at the edge, but they are not gone: the row keeps
+  // its policy and its traffic attributable until someone cleans it up. Hidden
+  // by default so the working list stays a working list.
+  const showRevoked = props.showRevoked ?? false;
+  const query = props.query ?? "";
+  const sort = props.sort ?? "created";
+  const dir = props.dir ?? "desc";
+  const revokedCount = props.keys.filter((k) => k.revoked_at).length;
+  const visible = showRevoked ? props.keys : props.keys.filter((k) => !k.revoked_at);
+  const needle = query.toLowerCase();
+  const matches = needle
+    ? visible.filter((k) =>
+        [k.name, k.allowed_origins, k.allowed_hosts].some((v) => (v ?? "").toLowerCase().includes(needle)),
+      )
+    : visible;
+  const sortValue = (k: KeyRow): string | number => {
+    switch (sort) {
+      case "name":
+        return (k.name || "").toLowerCase();
+      case "rate":
+        return k.rate_limit_per_min ?? -1;
+      case "origins":
+        return (k.allowed_origins ?? "").toLowerCase();
+      case "lastUsed":
+        return props.lastUsed?.get(k.id) ?? "";
+      default:
+        return k.created_at;
+    }
+  };
+  const keys = [...matches].sort((a, b) => {
+    const va = sortValue(a);
+    const vb = sortValue(b);
+    const cmp = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb));
+    return (dir === "asc" ? 1 : -1) * cmp;
+  });
+  // One place decides the URL, so a link changes one thing (sort, filter,
+  // toggle) without dropping the rest.
+  const pageHref = (over: { q?: string; revoked?: boolean; sort?: KeySort; dir?: "asc" | "desc" } = {}) => {
+    const p = new URLSearchParams();
+    const q = over.q !== undefined ? over.q : query;
+    if (q) p.set("q", q);
+    if (over.revoked !== undefined ? over.revoked : showRevoked) p.set("revoked", "1");
+    const s = over.sort ?? sort;
+    const d = over.dir ?? dir;
+    if (s !== "created" || d !== "desc") {
+      p.set("sort", s);
+      p.set("dir", d);
+    }
+    const qs = p.toString();
+    return qs ? `/console/keys?${qs}` : "/console/keys";
+  };
+  const sortLabel = (col: KeySort, label: string) => (
+    <a
+      class="link link-hover whitespace-nowrap"
+      href={pageHref({ sort: col, dir: sort === col && dir === "asc" ? "desc" : "asc" })}
+    >
+      {label}
+      {sort === col ? (dir === "asc" ? " ↑" : " ↓") : ""}
+    </a>
+  );
   return (
     <>
       <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
         <h1 class="text-3xl font-semibold tracking-tight">{t("console.title.keys")}</h1>
-        <KeyPanel
-          trigger={t("console.keys.create")}
-          triggerClass="btn btn-primary btn-sm"
-          title={t("console.keys.createTitle")}
-          submit={t("console.keys.create")}
-          action="/console/keys"
-          values={props.createDraft}
-          open={props.createDraft != null}
-          csrf={props.csrf}
-          labels={labels}
-        />
+        <div class="flex items-center gap-2">
+          {revokedCount > 0 ? (
+            <a
+              class="btn btn-ghost btn-sm"
+              href={showRevoked ? pageHref({ revoked: false }) : pageHref({ revoked: true })}
+            >
+              {showRevoked ? t("console.keys.hideRevoked") : t("console.keys.showRevoked", { n: revokedCount })}
+            </a>
+          ) : null}
+          <a class="btn btn-primary btn-sm" href="/console/keys/new">
+            {t("console.keys.create")}
+          </a>
+        </div>
       </div>
 
-      {props.error && (
-        <div role="alert" class="alert alert-error mb-4">
-          <span>{props.error}</span>
-        </div>
-      )}
-
-      {props.newKey && (
-        <div role="status" class="alert alert-success mb-4">
-          <div class="min-w-0">
-            <b>{t("console.keys.newKey")}</b>
-            <div class="flex items-center gap-2 mt-1">
-              <code class="break-all">{props.newKey.key}</code>
-              <CopyButton text={props.newKey.key} labels={{ copy: t("copy.copy"), copied: t("copy.copied") }} />
-            </div>
-            <div class="text-xs opacity-70 mt-1">
-              id: {props.newKey.id} · name: {props.newKey.name}
-            </div>
-          </div>
-        </div>
-      )}
+      <form method="get" action="/console/keys" class="mb-3 flex flex-wrap items-center gap-2">
+        {showRevoked ? <input type="hidden" name="revoked" value="1" /> : null}
+        {sort !== "created" || dir !== "desc" ? (
+          <>
+            <input type="hidden" name="sort" value={sort} />
+            <input type="hidden" name="dir" value={dir} />
+          </>
+        ) : null}
+        <input
+          name="q"
+          value={query}
+          placeholder={t("console.keys.filterPh")}
+          aria-label={t("console.keys.filterPh")}
+          class="input input-bordered input-sm w-full max-w-xs"
+        />
+        <button class="btn btn-sm shrink-0">{t("console.keys.filter")}</button>
+        {query ? (
+          <a class="btn btn-ghost btn-sm" href={pageHref({ q: "" })}>
+            {t("console.keys.filterClear")}
+          </a>
+        ) : null}
+      </form>
 
       <DataTable
         head={
           <>
-            <th>{t("console.keys.headName")}</th>
-            <th>{t("console.keys.headRate")}</th>
-            <th>{t("console.keys.headOrigins")}</th>
+            <th>{sortLabel("name", t("console.keys.headName"))}</th>
+            <th>{sortLabel("rate", t("console.keys.headRate"))}</th>
+            <th>{sortLabel("origins", t("console.keys.headOrigins"))}</th>
             <th class="hidden sm:table-cell">{t("console.keys.headCache")}</th>
-            <th class="hidden sm:table-cell">{t("console.keys.headCreated")}</th>
+            <th class="hidden md:table-cell">{sortLabel("lastUsed", t("console.keys.headLastUsed"))}</th>
+            <th class="hidden sm:table-cell">{sortLabel("created", t("console.keys.headCreated"))}</th>
             <th></th>
           </>
         }
         body={
           keys.length === 0 ? (
-            <EmptyRow cols={6} text={t("console.keys.empty")} />
+            <EmptyRow cols={7} text={query ? t("console.keys.emptyMatch") : t("console.keys.empty")} />
           ) : (
             keys.map((k) => (
               <tr>
                 <td class="whitespace-nowrap">
                   {k.name || <span class="text-base-content/75">—</span>}
+                  {k.revoked_at ? (
+                    <span class="badge badge-error badge-outline badge-sm ml-2 align-middle">
+                      {t("console.keys.badgeRevoked")}
+                    </span>
+                  ) : null}
                   {k.keyless ? (
                     <span class="badge badge-outline badge-sm ml-2 align-middle">{t("console.keys.badgeKeyless")}</span>
                   ) : null}
@@ -365,24 +232,21 @@ function KeysContent(props: {
                 <td class="hidden sm:table-cell">
                   <code class="text-base-content/75">{cacheText(k, t)}</code>
                 </td>
+                <td class="hidden md:table-cell">{lastUsedCell(k, props.lastUsed, t)}</td>
                 <td class="hidden text-base-content/75 sm:table-cell">
                   <RelTime value={k.created_at} t={t} />
                 </td>
                 <td>
-                  <div class="flex items-center justify-end">
-                    <KeyPanel
-                      trigger={t("console.keys.edit")}
-                      triggerClass="btn btn-xs"
-                      title={t("console.keys.editTitle")}
-                      submit={t("console.keys.save")}
-                      action={`/console/keys/${k.id}`}
-                      values={props.editDraft?.id === k.id ? props.editDraft.values : rowValues(k)}
-                      open={props.editDraft?.id === k.id}
-                      deleteAction={`/console/keys/${k.id}/delete`}
-                      keyName={k.name}
-                      csrf={props.csrf}
-                      labels={labels}
-                    />
+                  <div class="flex items-center justify-end gap-1">
+                    <a class="btn btn-xs btn-ghost" href={`/console/logs?key=${k.id}`}>
+                      {t("console.keys.logsLink")}
+                    </a>
+                    <a class="btn btn-xs btn-ghost" href={`/console/playground?key=${k.id}`}>
+                      {t("console.keys.playgroundLink")}
+                    </a>
+                    <a class="btn btn-xs" href={`/console/keys/${k.id}`}>
+                      {k.revoked_at ? t("console.keys.view") : t("console.keys.edit")}
+                    </a>
                   </div>
                 </td>
               </tr>
@@ -403,6 +267,9 @@ function KeysContent(props: {
         }}
       />
       <p class="mt-1 text-xs text-base-content/75">{t("console.keys.hintInjection")}</p>
+      {props.logDays != null ? (
+        <p class="mt-1 text-xs text-base-content/75">{t("console.keys.lastUsedHint", { days: props.logDays })}</p>
+      ) : null}
     </>
   );
 }

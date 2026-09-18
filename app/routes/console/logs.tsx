@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../../lib/types.js";
-import { queryLogs } from "../../lib/admin.js";
+import { queryKeyById, queryLogs } from "../../lib/admin.js";
 import type { LogRow } from "../../lib/admin.js";
 import { humanBytes } from "../../lib/format.js";
 import { MethodBadge, StatusBadge } from "../../components/badges.js";
@@ -23,8 +23,11 @@ function clampHours(n: number): number {
 app.get("/", async (c) => {
   const t = consoleT(c);
   const hours = clampHours(Number(c.req.query("hours") ?? 24));
-  const logs = await queryLogs(c.env.DB, { hours, limit: ROW_LIMIT });
-  return c.render(<LogsContent logs={logs} hours={hours} t={t} />, {
+  const key = (c.req.query("key") ?? "").trim();
+  const logs = await queryLogs(c.env.DB, { hours, limit: ROW_LIMIT, key: key || undefined });
+  // Name the filter when the key still exists; a deleted key shows its id.
+  const keyRow = key ? await queryKeyById(c.env.DB, key) : null;
+  return c.render(<LogsContent logs={logs} hours={hours} keyFilter={key} keyName={keyRow?.name ?? ""} t={t} />, {
     title: t("console.title.logs"),
   });
 });
@@ -32,7 +35,7 @@ app.get("/", async (c) => {
 export default app;
 
 // ---------- Page markup (colocated) ----------
-function LogsContent(props: { logs: LogRow[]; hours: number; t: TFunc }) {
+function LogsContent(props: { logs: LogRow[]; hours: number; keyFilter?: string; keyName?: string; t: TFunc }) {
   const { t } = props;
   return (
     <>
@@ -40,9 +43,18 @@ function LogsContent(props: { logs: LogRow[]; hours: number; t: TFunc }) {
       <div class="bg-base-100 border border-base-300 rounded-box p-4 mb-2">
         <form method="get" action="/console/logs" class="flex flex-wrap items-center gap-x-4 gap-y-3">
           <LogsRange hours={props.hours} i18n={{ label: t("console.logs.window") }} />
+          {props.keyFilter ? <input type="hidden" name="key" value={props.keyFilter} /> : null}
           <button class="btn btn-sm shrink-0">{t("console.logs.refresh")}</button>
         </form>
       </div>
+      {props.keyFilter ? (
+        <div class="mb-3 flex flex-wrap items-center gap-2">
+          <span class="badge badge-outline">{t("console.logs.keyFilter", { name: props.keyName || props.keyFilter })}</span>
+          <a class="link link-hover text-xs" href="/console/logs">
+            {t("console.logs.keyFilterClear")}
+          </a>
+        </div>
+      ) : null}
       {props.logs.length >= ROW_LIMIT && (
         <p class="text-xs text-base-content/75 mb-3">{t("console.logs.truncated", { n: ROW_LIMIT })}</p>
       )}

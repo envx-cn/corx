@@ -38,7 +38,7 @@ Files: `app/proxy/handler.ts`, `app/proxy/subdomain.ts`, `app/proxy/guard.ts`, `
 
 ## 2. CORS & client access
 
-- Global `ALLOWED_ORIGINS` (`*` default) or a comma list; **per-key override**
+- Global `ALLOWED_ORIGINS` (`*` default) or a comma/whitespace list; **per-key override**
   (blank inherits the global).
 - Origin entries are canonicalized on save (`URL.origin`: lowercase host, default
   port dropped) and matched exactly, except a **loopback port wildcard**
@@ -77,13 +77,15 @@ Files: `app/proxy/cors.ts`, `app/lib/auth.ts`, `app/lib/admin.ts`.
 - Public tier is validated at save time: no injection, both SSRF guards must
   stay on, and a daily total cap is required (see §12).
 - Lifecycle: create, partial update (`PATCH` merges with the stored row;
-  blank variable values keep the secret), revoke (kill switch), hard delete
-  from the console (type the key name to confirm).
+  blank variable values keep the secret), revoke (kill switch) and hard delete,
+  both from the console behind a type-the-name confirmation.
 - Read paths never leak secrets: `GET /api/keys` masks variable values to
   names only (`redactKeyRow`); `key_hash` is never selected by the console.
 
 Files: `app/lib/auth.ts`, `app/lib/admin.ts`, `app/routes/api/keys*`,
-`app/routes/console/keys.tsx`, `app/islands/key-panel.tsx`.
+`app/routes/console/keys.tsx`, `app/routes/console/keys/new.tsx`,
+`app/routes/console/keys/[id].tsx`, `app/routes/console/keys/_form.tsx`,
+`app/islands/injection-form.tsx`.
 
 ## 4. SSRF & abuse protection
 
@@ -170,12 +172,13 @@ Files: `app/proxy/cache.ts`, `app/proxy/handler.ts`.
   the page cannot document a shape the save path rejects. `llms-full.txt`
   restates the per-target rule for agents.
 - **Caller references** (`client: true` + optional `hosts` on a variable): the
-  console has a separate **Client-referencable variables** field (`parseClientVarsInput`
-  / `clientVarsToText` / `withClientVars`), the array form of `vars` carries the
-  two flags for the Admin API, and the handler resolves `${NAME}` per hop
-  (`clientVarMap` + `resolveClientRefs`) leaving everything it may not resolve
-  literal. `assertVarHostScopes` rejects at save time any rule that could reach
-  outside a scoped variable's hosts. A key with client-referencable variables
+  console exposes them per variable row (a Client toggle plus a host scope),
+  `parseClientVarsInput` / `withClientVars` accept the Admin API's exposure
+  field and the array form of `vars` carries the two flags, and the handler
+  resolves `${NAME}` per hop (`clientVarMap` + `resolveClientRefs`), leaving
+  everything it may not resolve literal. `assertVarHostScopes` rejects at save
+  time any rule that could reach outside a scoped variable's hosts. A key with
+  client-referencable variables
   bypasses the shared R2 cache (`handler.ts`), and the playground preview masks
   resolved values like any other secret. Resolution order is fixed — references
   first (headers per hop, query once before the cache key), then the rules, so
@@ -212,8 +215,9 @@ Files: `app/proxy/cache.ts`, `app/proxy/handler.ts`.
   their *resolved* form is part of the cache key (`responseRulesFingerprint`),
   so one key's stripped response can never be served as another key's.
 
-Files: `app/proxy/inject.ts`, `app/lib/admin.ts`, `app/routes/console/keys.tsx`,
-`app/islands/key-panel.tsx`.
+Files: `app/proxy/inject.ts`, `app/lib/admin.ts`, `app/lib/injection-preview.ts`,
+`app/routes/console/keys.tsx`, `app/routes/console/keys/[id].tsx`,
+`app/islands/injection-form.tsx`.
 
 ## 7. Admin API (JSON)
 
@@ -248,10 +252,22 @@ Files: `app/routes/api/**`, `app/lib/admin.ts`, `app/lib/access.ts`.
   request/traffic/cache-saved/error cards, requests-per-hour
   chart, Breakdown tabs (status / method / country), top hosts, top keys,
   recent errors.
-- **Keys**: create/edit modal panel (native `<dialog>`, state-less island so
-  fields never re-render while typing) for every per-key field including
-  injection editors; raw key shown once with a copy button; delete behind a
-  type-the-name confirmation; revoked badge.
+- **Keys**: a list with a **Last used** column (read from the raw-log window
+  — a dash means no request there, never a guessed timestamp), a
+  name/host/origin filter, sortable columns, per-row Logs / Playground links,
+  and a “show revoked” toggle so dead keys stay inspectable. Creating is its
+  own page (`/console/keys/new`): basics first, the advanced policy
+  (cache, SSRF guards, public tier) behind a native `<details>`, presets
+  (local development, public tier) as server-side pre-fills, the deployment's
+  effective defaults shown as “blank = …”, the raw key shown once with a copy
+  button, and a link straight to the optional injection step. The key page
+  (`/console/keys/:id`) edits everything on one URL: the policy and the
+  injection each have their own form and POST (absent fields mean “keep”, so
+  neither can clear the other) — variables as rows (name, write-only value,
+  client toggle, host scope), the three rule textareas with line-anchored
+  errors, and a masked preview; revoke and delete sit at the bottom behind
+  type-the-name confirmations, a revoked key renders read-only, and leaving
+  with unsaved edits warns first (the browser's beforeunload prompt).
 - **Playground**: composes a proxy request (method, route style `/fetch` /
   `/proxy/*` / bare path / simulated subdomain, headers, body, `ttl` /
   `no-cache`, Origin, simulated client IP, anonymous / stored / pasted key)
@@ -267,7 +283,9 @@ Files: `app/routes/api/**`, `app/lib/admin.ts`, `app/lib/access.ts`.
   (cache, SSRF block, metadata host, CORS preflight, Range, POST echo) and
   localStorage run history.
 - **Logs**: per-request rows with bytes, status, key, cache/auth-via badges,
-  and a 1 h–7 d lookback slider that re-filters on release.
+  and a 1 h–7 d lookback slider that re-filters on release; `?key=` narrows the
+  table to one key (badge + clear link), which is where the keys table's Logs
+  link lands.
 - **Blocklist**: inline add, removal behind a confirm dialog; blocking a domain
 also covers its subdomains.
 - **Profile**: identity (email, auth method) and a note that changes to the

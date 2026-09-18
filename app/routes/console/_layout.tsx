@@ -48,11 +48,15 @@ function Doc(props: { title: string; locale: Locale; children: Child; scripts?: 
             activation here — the button calls checkbox.click(), which does
             invalidate.
 
-            Confirm dialogs (logout, blocklist remove): server-rendered in
-            _confirm.tsx with a [data-corx-confirm] trigger, so this script
-            only has to open them — and reparent them to <body>, because a
-            closed daisyUI dropdown is display:none and would hide the dialog
-            with it. Cancel/backdrop close via <form method="dialog">. */}
+            Confirm dialogs (logout, blocklist remove, revoke/delete):
+            server-rendered in _confirm.tsx with a [data-corx-confirm] trigger,
+            so this script only has to open them — and reparent them to <body>,
+            because a closed daisyUI dropdown is display:none and would hide the
+            dialog with it. Cancel/backdrop close via <form method="dialog">.
+            Type-the-name dialogs carry data-corx-confirm-name; the script
+            enables their submit only on a match and resets on close. Busy
+            forms (data-corx-busy) disable their submit from the first paint,
+            and dirty forms (data-corx-dirty) warn before the page unloads. */}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function () {
@@ -88,11 +92,93 @@ function Doc(props: { title: string; locale: Locale; children: Child; scripts?: 
         if (typeof dialog.showModal === "function") { if (!dialog.open) dialog.showModal(); }
         else dialog.setAttribute("open", "");
       });
+      // Type-the-name confirmations (revoke, delete): the submit stays off
+      // until the typed name matches, and resets when the dialog closes.
+      var name = dialog.getAttribute("data-corx-confirm-name");
+      var input = dialog.querySelector("[data-corx-confirm-input]");
+      var submit = dialog.querySelector("[data-corx-confirm-submit]");
+      if (!name || !input || !submit) return;
+      var sync = function () { submit.disabled = input.value.trim() !== name; };
+      input.addEventListener("input", sync);
+      dialog.addEventListener("close", function () { input.value = ""; sync(); });
+      sync();
+    });
+  }
+  // One POST per form, from the first paint: mark the form busy and disable
+  // its submit while the server answers. Plain script (not an island) so a
+  // double click is caught even before hydration.
+  function wireBusyForms() {
+    document.querySelectorAll("form[data-corx-busy]").forEach(function (form) {
+      form.addEventListener("submit", function () {
+        form.setAttribute("aria-busy", "true");
+        var btn = form.querySelector('button[type="submit"]');
+        if (!btn || btn.disabled) return;
+        btn.disabled = true;
+        var saving = form.getAttribute("data-saving");
+        if (saving) btn.textContent = saving;
+      });
+    });
+  }
+  // Leaving a form half-filled loses the draft: forms opt in with
+  // data-corx-dirty="<id>", the snapshot is taken at parse time (values are
+  // already rendered), and beforeunload re-finds the live forms and compares
+  // them to it. Keyed by id, not by node: an island's hydration replaces its
+  // subtree (the injection form is one), so the captured element can be a
+  // detached copy by the time the page unloads.
+  function wireDirtyForms() {
+    var snaps = {};
+    document.querySelectorAll("form[data-corx-dirty]").forEach(function (form, i) {
+      var snap = {};
+      form.querySelectorAll("input[name], textarea[name]").forEach(function (el) {
+        snap[el.name] = { value: el.value, checked: el.checked, checkbox: el.type === "checkbox" };
+      });
+      snaps[form.getAttribute("data-corx-dirty") || "form-" + i] = snap;
+    });
+    if (!Object.keys(snaps).length) return;
+    function isDirty(form, snap) {
+      var seen = {};
+      var dirty = false;
+      form.querySelectorAll("input[name], textarea[name]").forEach(function (el) {
+        seen[el.name] = 1;
+        var before = snap[el.name];
+        if (!before) {
+          // A row that was not in the snapshot (the variable editor clones
+          // rows) counts once it carries anything — for a checkbox that is
+          // its checked state, never its "on" value attribute.
+          var filled = el.type === "checkbox" ? el.checked : el.value !== "";
+          if (filled) dirty = true;
+          return;
+        }
+        if (el.type === "checkbox" ? el.checked !== before.checked : el.value !== before.value) dirty = true;
+      });
+      for (var name in snap) {
+        if (seen[name]) continue;
+        // A removed row only counts if it had something in it.
+        var had = snap[name].checkbox ? snap[name].checked : snap[name].value !== "";
+        if (had) dirty = true;
+      }
+      return dirty;
+    }
+    // Any submit (save, revoke, delete) navigates on purpose: never prompt for it.
+    var submitting = false;
+    document.addEventListener("submit", function () { submitting = true; }, true);
+    window.addEventListener("beforeunload", function (e) {
+      if (submitting) return;
+      var dirty = false;
+      document.querySelectorAll("form[data-corx-dirty]").forEach(function (form, i) {
+        var snap = snaps[form.getAttribute("data-corx-dirty") || "form-" + i];
+        if (snap && isDirty(form, snap)) dirty = true;
+      });
+      if (!dirty) return;
+      e.preventDefault();
+      e.returnValue = "";
     });
   }
   function init() {
     try { wireSidebar(); } catch (e) { console.error(e); }
     try { wireConfirms(); } catch (e) { console.error(e); }
+    try { wireBusyForms(); } catch (e) { console.error(e); }
+    try { wireDirtyForms(); } catch (e) { console.error(e); }
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();

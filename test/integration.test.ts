@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../app/server.js";
+import injectionFormSrc from "../app/islands/injection-form.tsx?raw";
 import { signSession } from "../app/lib/session.js";
 import type { Env } from "../app/lib/types.js";
 
@@ -200,38 +201,69 @@ describe("route wiring (integration)", () => {
     expect(res.headers.get("location")).toBe("/console/login");
   });
 
-  it("authenticated console pages render; creating a key shows the Copy island", async () => {
+  it("renders the keys list and the create page, with no modal anywhere", async () => {
     const res = await call("/console/keys", { headers: { cookie: `corx_session=${sessionCookie}` } });
     expect(res.status).toBe(200);
     const page = await res.text();
     expect(page).toContain("API keys");
-    // The key panel carries the injection + keyless fields (island SSR).
-    expect(page).toContain("Upstream injection");
-    expect(page).toContain("Keyless access");
-    expect(page).toContain('name="headerRules"');
-    expect(page).toContain('name="clientVars"');
-    expect(page).toContain("Client-referencable variables");
-    expect(page).toContain('name="allowedHosts"');
-    // Public tier: the shared-key switch and its three daily caps.
-    expect(page).toContain('name="tier"');
-    expect(page).toContain('name="dailyLimitPerOrigin"');
-    expect(page).toContain('name="dailyLimitTotal"');
+    // Creating is its own page now; rows link to the key page, and the list
+    // itself has no POST form at all (the logout confirm dialog is chrome).
+    expect(page).toContain('href="/console/keys/new"');
+    expect(page).not.toContain('name="checks"');
+    expect(page).not.toContain('name="vars"');
+
+    const create = await call("/console/keys/new", { headers: { cookie: `corx_session=${sessionCookie}` } });
+    expect(create.status).toBe(200);
+    const createHtml = await create.text();
+    expect(createHtml).toContain("Create API key");
+    // The fast path is visible; the advanced policy is a collapsed <details>
+    // whose inputs still submit.
+    expect(createHtml).toContain("Advanced policy");
+    expect(createHtml).not.toMatch(/<details[^>]*\sopen/);
+    expect(createHtml).toContain('name="tier"');
+    expect(createHtml).toContain('name="dailyLimitTotal"');
+    // Injection needs the key to exist: it is never a field on this page.
+    expect(createHtml).not.toContain('name="headerRules"');
+    expect(createHtml).not.toContain('name="allowedHosts"');
+    // The double-submit guard is markup, wired by the Doc script from the
+    // first paint (no island, so it works before hydration too).
+    expect(createHtml).toContain("data-corx-busy");
 
     // Creating a key renders the CopyButton island (assert SSR output — the
-    // hydration meta itself is injected at build time by the honox plugin).
-    const created = await call("/console/keys", {
+    // hydration meta itself is injected at build time by the honox plugin),
+    // and the optional injection step is one link away.
+    const created = await call("/console/keys/new", {
       method: "POST",
       headers: {
         cookie: `corx_session=${sessionCookie}`,
         "content-type": "application/x-www-form-urlencoded",
       },
-      body: `name=my-app&csrf=${await csrfFrom("/console/keys")}`,
+      body: `name=my-app&csrf=${await csrfFrom("/console/keys/new")}`,
     });
     expect(created.status).toBe(200);
     const html = await created.text();
     expect(html).toContain("New key created");
     expect(html).toContain("Copy");
     expect(html).toContain('type="button"');
+    expect(html).toContain("Continue to injection");
+  });
+
+  it("serves the create page at /console/keys/new, not as a key id", async () => {
+    const res = await call("/console/keys/new", { headers: { cookie: `corx_session=${sessionCookie}` } });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Create API key");
+  });
+
+  it("ships a console inline script that parses", async () => {
+    const res = await call("/console/keys", { headers: { cookie: `corx_session=${sessionCookie}` } });
+    const html = await res.text();
+    const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
+    for (const fn of ["wireSidebar", "wireConfirms", "wireBusyForms", "wireDirtyForms"]) {
+      expect(script, fn).toContain(fn);
+    }
+    // Compile (do not run) the client script: a syntax error would otherwise
+    // only surface in a browser.
+    expect(() => new Function(script)).not.toThrow();
   });
 
   it("requires an API key name on the admin API", async () => {
@@ -299,17 +331,17 @@ describe("route wiring (integration)", () => {
     expect(viaAccess.headers.get("location")).toBe("https://envx.cloudflareaccess.com/cdn-cgi/access/logout");
   });
 
-  it("delete route reports an unknown key instead of deleting", async () => {
+  it("an unknown key id bounces delete back to the list", async () => {
     const res = await call("/console/keys/nope/delete", {
       method: "POST",
       headers: {
         cookie: `corx_session=${sessionCookie}`,
         "content-type": "application/x-www-form-urlencoded",
       },
-      body: `confirmName=x&csrf=${await csrfFrom("/console/keys")}`,
+      body: `confirmName=x&csrf=${await csrfFrom("/console/keys/new")}`,
     });
-    expect(res.status).toBe(200);
-    expect(await res.text()).toContain("Failed to delete key");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/console/keys");
   });
 
   it("unknown /console/* paths redirect to the console root", async () => {
@@ -1321,7 +1353,7 @@ describe("console key form (integration)", () => {
           return { meta: { changes: 1 } };
         },
         first: async () => (sql.includes("FROM api_keys") ? current : null),
-        all: async () => ({ results: [] }),
+        all: async () => ({ results: sql.includes("FROM api_keys") ? [current] : [] }),
       };
       return stmt;
     };
@@ -1329,6 +1361,8 @@ describe("console key form (integration)", () => {
   }
 
   const storedKey = {
+    id: "key-1",
+    name: "my-app",
     vars: "[]",
     header_rules: "[]",
     param_rules: "[]",
@@ -1344,27 +1378,419 @@ describe("console key form (integration)", () => {
     daily_limit_total: null,
   };
 
-  it("saves the response header rules the edit panel collected", async () => {
-    const { env: withDb, updates } = updateDb(storedKey);
-    const csrf = await csrfFrom("/console/keys", withDb);
-    const res = await call(
-      "/console/keys/key-1",
+  const revokedKey = {
+    ...storedKey,
+    id: "key-dead",
+    name: "old-app",
+    revoked_at: "2026-01-03T00:00:00Z",
+    created_at: "2026-01-01T00:00:00Z",
+  };
+
+  /** A key that already carries injection — the shape the page edits. */
+  const injectingKey = {
+    ...storedKey,
+    vars: JSON.stringify([
+      { name: "VENDOR_KEY", value: "sk-live-1", client: true, hosts: ["api.vendor.com"] },
+    ]),
+    header_rules: JSON.stringify([
+      { action: "set", name: "Authorization", value: "Bearer ${VENDOR_KEY}", hosts: ["api.vendor.com"] },
+    ]),
+    param_rules: JSON.stringify([
+      { action: "set", name: "api_key", value: "${VENDOR_KEY}", hosts: ["api.vendor.com"] },
+    ]),
+    response_rules: JSON.stringify([{ action: "remove", name: "X-Frame-Options" }]),
+    allowed_hosts: "api.vendor.com",
+  };
+
+  const post = (path: string, body: string, e: Env) =>
+    call(
+      path,
       {
         method: "POST",
         headers: {
           cookie: `corx_session=${sessionCookie}`,
           "content-type": "application/x-www-form-urlencoded",
         },
-        body:
-          `csrf=${csrf}&checks=1&name=my-app&allowedHosts=${encodeURIComponent("api.vendor.com")}` +
-          `&responseRules=${encodeURIComponent("!X-Frame-Options")}`,
+        body,
       },
+      e,
+    );
+
+  /** D1 for the keys table: api_keys rows plus the per-key last-used rollup. */
+  function keyTableDb(
+    keys: Array<Record<string, unknown>>,
+    lastUsed: Array<{ api_key_id: string; last_used: string }> = [],
+  ) {
+    const prepare = (sql: string) => {
+      const stmt = {
+        bind: () => stmt,
+        run: async () => ({ meta: { changes: 1 } }),
+        first: async () => (sql.includes("FROM api_keys") ? keys[0] ?? null : null),
+        all: async () => ({
+          results: sql.includes("FROM request_logs") ? lastUsed : sql.includes("FROM api_keys") ? keys : [],
+        }),
+      };
+      return stmt;
+    };
+    return { ...env, DB: { prepare } } as unknown as Env;
+  }
+
+  it("pre-fills the create page from ?preset= and the server accepts it", async () => {
+    const local = await call("/console/keys/new?preset=local", {
+      headers: { cookie: `corx_session=${sessionCookie}` },
+    });
+    const localHtml = await local.text();
+    expect(localHtml).toContain('value="http://localhost:*"');
+    expect(localHtml).toMatch(/name="keyless"[^>]*checked/);
+    // The page offers the other preset as a link (server-side pre-fill).
+    expect(localHtml).toContain('href="/console/keys/new?preset=public"');
+
+    const pub = await call("/console/keys/new?preset=public", {
+      headers: { cookie: `corx_session=${sessionCookie}` },
+    });
+    const pubHtml = await pub.text();
+    expect(pubHtml).toMatch(/name="tier"[^>]*checked/);
+    expect(pubHtml).toContain('value="15000"');
+    // The advanced section opens so the pre-filled caps are visible.
+    expect(pubHtml).toMatch(/<details[^>]*\sopen/);
+
+    // Each preset is a key the server accepts without further edits.
+    const localKey = await post(
+      "/console/keys/new",
+      `csrf=${await csrfFrom("/console/keys/new")}&checks=1&name=local-dev` +
+        `&allowedOrigins=${encodeURIComponent("http://localhost:*")}&keyless=on&ipCheck=on&dnsCheck=on`,
+      env,
+    );
+    expect(localKey.status).toBe(200);
+    expect(await localKey.text()).toContain("New key created");
+
+    const publicKey = await post(
+      "/console/keys/new",
+      `csrf=${await csrfFrom("/console/keys/new")}&checks=1&name=hosted-public&tier=on&ipCheck=on&dnsCheck=on` +
+        `&dailyLimitPerOrigin=3000&dailyLimitPerHost=5000&dailyLimitTotal=15000`,
+      env,
+    );
+    expect(publicKey.status).toBe(200);
+    expect(await publicKey.text()).toContain("New key created");
+  });
+
+  it("shows last used from the log window, and a dash without an entry", async () => {
+    const used = { ...storedKey, id: "key-used", name: "used-app", created_at: "2026-01-01T00:00:00Z" };
+    const idle = { ...storedKey, id: "key-idle", name: "idle-app", created_at: "2026-01-01T00:00:00Z" };
+    const e = keyTableDb([used, idle], [{ api_key_id: "key-used", last_used: "2026-01-02T03:04:05Z" }]);
+    const res = await call("/console/keys", { headers: { cookie: `corx_session=${sessionCookie}` } }, e);
+    const html = await res.text();
+    // The exact stamp is the record — never a guessed or rounded timestamp.
+    expect(html).toContain('datetime="2026-01-02T03:04:05Z"');
+    // A key with no request in the window gets a dash, not a fake date.
+    const idleRow = html.slice(html.indexOf("idle-app"), html.indexOf("idle-app") + 1500);
+    expect(idleRow).toContain("—");
+    expect(html).toContain("kept 30 days");
+  });
+
+  it("filters and sorts the keys table server-side", async () => {
+    const a = { ...storedKey, id: "k-a", name: "alpha", allowed_origins: "https://alpha.example" };
+    const b = { ...storedKey, id: "k-b", name: "beta", allowed_hosts: "api.beta.example" };
+    const e = keyTableDb([a, b]);
+
+    const filtered = await call("/console/keys?q=beta", { headers: { cookie: `corx_session=${sessionCookie}` } }, e);
+    const fHtml = await filtered.text();
+    expect(fHtml).toContain(">beta<");
+    expect(fHtml).not.toContain("alpha");
+    // The filter input keeps the text that was typed.
+    expect(fHtml).toContain('value="beta"');
+
+    const sorted = await call(
+      "/console/keys?sort=name&dir=asc",
+      { headers: { cookie: `corx_session=${sessionCookie}` } },
+      e,
+    );
+    const sHtml = await sorted.text();
+    expect(sHtml.indexOf(">alpha<")).toBeLessThan(sHtml.indexOf(">beta<"));
+    // The active column's header links to the other direction.
+    expect(sHtml).toContain("sort=name&amp;dir=desc");
+  });
+
+  it("lands on the logs page filtered to one key", async () => {
+    const seen: unknown[][] = [];
+    const prepare = (sql: string) => {
+      const stmt = {
+        bind(...values: unknown[]) {
+          seen.push(values);
+          return stmt;
+        },
+        run: async () => ({ meta: { changes: 0 } }),
+        first: async () => (sql.includes("FROM api_keys") ? { ...storedKey, id: "key-1", name: "my-app" } : null),
+        all: async () => ({ results: [] }),
+      };
+      return stmt;
+    };
+    const e = { ...env, DB: { prepare } } as unknown as Env;
+    const res = await call("/console/logs?key=key-1", { headers: { cookie: `corx_session=${sessionCookie}` } }, e);
+    const html = await res.text();
+    // The filter is applied in SQL and visible on the page (and survives refresh).
+    expect(seen.some((v) => v.includes("key-1") && v.includes("-24 hours"))).toBe(true);
+    expect(html).toContain("key: my-app");
+    expect(html).toContain('name="key" value="key-1"');
+  });
+
+  it("prefills the playground's key selector from ?key=", async () => {
+    const e = keyTableDb([storedKey]);
+    const res = await call("/console/playground?key=key-1", { headers: { cookie: `corx_session=${sessionCookie}` } }, e);
+    const html = await res.text();
+    expect(html).toMatch(/initialKeyId[^,]*key-1/);
+    // An id that is gone falls back to no preselect.
+    const bogus = await call("/console/playground?key=nope", { headers: { cookie: `corx_session=${sessionCookie}` } }, e);
+    expect(await bogus.text()).not.toMatch(/initialKeyId[^,]*nope/);
+  });
+
+  it("saves the injection page's variables and rules", async () => {
+    const { env: withDb, updates } = updateDb(injectingKey);
+    const csrf = await csrfFrom("/console/keys/key-1", withDb);
+    const res = await post(
+      "/console/keys/key-1/injection",
+      `csrf=${csrf}&varsPresent=1&allowedHosts=${encodeURIComponent("api.vendor.com")}` +
+        `&var_name_0=VENDOR_KEY&var_value_0=&var_client_0=on&var_hosts_0=${encodeURIComponent("api.vendor.com")}` +
+        `&responseRules=${encodeURIComponent("!X-Frame-Options")}`,
       withDb,
     );
     expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/console/keys/key-1");
     const update = updates.find((u) => u.sql.includes("response_rules = ?"));
     expect(update, "the update must carry the response rules column").toBeDefined();
+    // The row kept the stored secret (blank = keep) and gained its host scope.
+    const vars = update?.values.find((v) => typeof v === "string" && v.includes("VENDOR_KEY"));
+    expect(JSON.parse(String(vars))).toEqual([
+      { name: "VENDOR_KEY", value: "sk-live-1", client: true, hosts: ["api.vendor.com"] },
+    ]);
     expect(update?.values.some((v) => typeof v === "string" && v.includes("X-Frame-Options"))).toBe(true);
+  });
+
+  it("shows the deployment's effective defaults next to the fields", async () => {
+    const defaultsEnv = {
+      ...env,
+      RATE_LIMIT_PER_MIN: "77",
+      ALLOWED_ORIGINS: "https://a.example",
+      CACHE_TTL_SECONDS: "1200",
+      PUBLIC_CACHE_TTL_SECONDS: "60",
+    } as unknown as Env;
+    const res = await call("/console/keys/new", { headers: { cookie: `corx_session=${sessionCookie}` } }, defaultsEnv);
+    const html = await res.text();
+    // The "blank = …" lines read the proxy's own env, not a copy.
+    expect(html).toContain("blank = 77/min");
+    expect(html).toContain("blank = global (https://a.example)");
+    expect(html).toContain("blank = global 1200s (public tier 60s)");
+  });
+
+  it("carries the double-submit guard on the create and policy forms", async () => {
+    // The DOM behavior has no harness; the guard is markup (data-corx-busy)
+    // wired by the Doc's inline script from the first paint, so it holds even
+    // before any island hydrates.
+    const create = await call("/console/keys/new", { headers: { cookie: `corx_session=${sessionCookie}` } });
+    const createHtml = await create.text();
+    expect(createHtml).toContain("data-corx-busy");
+    expect(createHtml).toContain('data-saving="Saving…"');
+    expect(createHtml).toContain("form[data-corx-busy]"); // the wiring script
+    const { env: withDb } = updateDb(storedKey);
+    const key = await call("/console/keys/key-1", { headers: { cookie: `corx_session=${sessionCookie}` } }, withDb);
+    expect(await key.text()).toContain("data-corx-busy");
+  });
+
+  it("warns before leaving a form with unsaved edits", async () => {
+    // beforeunload is the only mechanism that covers every exit (links, back,
+    // tab close, URL bar); the prompt text is the browser's, so there is no
+    // copy to assert — only that the forms opt in and the wiring is present.
+    const create = await call("/console/keys/new", { headers: { cookie: `corx_session=${sessionCookie}` } });
+    const createHtml = await create.text();
+    expect(createHtml).toContain("beforeunload");
+    expect(createHtml).toContain("form[data-corx-dirty]");
+    // Snapshots are keyed by the form's id, not by node: an island's hydration
+    // replaces its subtree (the injection form), so a captured element can be
+    // detached by unload time.
+    expect(createHtml).toContain('getAttribute("data-corx-dirty")');
+    expect(createHtml).toMatch(/action="\/console\/keys\/new"[^>]*data-corx-dirty="create"/);
+
+    const { env: withDb } = updateDb(injectingKey);
+    const key = await call("/console/keys/key-1", { headers: { cookie: `corx_session=${sessionCookie}` } }, withDb);
+    const keyHtml = await key.text();
+    // Both forms on the key page opt in — policy markup and the injection island.
+    expect(keyHtml).toMatch(/action="\/console\/keys\/key-1\/policy"[^>]*data-corx-dirty="policy"/);
+    expect(keyHtml).toMatch(/action="\/console\/keys\/key-1\/injection"[^>]*data-corx-dirty="injection"/);
+    expect(injectionFormSrc).toContain('data-corx-dirty="injection"');
+  });
+
+  it("renders a failed injection save inline, next to the rule field", async () => {
+    const { env: withDb } = updateDb(injectingKey);
+    const csrf = await csrfFrom("/console/keys/key-1", withDb);
+    const res = await post(
+      "/console/keys/key-1/injection",
+      `csrf=${csrf}&varsPresent=1&allowedHosts=${encodeURIComponent("api.vendor.com")}` +
+        `&headerRules=${encodeURIComponent("X-A: 1\nX-B: 2\nX-C: 3\n=bad")}`,
+      withDb,
+    );
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    // The server's location prefix survives and lands under the rule field…
+    expect(html).toMatch(/data-field-error="headerRules"[^>]*>Header rules line 4/);
+    // …not in the top alert the operator would have to find.
+    expect(html).not.toMatch(/data-error-top[^>]*>\s*Header rules line 4/);
+    // The draft came back: the panel re-opened with what was typed.
+    expect(html).toContain("X-B: 2");
+  });
+
+  it("shows the missing-allowed-hosts error next to that field", async () => {
+    const { env: withDb } = updateDb(storedKey);
+    const csrf = await csrfFrom("/console/keys/key-1", withDb);
+    const res = await post(
+      "/console/keys/key-1/injection",
+      `csrf=${csrf}&allowedHosts=&varsPresent=1&var_name_0=NEW_KEY&var_value_0=x`,
+      withDb,
+    );
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    // assertInjectionParts' message lands under the field it demands.
+    expect(html).toMatch(/data-field-error="allowedHosts"[^>]*>Set at least one allowed target host/);
+    // The draft came back: the new row is still in the form.
+    expect(html).toContain('value="NEW_KEY"');
+  });
+
+  it("renders the key page: policy, injection rows, rules and a masked preview", async () => {
+    const { env: withDb } = updateDb(injectingKey);
+    const res = await call("/console/keys/key-1", { headers: { cookie: `corx_session=${sessionCookie}` } }, withDb);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Back to keys");
+    // Both halves are on the page, each with its own form/POST.
+    expect(html).toContain('action="/console/keys/key-1/policy"');
+    expect(html).toContain('action="/console/keys/key-1/injection"');
+    expect(html).toContain('name="rateLimitPerMin"');
+    expect(html).toContain('name="dailyLimitTotal"');
+    // Variable rows: name, scope and the client toggle, value always blank.
+    expect(html).toContain('name="var_name_0"');
+    expect(html).toContain('name="var_hosts_0"');
+    expect(html).toContain("VENDOR_KEY");
+    expect(html).toContain("api.vendor.com");
+    // Rules are prefilled as text.
+    expect(html).toContain("Bearer ${VENDOR_KEY}");
+    // Secret values never reach the page — the preview masks them as ***.
+    expect(html).not.toContain("sk-live-1");
+    expect(html).toContain("***");
+    // Danger zone: both destructive actions are type-the-name dialogs wired by
+    // the Doc script, with the submit disabled until the name matches.
+    expect(html).toContain('data-corx-confirm-name="my-app"');
+    expect(html).toContain("data-corx-confirm-input");
+    expect(html).toMatch(/data-corx-confirm-submit[^>]*disabled/);
+  });
+
+  it("a policy save never touches the injection fields", async () => {
+    const { env: withDb, updates } = updateDb(injectingKey);
+    const csrf = await csrfFrom("/console/keys/key-1", withDb);
+    const res = await post("/console/keys/key-1/policy", `csrf=${csrf}&checks=1&name=my-app`, withDb);
+    expect(res.status).toBe(302);
+    const update = updates.find((u) => u.sql.startsWith("UPDATE api_keys"));
+    expect(update).toBeDefined();
+    // No injection column in the UPDATE at all: absent fields mean "keep".
+    for (const column of ["vars = ?", "header_rules = ?", "param_rules = ?", "response_rules = ?", "allowed_hosts = ?"]) {
+      expect(update?.sql, column).not.toContain(column);
+    }
+  });
+
+  it("an injection save that omits a field leaves the stored value alone", async () => {
+    const { env: withDb, updates } = updateDb(injectingKey);
+    const csrf = await csrfFrom("/console/keys/key-1", withDb);
+    const res = await post(
+      "/console/keys/key-1/injection",
+      `csrf=${csrf}&headerRules=${encodeURIComponent("X-A: 1")}`,
+      withDb,
+    );
+    expect(res.status).toBe(302);
+    const update = updates.find((u) => u.sql.startsWith("UPDATE api_keys"));
+    // Only the rule field changed; the stored variables and query rules
+    // travelled through untouched (the merge reads the row for the rest).
+    expect(update?.values.some((v) => typeof v === "string" && v.includes("sk-live-1"))).toBe(true);
+    expect(update?.values.some((v) => typeof v === "string" && v.includes("api_key"))).toBe(true);
+    expect(update?.values.some((v) => typeof v === "string" && v.includes("X-Frame-Options"))).toBe(true);
+  });
+
+  it("wires the injection form: row add/remove and a pre-submit check", () => {
+    // The row editor and the fast path are DOM behaviour with no harness here,
+    // so pin them at the island's source (the pattern test/auth.test.ts uses).
+    expect(injectionFormSrc).toContain("data-var-add");
+    expect(injectionFormSrc).toContain("data-var-remove");
+    expect(injectionFormSrc).toContain("checkInjectionForm");
+    expect(injectionFormSrc).toContain("showError(injectionErrorField(message), message)");
+    expect(injectionFormSrc).toContain('setAttribute("aria-busy", "true")');
+  });
+
+  it("renders a revoked key's page read-only, with Delete as the only action", async () => {
+    const { env: withDb } = updateDb({ ...injectingKey, revoked_at: "2026-01-03T00:00:00Z" });
+    const res = await call("/console/keys/key-1", { headers: { cookie: `corx_session=${sessionCookie}` } }, withDb);
+    const html = await res.text();
+    expect(html).toContain("This key is revoked");
+    expect(html).toContain("<fieldset disabled");
+    // No save buttons and no revoke dialog; the delete form stays.
+    expect(html).not.toContain(">Save injection</button>");
+    expect(html).not.toContain(">Save</button>");
+    expect(html).not.toContain('action="/console/keys/key-1/revoke"');
+    expect(html).toContain('action="/console/keys/key-1/delete"');
+  });
+
+  it("bounces an unknown key id back to the list", async () => {
+    const res = await call("/console/keys/nope", { headers: { cookie: `corx_session=${sessionCookie}` } });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/console/keys");
+  });
+
+  it("hides revoked keys by default, and shows the badge behind ?revoked=1", async () => {
+    const { env: withDb } = updateDb(revokedKey);
+
+    const hidden = await call("/console/keys", { headers: { cookie: `corx_session=${sessionCookie}` } }, withDb);
+    const hiddenHtml = await hidden.text();
+    expect(hiddenHtml).not.toContain("old-app");
+    // The toggle reports what is one click away, even while hidden.
+    expect(hiddenHtml).toContain("Show revoked (1)");
+
+    const shown = await call("/console/keys?revoked=1", { headers: { cookie: `corx_session=${sessionCookie}` } }, withDb);
+    const shownHtml = await shown.text();
+    expect(shownHtml).toContain("old-app");
+    expect(shownHtml).toContain(">revoked</span>");
+    expect(shownHtml).toContain("Hide revoked");
+    // The row links to the key page; a revoked key reads as View, and has no
+    // revoke link anywhere (nothing left to revoke).
+    expect(shownHtml).toContain('href="/console/keys/key-dead"');
+    expect(shownHtml).toContain(">View</a>");
+    expect(shownHtml).not.toContain("/console/keys/key-dead/revoke");
+  });
+
+  it("revokes from the console behind the type-the-name check, keeping the row", async () => {
+    const { env: withDb, updates } = updateDb(storedKey);
+    const csrf = await csrfFrom("/console/keys/key-1", withDb);
+    const post = (body: string) =>
+      call(
+        "/console/keys/key-1/revoke",
+        {
+          method: "POST",
+          headers: {
+            cookie: `corx_session=${sessionCookie}`,
+            "content-type": "application/x-www-form-urlencoded",
+          },
+          body,
+        },
+        withDb,
+      );
+
+    const mismatch = await post(`confirmName=nope&csrf=${csrf}`);
+    expect(mismatch.status).toBe(200);
+    expect(await mismatch.text()).toContain("was not revoked");
+    expect(updates).toHaveLength(0);
+
+    const ok = await post(`confirmName=my-app&csrf=${csrf}`);
+    expect(ok.status).toBe(302);
+    // Back to the key's page, which now renders the revoked, read-only state.
+    expect(ok.headers.get("location")).toBe("/console/keys/key-1");
+    const revoke = updates.find((u) => u.sql.includes("revoked_at"));
+    expect(revoke, "revoke must set revoked_at").toBeDefined();
+    expect(revoke?.values).toContain("key-1");
   });
 });
 
