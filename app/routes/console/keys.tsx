@@ -95,6 +95,7 @@ app.post("/:id", async (c) => {
       clientVars: values.clientVars,
       headerRules: values.headerRules,
       paramRules: values.paramRules,
+      responseRules: values.responseRules,
     }, c.env.INJECTION_KEK);
     return c.redirect("/console/keys", 302);
   } catch (err) {

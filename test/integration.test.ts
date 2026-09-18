@@ -1288,3 +1288,66 @@ describe("control params (integration)", () => {
     expect(calls[0]).toBe("https://api.example.com/x");
   });
 });
+
+describe("console key form (integration)", () => {
+  /** D1 that answers the update flow and records the UPDATE it ran. */
+  function updateDb(current: Record<string, unknown>) {
+    const updates: Array<{ sql: string; values: unknown[] }> = [];
+    const prepare = (sql: string) => {
+      const call = { sql, values: [] as unknown[] };
+      const stmt = {
+        bind(...values: unknown[]) {
+          call.values = values;
+          return stmt;
+        },
+        run: async () => {
+          if (sql.startsWith("UPDATE api_keys")) updates.push(call);
+          return { meta: { changes: 1 } };
+        },
+        first: async () => (sql.includes("FROM api_keys") ? current : null),
+        all: async () => ({ results: [] }),
+      };
+      return stmt;
+    };
+    return { env: { ...env, DB: { prepare } } as unknown as Env, updates };
+  }
+
+  const storedKey = {
+    vars: "[]",
+    header_rules: "[]",
+    param_rules: "[]",
+    response_rules: "[]",
+    allowed_hosts: null,
+    keyless: 0,
+    allowed_origins: null,
+    ip_check: 1,
+    dns_check: 1,
+    tier: "standard",
+    daily_limit_per_origin: null,
+    daily_limit_per_host: null,
+    daily_limit_total: null,
+  };
+
+  it("saves the response header rules the edit panel collected", async () => {
+    const { env: withDb, updates } = updateDb(storedKey);
+    const csrf = await csrfFrom("/console/keys", withDb);
+    const res = await call(
+      "/console/keys/key-1",
+      {
+        method: "POST",
+        headers: {
+          cookie: `corx_session=${sessionCookie}`,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body:
+          `csrf=${csrf}&checks=1&name=my-app&allowedHosts=${encodeURIComponent("api.vendor.com")}` +
+          `&responseRules=${encodeURIComponent("!X-Frame-Options")}`,
+      },
+      withDb,
+    );
+    expect(res.status).toBe(302);
+    const update = updates.find((u) => u.sql.includes("response_rules = ?"));
+    expect(update, "the update must carry the response rules column").toBeDefined();
+    expect(update?.values.some((v) => typeof v === "string" && v.includes("X-Frame-Options"))).toBe(true);
+  });
+});
