@@ -7,7 +7,7 @@ import { DataTable, EmptyRow } from "../../components/table.js";
 import { RelTime } from "../../components/time.js";
 import CopyButton from "../../islands/copy-button.js";
 import KeyPanel, { type KeyFormValues, type KeyPanelI18n } from "../../islands/key-panel.js";
-import { clientVarsToText, readStoredInjection, rulesToText, varsToText } from "../../proxy/inject.js";
+import { readStoredInjection } from "../../proxy/inject.js";
 import { consoleT } from "../../lib/i18n/hono.js";
 import type { TFunc } from "../../lib/i18n/locale.js";
 
@@ -46,12 +46,6 @@ app.post("/", async (c) => {
       dailyLimitPerOrigin: values.dailyLimitPerOrigin,
       dailyLimitPerHost: values.dailyLimitPerHost,
       dailyLimitTotal: values.dailyLimitTotal,
-      allowedHosts: values.allowedHosts,
-      vars: values.vars,
-      clientVars: values.clientVars,
-      headerRules: values.headerRules,
-      paramRules: values.paramRules,
-      responseRules: values.responseRules,
     }, c.env.INJECTION_KEK);
     // The raw key is shown once — re-render with it, don't redirect.
     return c.render(
@@ -99,12 +93,6 @@ app.post("/:id", async (c) => {
       dailyLimitPerOrigin: values.dailyLimitPerOrigin,
       dailyLimitPerHost: values.dailyLimitPerHost,
       dailyLimitTotal: values.dailyLimitTotal,
-      allowedHosts: values.allowedHosts,
-      vars: values.vars,
-      clientVars: values.clientVars,
-      headerRules: values.headerRules,
-      paramRules: values.paramRules,
-      responseRules: values.responseRules,
     }, c.env.INJECTION_KEK);
     return c.redirect("/console/keys", 302);
   } catch (err) {
@@ -206,12 +194,6 @@ function readKeyForm(form: Record<string, unknown>): KeyFormValues {
     dailyLimitPerOrigin: String(form["dailyLimitPerOrigin"] ?? ""),
     dailyLimitPerHost: String(form["dailyLimitPerHost"] ?? ""),
     dailyLimitTotal: String(form["dailyLimitTotal"] ?? ""),
-    allowedHosts: String(form["allowedHosts"] ?? ""),
-    vars: String(form["vars"] ?? ""),
-    clientVars: String(form["clientVars"] ?? ""),
-    headerRules: String(form["headerRules"] ?? ""),
-    paramRules: String(form["paramRules"] ?? ""),
-    responseRules: String(form["responseRules"] ?? ""),
   };
 }
 
@@ -224,7 +206,6 @@ function parseRate(raw: string): number | null {
 
 /** A key row as panel values (used as the edit panel's initial state). */
 function rowValues(k: KeyRow): KeyFormValues {
-  const injection = readStoredInjection(k);
   return {
     name: k.name,
     rateLimitPerMin: k.rate_limit_per_min != null ? String(k.rate_limit_per_min) : "",
@@ -238,12 +219,6 @@ function rowValues(k: KeyRow): KeyFormValues {
     dailyLimitPerOrigin: k.daily_limit_per_origin != null ? String(k.daily_limit_per_origin) : "",
     dailyLimitPerHost: k.daily_limit_per_host != null ? String(k.daily_limit_per_host) : "",
     dailyLimitTotal: k.daily_limit_total != null ? String(k.daily_limit_total) : "",
-    allowedHosts: k.allowed_hosts ?? "",
-    vars: varsToText(injection.vars),
-    clientVars: clientVarsToText(injection.vars),
-    headerRules: rulesToText(injection.headers, "header"),
-    paramRules: rulesToText(injection.params, "param"),
-    responseRules: rulesToText(injection.responseHeaders, "response"),
   };
 }
 
@@ -290,23 +265,6 @@ function panelLabels(t: TFunc): KeyPanelI18n {
     dailyLimitPerHost: t("console.keys.dailyLimitPerHost"),
     dailyLimitTotal: t("console.keys.dailyLimitTotal"),
     dailyLimitPh: t("console.keys.dailyLimitPh"),
-    allowedHosts: t("console.keys.allowedHosts"),
-    allowedHostsPh: t("console.keys.allowedHostsPh"),
-    injection: t("console.keys.injection"),
-    injectionHint: t("console.keys.injectionHint"),
-    injectionHostsHint: t("console.keys.injectionHostsHint"),
-    vars: t("console.keys.vars"),
-    varsPh: t("console.keys.varsPh"),
-    clientVars: t("console.keys.clientVars"),
-    clientVarsPh: t("console.keys.clientVarsPh"),
-    clientVarsHint: t("console.keys.clientVarsHint"),
-    headerRules: t("console.keys.headerRules"),
-    headerRulesPh: t("console.keys.headerRulesPh"),
-    paramRules: t("console.keys.paramRules"),
-    paramRulesPh: t("console.keys.paramRulesPh"),
-    responseRules: t("console.keys.responseRules"),
-    responseRulesPh: t("console.keys.responseRulesPh"),
-    responseRulesHint: t("console.keys.responseRulesHint"),
     danger: t("console.keys.danger"),
     dangerHint: t("console.keys.dangerHint"),
     delete: t("console.keys.delete"),
@@ -427,9 +385,12 @@ function KeysContent(props: {
                     <span class="badge badge-primary badge-sm ml-2 align-middle">{t("console.keys.badgePublic")}</span>
                   ) : null}
                   {injectionCount(k) > 0 ? (
-                    <span class="badge badge-outline badge-sm ml-2 align-middle">
+                    <a
+                      href={`/console/keys/${k.id}`}
+                      class="badge badge-outline badge-sm ml-2 align-middle hover:badge-primary"
+                    >
                       {t("console.keys.badgeInject", { n: injectionCount(k) })}
-                    </span>
+                    </a>
                   ) : null}
                 </td>
                 <td class="tabular-nums">{k.rate_limit_per_min ?? t("console.keys.default")}</td>
@@ -443,7 +404,10 @@ function KeysContent(props: {
                   <RelTime value={k.created_at} t={t} />
                 </td>
                 <td>
-                  <div class="flex items-center justify-end">
+                  <div class="flex items-center justify-end gap-1">
+                    <a class="btn btn-xs btn-ghost" href={`/console/keys/${k.id}`}>
+                      {t("console.keys.injectionLink")}
+                    </a>
                     <KeyPanel
                       trigger={k.revoked_at ? t("console.keys.view") : t("console.keys.edit")}
                       triggerClass="btn btn-xs"

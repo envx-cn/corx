@@ -83,7 +83,8 @@ Files: `app/proxy/cors.ts`, `app/lib/auth.ts`, `app/lib/admin.ts`.
   names only (`redactKeyRow`); `key_hash` is never selected by the console.
 
 Files: `app/lib/auth.ts`, `app/lib/admin.ts`, `app/routes/api/keys*`,
-`app/routes/console/keys.tsx`, `app/islands/key-panel.tsx`.
+`app/routes/console/keys.tsx`, `app/routes/console/keys/[id].tsx`,
+`app/islands/key-panel.tsx`, `app/islands/injection-form.tsx`.
 
 ## 4. SSRF & abuse protection
 
@@ -212,8 +213,9 @@ Files: `app/proxy/cache.ts`, `app/proxy/handler.ts`.
   their *resolved* form is part of the cache key (`responseRulesFingerprint`),
   so one key's stripped response can never be served as another key's.
 
-Files: `app/proxy/inject.ts`, `app/lib/admin.ts`, `app/routes/console/keys.tsx`,
-`app/islands/key-panel.tsx`.
+Files: `app/proxy/inject.ts`, `app/lib/admin.ts`, `app/lib/injection-preview.ts`,
+`app/routes/console/keys.tsx`, `app/routes/console/keys/[id].tsx`,
+`app/islands/key-panel.tsx`, `app/islands/injection-form.tsx`.
 
 ## 7. Admin API (JSON)
 
@@ -249,11 +251,17 @@ Files: `app/routes/api/**`, `app/lib/admin.ts`, `app/lib/access.ts`.
   chart, Breakdown tabs (status / method / country), top hosts, top keys,
   recent errors.
 - **Keys**: create/edit modal panel (native `<dialog>`, state-less island so
-  fields never re-render while typing) for every per-key field including
-  injection editors; raw key shown once with a copy button; revoke and delete
-  behind type-the-name confirmations (revoke = kill switch, delete = cleanup),
-  a revoked badge, and a “show revoked” toggle so dead keys and their logs stay
-  attributable; a revoked key's panel opens read-only.
+  fields never re-render while typing) for the policy — name, rate, origins,
+  cache, keyless, the SSRF guards and the public tier, with the rarely-touched
+  fields behind a native `<details>`; raw key shown once with a copy button;
+  revoke and delete behind type-the-name confirmations (revoke = kill switch,
+  delete = cleanup), a revoked badge, and a “show revoked” toggle so dead keys
+  and their logs stay attributable; a revoked key's panel opens read-only.
+  Injection lives on its own page (`/console/keys/:id`, state-less form island)
+  — variables as rows (name, write-only value, client toggle, host scope), the
+  header/query/response rule textareas with line-anchored errors, and a masked
+  preview of what the upstream receives; saving it is a partial update, so it
+  can never clear policy and policy edits never touch injection.
 - **Playground**: composes a proxy request (method, route style `/fetch` /
   `/proxy/*` / bare path / simulated subdomain, headers, body, `ttl` /
   `no-cache`, Origin, simulated client IP, anonymous / stored / pasted key)

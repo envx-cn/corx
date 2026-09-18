@@ -1,6 +1,5 @@
 import type { Child } from "hono/jsx";
 import { useEffect, useId, useRef } from "hono/jsx/dom";
-import { checkInjectionForm } from "../proxy/inject.js";
 
 /**
  * Raw API-key form values, kept as strings. The server reads the same shape off
@@ -21,15 +20,6 @@ export interface KeyFormValues {
   dailyLimitPerOrigin: string;
   dailyLimitPerHost: string;
   dailyLimitTotal: string;
-  allowedHosts: string;
-  /** Editor text; variable values stay blank ("blank = keep existing"). */
-  vars: string;
-  /** Variables callers may reference, with optional `@hosts` scopes. */
-  clientVars: string;
-  headerRules: string;
-  paramRules: string;
-  /** Response header rules (what the caller receives back). */
-  responseRules: string;
 }
 
 /** UI strings for the key panel (injected from the server dict). */
@@ -62,24 +52,6 @@ export interface KeyPanelI18n {
   dailyLimitPerHost: string;
   dailyLimitTotal: string;
   dailyLimitPh: string;
-  allowedHosts: string;
-  allowedHostsPh: string;
-  injection: string;
-  injectionHint: string;
-  /** The allowed-hosts dependency, stated where the injection fields are. */
-  injectionHostsHint: string;
-  vars: string;
-  varsPh: string;
-  clientVars: string;
-  clientVarsPh: string;
-  clientVarsHint: string;
-  headerRules: string;
-  headerRulesPh: string;
-  paramRules: string;
-  paramRulesPh: string;
-  responseRules: string;
-  responseRulesPh: string;
-  responseRulesHint: string;
   danger: string;
   dangerHint: string;
   delete: string;
@@ -95,24 +67,6 @@ export interface KeyPanelI18n {
   revoke: string;
   revokeTitle: string;
   revokeHint: string;
-}
-
-/**
- * Variable names from an editor's `NAME=` lines. The console never receives
- * the stored values — a blank one means "keep" — so client-side validation
- * reads the names from the initial text to tell a known name with a blank
- * value from a new name with no value.
- */
-function storedVarNames(text: string | undefined): string[] {
-  if (!text) return [];
-  const names: string[] = [];
-  for (const line of text.split(/\r?\n/)) {
-    const t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    const eq = t.indexOf("=");
-    if (eq > 0) names.push(t.slice(0, eq).trim());
-  }
-  return names;
 }
 
 function Field(props: { label: string; class?: string; children: Child }) {
@@ -248,8 +202,6 @@ export default function KeyPanel(props: {
   const ref = useRef<HTMLDialogElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const submitRef = useRef<HTMLButtonElement>(null);
-  const detailsRef = useRef<HTMLDetailsElement>(null);
-  const clientErrorRef = useRef<HTMLDivElement>(null);
   const deleteRef = useRef<HTMLDialogElement>(null);
   const revokeRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -257,8 +209,6 @@ export default function KeyPanel(props: {
   const revokeTitleId = useId();
   const { labels } = props;
   const v = props.values;
-  /** Stored variable names: a blank value for one of them means "keep". */
-  const previousNames = storedVarNames(v?.vars);
 
   useEffect(() => {
     if (props.open && ref.current && !ref.current.open) ref.current.showModal();
@@ -268,41 +218,13 @@ export default function KeyPanel(props: {
   const hide = () => ref.current?.close();
 
   /**
-   * One POST per form. First the fast path: run the injection checks the route
-   * will run, on the typed text, so a cross-reference mistake costs no
-   * round-trip. Then disable imperatively so a slow round trip cannot take a
-   * second click — keep the panel state-less, so honox never re-renders over
-   * what is being typed.
+   * One POST per form. The browser navigates away on submit, but a slow round
+   * trip would still let a second click create a second key — and only that
+   * key's raw value is ever shown. Disabling imperatively keeps the panel
+   * state-less, so honox never re-renders over what is being typed.
    */
-  const onSubmit = (e: Event) => {
-    const form = formRef.current;
-    if (!form) return;
-    const fd = new FormData(form);
-    const field = (name: string) => String(fd.get(name) ?? "");
-    const message = checkInjectionForm(
-      {
-        vars: field("vars"),
-        clientVars: field("clientVars"),
-        headerRules: field("headerRules"),
-        paramRules: field("paramRules"),
-        responseRules: field("responseRules"),
-        allowedHosts: field("allowedHosts"),
-      },
-      previousNames,
-    );
-    if (message) {
-      e.preventDefault();
-      // The offending field is often behind the advanced <details>: open it
-      // and write the server's wording into the shared error slot.
-      if (detailsRef.current) detailsRef.current.open = true;
-      const slot = clientErrorRef.current;
-      if (slot) {
-        slot.textContent = message;
-        slot.classList.remove("hidden");
-      }
-      return;
-    }
-    form.setAttribute("aria-busy", "true");
+  const onSubmit = () => {
+    if (formRef.current) formRef.current.setAttribute("aria-busy", "true");
     if (submitRef.current) {
       submitRef.current.disabled = true;
       submitRef.current.textContent = labels.saving;
@@ -329,15 +251,12 @@ export default function KeyPanel(props: {
           </h3>
           {/* A re-opened dialog is top-layer: a page-level alert behind it is
               invisible. The server message is rendered here verbatim (line
-              prefixes and all); the client-side fast path writes into the same
-              slot imperatively (the island is state-less). */}
-          <div
-            ref={clientErrorRef}
-            role="alert"
-            class={`alert alert-error mt-4${props.error ? "" : " hidden"}`}
-          >
-            <span>{props.error ?? ""}</span>
-          </div>
+              prefixes and all) so the failed save explains itself. */}
+          {props.error ? (
+            <div role="alert" class="alert alert-error mt-4">
+              <span>{props.error}</span>
+            </div>
+          ) : null}
           {props.revoked ? (
             <div role="status" class="alert alert-warning mt-4">
               <span>{labels.revokedHint}</span>
@@ -393,19 +312,11 @@ export default function KeyPanel(props: {
               {/* A failed save re-opens the panel with every section expanded,
                   so the field the server complained about is reachable without
                   a click. */}
-              <details ref={detailsRef} class="mt-4 rounded-box border border-base-300" open={props.error != null}>
+              <details class="mt-4 rounded-box border border-base-300" open={props.error != null}>
                 <summary class="cursor-pointer select-none px-3 py-2 text-xs font-medium uppercase tracking-wide text-base-content/75">
                   {labels.advanced}
                 </summary>
                 <div class="grid gap-x-4 gap-y-3 p-3 pt-1 sm:grid-cols-2">
-                  <Field label={labels.allowedHosts} class="sm:col-span-2">
-                    <input
-                      name="allowedHosts"
-                      value={v?.allowedHosts ?? ""}
-                      placeholder={labels.allowedHostsPh}
-                      class="input input-bordered w-full font-mono text-xs"
-                    />
-                  </Field>
                   <Field label={labels.cacheTtl}>
                     <input
                       name="cacheTtl"
@@ -475,73 +386,6 @@ export default function KeyPanel(props: {
                   </div>
                 </div>
               </details>
-
-              {/* Upstream injection: variables are write-only — the editor shows
-                  "NAME=" and a blank value keeps the stored secret. */}
-              <div class="mt-4 rounded-box border border-base-300 p-3">
-                <div class="text-xs font-medium uppercase tracking-wide text-base-content/75">{labels.injection}</div>
-                <p class="mt-1 text-xs text-base-content/75">{labels.injectionHint}</p>
-                <p class="mt-1 text-xs text-warning">{labels.injectionHostsHint}</p>
-                <div class="mt-3 grid gap-3">
-                  <Field label={labels.vars}>
-                    <textarea
-                      name="vars"
-                      rows={2}
-                      placeholder={labels.varsPh}
-                      class="textarea textarea-bordered w-full font-mono text-xs leading-5"
-                    >
-                      {v?.vars ?? ""}
-                    </textarea>
-                  </Field>
-                  {/* Which variables a caller may reference, and where they may
-                      go. Same `@hosts` section grammar as the rule fields. */}
-                  <Field label={labels.clientVars}>
-                    <textarea
-                      name="clientVars"
-                      rows={2}
-                      placeholder={labels.clientVarsPh}
-                      class="textarea textarea-bordered w-full font-mono text-xs leading-5"
-                    >
-                      {v?.clientVars ?? ""}
-                    </textarea>
-                  </Field>
-                  <p class="-mt-2 text-xs text-base-content/75">{labels.clientVarsHint}</p>
-                  <Field label={labels.headerRules}>
-                    <textarea
-                      name="headerRules"
-                      rows={3}
-                      placeholder={labels.headerRulesPh}
-                      class="textarea textarea-bordered w-full font-mono text-xs leading-5"
-                    >
-                      {v?.headerRules ?? ""}
-                    </textarea>
-                  </Field>
-                  <Field label={labels.paramRules}>
-                    <textarea
-                      name="paramRules"
-                      rows={2}
-                      placeholder={labels.paramRulesPh}
-                      class="textarea textarea-bordered w-full font-mono text-xs leading-5"
-                    >
-                      {v?.paramRules ?? ""}
-                    </textarea>
-                  </Field>
-                  {/* Response rules are their own concern (what the caller gets
-                      back), and the embed recipe is the reason they exist — say
-                      so where the operator configures it. */}
-                  <Field label={labels.responseRules}>
-                    <textarea
-                      name="responseRules"
-                      rows={2}
-                      placeholder={labels.responseRulesPh}
-                      class="textarea textarea-bordered w-full font-mono text-xs leading-5"
-                    >
-                      {v?.responseRules ?? ""}
-                    </textarea>
-                  </Field>
-                  <p class="-mt-1 text-xs leading-relaxed text-base-content/75">{labels.responseRulesHint}</p>
-                </div>
-              </div>
             </fieldset>
 
             {/* Danger zone sits inside the save form (its button is

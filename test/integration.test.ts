@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../app/server.js";
 import keyPanelSrc from "../app/islands/key-panel.tsx?raw";
+import injectionFormSrc from "../app/islands/injection-form.tsx?raw";
 import { signSession } from "../app/lib/session.js";
 import type { Env } from "../app/lib/types.js";
 
@@ -206,20 +207,17 @@ describe("route wiring (integration)", () => {
     expect(res.status).toBe(200);
     const page = await res.text();
     expect(page).toContain("API keys");
-    // The key panel carries the injection + keyless fields (island SSR).
-    expect(page).toContain("Upstream injection");
     expect(page).toContain("Keyless access");
     // Create opens on the fast path: name/rate/origins and keyless. The
     // advanced policy is a collapsed <details> whose inputs still submit.
     expect(page).toContain("Advanced policy");
     expect(page).not.toMatch(/<details[^>]*\sopen/);
-    expect(page).toContain('name="allowedHosts"');
-    // The allowed-hosts dependency is stated where the injection fields are.
-    expect(page).toContain("Needs at least one allowed target host");
-    expect(page).toContain('name="headerRules"');
-    expect(page).toContain('name="clientVars"');
-    expect(page).toContain("Client-referencable variables");
-    expect(page).toContain('name="allowedHosts"');
+    // Injection has its own page now; the modal must not render its fields,
+    // or a policy save would carry empty strings and clear them.
+    expect(page).not.toContain('name="vars"');
+    expect(page).not.toContain('name="headerRules"');
+    expect(page).not.toContain('name="clientVars"');
+    expect(page).not.toContain('name="allowedHosts"');
     // Public tier: the shared-key switch and its three daily caps.
     expect(page).toContain('name="tier"');
     expect(page).toContain('name="dailyLimitPerOrigin"');
@@ -1362,26 +1360,55 @@ describe("console key form (integration)", () => {
     created_at: "2026-01-01T00:00:00Z",
   };
 
-  it("saves the response header rules the edit panel collected", async () => {
-    const { env: withDb, updates } = updateDb(storedKey);
-    const csrf = await csrfFrom("/console/keys", withDb);
-    const res = await call(
-      "/console/keys/key-1",
+  /** A key that already carries injection — the shape the page edits. */
+  const injectingKey = {
+    ...storedKey,
+    vars: JSON.stringify([
+      { name: "VENDOR_KEY", value: "sk-live-1", client: true, hosts: ["api.vendor.com"] },
+    ]),
+    header_rules: JSON.stringify([
+      { action: "set", name: "Authorization", value: "Bearer ${VENDOR_KEY}", hosts: ["api.vendor.com"] },
+    ]),
+    param_rules: JSON.stringify([
+      { action: "set", name: "api_key", value: "${VENDOR_KEY}", hosts: ["api.vendor.com"] },
+    ]),
+    response_rules: JSON.stringify([{ action: "remove", name: "X-Frame-Options" }]),
+    allowed_hosts: "api.vendor.com",
+  };
+
+  const post = (path: string, body: string, e: Env) =>
+    call(
+      path,
       {
         method: "POST",
         headers: {
           cookie: `corx_session=${sessionCookie}`,
           "content-type": "application/x-www-form-urlencoded",
         },
-        body:
-          `csrf=${csrf}&checks=1&name=my-app&allowedHosts=${encodeURIComponent("api.vendor.com")}` +
-          `&responseRules=${encodeURIComponent("!X-Frame-Options")}`,
+        body,
       },
+      e,
+    );
+
+  it("saves the injection page's variables and rules", async () => {
+    const { env: withDb, updates } = updateDb(injectingKey);
+    const csrf = await csrfFrom("/console/keys", withDb);
+    const res = await post(
+      "/console/keys/key-1/injection",
+      `csrf=${csrf}&varsPresent=1&allowedHosts=${encodeURIComponent("api.vendor.com")}` +
+        `&var_name_0=VENDOR_KEY&var_value_0=&var_client_0=on&var_hosts_0=${encodeURIComponent("api.vendor.com")}` +
+        `&responseRules=${encodeURIComponent("!X-Frame-Options")}`,
       withDb,
     );
     expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/console/keys/key-1");
     const update = updates.find((u) => u.sql.includes("response_rules = ?"));
     expect(update, "the update must carry the response rules column").toBeDefined();
+    // The row kept the stored secret (blank = keep) and gained its host scope.
+    const vars = update?.values.find((v) => typeof v === "string" && v.includes("VENDOR_KEY"));
+    expect(JSON.parse(String(vars))).toEqual([
+      { name: "VENDOR_KEY", value: "sk-live-1", client: true, hosts: ["api.vendor.com"] },
+    ]);
     expect(update?.values.some((v) => typeof v === "string" && v.includes("X-Frame-Options"))).toBe(true);
   });
 
@@ -1401,41 +1428,112 @@ describe("console key form (integration)", () => {
     expect(html).toContain('type="submit"');
   });
 
-  it("renders a failed save inside the re-opened edit panel, not behind it", async () => {
-    // The keys table has to render the row, otherwise there is no edit panel
-    // to re-open — that is the state a failed save comes back in.
-    const row = { ...storedKey, created_at: "2026-01-02T03:04:05Z" };
-    const { env: withDb } = updateDb(row);
+  it("renders a failed injection save inline, next to the rule field", async () => {
+    const { env: withDb } = updateDb(injectingKey);
     const csrf = await csrfFrom("/console/keys", withDb);
-    const res = await call(
-      "/console/keys/key-1",
-      {
-        method: "POST",
-        headers: {
-          cookie: `corx_session=${sessionCookie}`,
-          "content-type": "application/x-www-form-urlencoded",
-        },
-        body:
-          `csrf=${csrf}&checks=1&name=my-app&allowedHosts=${encodeURIComponent("api.vendor.com")}` +
-          `&headerRules=${encodeURIComponent("X-A: 1\nX-B: 2\nX-C: 3\n=bad")}`,
-      },
+    const res = await post(
+      "/console/keys/key-1/injection",
+      `csrf=${csrf}&varsPresent=1&allowedHosts=${encodeURIComponent("api.vendor.com")}` +
+        `&headerRules=${encodeURIComponent("X-A: 1\nX-B: 2\nX-C: 3\n=bad")}`,
       withDb,
     );
     expect(res.status).toBe(200);
     const html = await res.text();
-    // The server's line prefix survives, so the operator can find line 4.
-    expect(html).toContain("Header rules line 4");
-    // The message lands in the edit dialog that hydration re-opens over the page
-    // (the island-prop copy outside the dialogs is the hydration payload).
-    const dialogs = html.match(/<dialog[\s\S]*?<\/dialog>/g) ?? [];
-    const withError = dialogs.filter((d) => d.includes("Header rules line 4"));
-    expect(withError).toHaveLength(1);
-    expect(withError[0]).toContain('action="/console/keys/key-1"');
-    // A failed save re-opens the advanced policy expanded, so a rejected rule
-    // is on screen without another click.
-    expect(withError[0]).toMatch(/<details[^>]*\sopen/);
-    // ...not in the page-level alert, which the top layer would cover.
-    expect(html).not.toContain("alert-error mb-4");
+    // The server's location prefix survives and lands under the rule field…
+    expect(html).toMatch(/data-field-error="headerRules"[^>]*>Header rules line 4/);
+    // …not in the top alert the operator would have to find.
+    expect(html).not.toMatch(/data-error-top[^>]*>\s*Header rules line 4/);
+    // The draft came back: the panel re-opened with what was typed.
+    expect(html).toContain("X-B: 2");
+  });
+
+  it("shows the missing-allowed-hosts error next to that field", async () => {
+    const { env: withDb } = updateDb(storedKey);
+    const csrf = await csrfFrom("/console/keys", withDb);
+    const res = await post(
+      "/console/keys/key-1/injection",
+      `csrf=${csrf}&allowedHosts=&varsPresent=1&var_name_0=NEW_KEY&var_value_0=x`,
+      withDb,
+    );
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    // assertInjectionParts' message lands under the field it demands.
+    expect(html).toMatch(/data-field-error="allowedHosts"[^>]*>Set at least one allowed target host/);
+    // The draft came back: the new row is still in the form.
+    expect(html).toContain('value="NEW_KEY"');
+  });
+
+  it("renders the injection page: rows, rules and a masked preview", async () => {
+    const { env: withDb } = updateDb(injectingKey);
+    const res = await call("/console/keys/key-1", { headers: { cookie: `corx_session=${sessionCookie}` } }, withDb);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Back to keys");
+    // Variable rows: name, scope and the client toggle, value always blank.
+    expect(html).toContain('name="var_name_0"');
+    expect(html).toContain('name="var_hosts_0"');
+    expect(html).toContain("VENDOR_KEY");
+    expect(html).toContain("api.vendor.com");
+    // Rules are prefilled as text.
+    expect(html).toContain("Bearer ${VENDOR_KEY}");
+    // Secret values never reach the page — the preview masks them as ***.
+    expect(html).not.toContain("sk-live-1");
+    expect(html).toContain("***");
+  });
+
+  it("a policy save never touches the injection fields", async () => {
+    const { env: withDb, updates } = updateDb(injectingKey);
+    const csrf = await csrfFrom("/console/keys", withDb);
+    const res = await post("/console/keys/key-1", `csrf=${csrf}&checks=1&name=my-app`, withDb);
+    expect(res.status).toBe(302);
+    const update = updates.find((u) => u.sql.startsWith("UPDATE api_keys"));
+    expect(update).toBeDefined();
+    // No injection column in the UPDATE at all: absent fields mean "keep".
+    for (const column of ["vars = ?", "header_rules = ?", "param_rules = ?", "response_rules = ?", "allowed_hosts = ?"]) {
+      expect(update?.sql, column).not.toContain(column);
+    }
+  });
+
+  it("an injection save that omits a field leaves the stored value alone", async () => {
+    const { env: withDb, updates } = updateDb(injectingKey);
+    const csrf = await csrfFrom("/console/keys", withDb);
+    const res = await post(
+      "/console/keys/key-1/injection",
+      `csrf=${csrf}&headerRules=${encodeURIComponent("X-A: 1")}`,
+      withDb,
+    );
+    expect(res.status).toBe(302);
+    const update = updates.find((u) => u.sql.startsWith("UPDATE api_keys"));
+    // Only the rule field changed; the stored variables and query rules
+    // travelled through untouched (the merge reads the row for the rest).
+    expect(update?.values.some((v) => typeof v === "string" && v.includes("sk-live-1"))).toBe(true);
+    expect(update?.values.some((v) => typeof v === "string" && v.includes("api_key"))).toBe(true);
+    expect(update?.values.some((v) => typeof v === "string" && v.includes("X-Frame-Options"))).toBe(true);
+  });
+
+  it("wires the injection form: row add/remove and a pre-submit check", () => {
+    // The row editor and the fast path are DOM behaviour with no harness here,
+    // so pin them at the island's source (the pattern test/auth.test.ts uses).
+    expect(injectionFormSrc).toContain("data-var-add");
+    expect(injectionFormSrc).toContain("data-var-remove");
+    expect(injectionFormSrc).toContain("checkInjectionForm");
+    expect(injectionFormSrc).toContain("showError(injectionErrorField(message), message)");
+    expect(injectionFormSrc).toContain('setAttribute("aria-busy", "true")');
+  });
+
+  it("renders a revoked key's injection page read-only", async () => {
+    const { env: withDb } = updateDb({ ...injectingKey, revoked_at: "2026-01-03T00:00:00Z" });
+    const res = await call("/console/keys/key-1", { headers: { cookie: `corx_session=${sessionCookie}` } }, withDb);
+    const html = await res.text();
+    expect(html).toContain("This key is revoked");
+    expect(html).toContain("<fieldset disabled");
+    expect(html).not.toContain(">Save injection</button>");
+  });
+
+  it("bounces an unknown key id back to the list", async () => {
+    const res = await call("/console/keys/nope", { headers: { cookie: `corx_session=${sessionCookie}` } });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/console/keys");
   });
 
   it("hides revoked keys by default, and shows the badge behind ?revoked=1", async () => {

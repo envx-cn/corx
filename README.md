@@ -985,10 +985,15 @@ the 24h requests, traffic in/out, cache bandwidth saved, Requests per
 hour chart, a **Breakdown** selector with vertical bar charts for status /
 method / country, top hosts/keys, recent errors) · API keys (create and edit
 in a modal panel — name, rate limit, per-key origins/cache policy, keyless
-access, allowed target hosts and upstream injection (variables + header/query
-rules); the raw key is shown once; revoke and delete both ask you to type the
-key name — revoke is the kill switch, delete removes the row, and a “show
-revoked” toggle keeps dead keys inspectable so their logs stay attributable) ·
+access, the SSRF guards and the public-tier quotas, with the rarely-touched
+fields behind an **Advanced policy** disclosure; each key also has its own
+injection page (`/console/keys/:id`) where the variables are rows (a
+write-only value, client exposure, host scope), the header/query/response
+rules are textareas with line-anchored errors, and a masked preview shows
+what the upstream receives; the raw key is shown once; revoke and delete both
+ask you to type the key name — revoke is the kill switch, delete removes the
+row, and a “show revoked” toggle keeps dead keys inspectable so their logs
+stay attributable) ·
 Playground (compose a proxy request — method, route style `/fetch` /
 `/proxy/*` / bare path / simulated subdomain, headers, body, `ttl` / `no-cache`,
 Origin, simulated client IP, anonymous / stored / pasted key — and inspect the
@@ -1212,8 +1217,9 @@ app/              HonoX frontend (entry + console UI + API routes)
   routes/console/   console pages as file routes (_renderer dash shell,
                 _middleware login guard, _layout document shell, colocated
                 chrome _nav/_sidebar/_topbar, and
-                index/keys/logs/blocked/profile/login pages
-                via c.render()). The sidebar collapse pin + hover-float
+                index/keys/[id]/logs/blocked/profile/login pages
+                via c.render(); the [id] file is the per-key injection
+                page and its own POST). The sidebar collapse pin + hover-float
                 is a plain inline <script> in _layout (honox islands
                 re-render their own DOM, and Chromium :has/label quirks
                 make checkbox + script the reliable combo).

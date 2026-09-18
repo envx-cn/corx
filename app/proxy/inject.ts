@@ -611,12 +611,14 @@ export function assertVarHostScopes(
 }
 
 /**
- * The console's injection fields as the panel submits them: raw textarea text.
- * The island runs the save-time checks on this shape before the POST.
+ * The console's injection fields as the panel or the key page submit them.
+ * `vars` is editor text (`NAME=value` lines) or the per-variable rows the key
+ * page sends; `clientVars` is the textarea form only (the rows carry their own
+ * `client` / `hosts`).
  */
 export interface InjectionFormInput {
-  vars: string;
-  clientVars: string;
+  vars: unknown;
+  clientVars?: unknown;
   headerRules: string;
   paramRules: string;
   responseRules: string;
@@ -637,7 +639,8 @@ export interface InjectionFormInput {
 export function checkInjectionForm(input: InjectionFormInput, previousNames: string[] = []): string | null {
   try {
     const previous: InjectionVar[] = previousNames.map((name) => ({ name, value: "keep" }));
-    const vars = withClientVars(parseVarsInput(input.vars, previous), input.clientVars);
+    const parsed = parseVarsInput(input.vars, previous);
+    const vars = input.clientVars === undefined ? parsed : withClientVars(parsed, input.clientVars);
     const names = new Set(vars.map((v) => v.name));
     const parts: InjectionParts = {
       vars,

@@ -512,4 +512,22 @@ describe("checkInjectionForm (console fast path)", () => {
     expect(checkInjectionForm({ ...base, vars: "TOKEN=" }, ["TOKEN"])).toBeNull();
     expect(checkInjectionForm({ ...base, vars: "TOKEN=" })).toBe('Variables line 1: value is required for "TOKEN"');
   });
+
+  it("accepts the key page's row shape, where exposure is per row", () => {
+    // No clientVars field: the rows carry client/hosts themselves.
+    const { clientVars: _unused, ...rows } = base;
+    expect(
+      checkInjectionForm(
+        {
+          ...rows,
+          vars: [{ name: "TOKEN", value: "", client: true, hosts: "api.vendor.com" }],
+          headerRules: "@api.vendor.com\nAuthorization: Bearer ${TOKEN}",
+        },
+        ["TOKEN"],
+      ),
+    ).toBeNull();
+    expect(
+      checkInjectionForm({ ...rows, vars: [{ name: "GHOST", value: "", client: false, hosts: "" }] }),
+    ).toBe('vars[0]: value is required for "GHOST"');
+  });
 });
