@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../app/server.js";
 import type { Env } from "../app/lib/types.js";
 import { CONTROL_PARAMS } from "../app/lib/control.js";
-import { DOCS_INJECTION_HOSTS, DOCS_INJECTION_RULES, DOCS_INJECTION_VARS, DOCS_PARAMS, DOCS_SHAPES, docsShapeExample } from "../app/lib/docs.js";
-import { parseHostsInput, parseRulesInput, parseVarsInput } from "../app/proxy/inject.js";
+import { DOCS_CLIENT_CASES, DOCS_CLIENT_VARS, DOCS_INJECTION_HOSTS, DOCS_INJECTION_RULES, DOCS_INJECTION_VARS, DOCS_PARAMS, DOCS_SHAPES, docsShapeExample } from "../app/lib/docs.js";
+import { parseClientVarsInput, parseHostsInput, parseRulesInput, parseVarsInput } from "../app/proxy/inject.js";
 import { makeT } from "../app/lib/i18n/locale.js";
 
 /**
@@ -112,6 +112,41 @@ describe("docs registry", () => {
       for (const host of rule.hosts ?? []) expect(hosts, rule.name).toContain(host);
     }
   });
+
+  it("ships a caller-reference example consistent with the variables and hosts around it", () => {
+    // The page shows a fourth field next to the others, so the exposure it
+    // documents must be valid against that same example.
+    const names = new Set(parseVarsInput(DOCS_INJECTION_VARS.join("\n")).map((v) => v.name));
+    const exposed = parseClientVarsInput(DOCS_CLIENT_VARS.join("\n"));
+    expect([...exposed.keys()]).toEqual(["VENDOR_KEY"]);
+    const hosts = parseHostsInput(DOCS_INJECTION_HOSTS);
+    for (const [name, scopes] of exposed) {
+      expect(names, name).toContain(name);
+      for (const host of scopes) expect(hosts, `${name} → ${host}`).toContain(host);
+    }
+    // Every row of the "what a caller's reference becomes" table is one of the
+    // cases the prose explains, in the reader's language.
+    expect(DOCS_CLIENT_CASES.length).toBeGreaterThanOrEqual(4);
+    for (const row of DOCS_CLIENT_CASES) expect(row.why.startsWith("docs.upstream.matrix.")).toBe(true);
+  });
+
+  it("explains the scoping rules in both languages", () => {
+    for (const locale of ["en", "zh"] as const) {
+      const t = makeT(locale);
+      for (const row of DOCS_CLIENT_CASES) {
+        const why = t(row.why);
+        expect(why, `${locale} ${row.why} fell back to the key`).not.toBe(row.why);
+        expect(why.length, `${locale} ${row.why}`).toBeGreaterThan(10);
+      }
+      for (const key of [
+        "docs.upstream.scoping.title",
+        "docs.upstream.order.title",
+        "docs.upstream.matrix.title",
+      ] as const) {
+        expect(t(key), `${locale} ${key} fell back to the key`).not.toBe(key);
+      }
+    }
+  });
 });
 
 describe("docs page contract", () => {
@@ -162,7 +197,7 @@ describe("docs page contract", () => {
   });
 
   it("covers the auth, caching, limits, security and self-hosting facts", async () => {
-    const en = await (await call("/en/docs")).text();
+    const en = decode(await (await call("/en/docs")).text());
     // Auth tiers + where the key must not go + the credential-forwarding rule.
     expect(en).toContain("Keyless origin grants");
     expect(en).toContain("Public tier");
@@ -172,6 +207,8 @@ describe("docs page contract", () => {
     expect(en).toContain("Upstream credentials");
     expect(en).toContain("How a credential is attached");
     expect(en).toContain("Letting the caller reference a variable");
+    expect(en).toContain("Two scopes, and both must allow the host");
+    expect(en).toContain("What a caller's reference becomes");
     expect(en).toContain("One key or several");
     expect(en).toContain("Cache and safety");
     // Caching, with the marker header a caller can check.
@@ -191,12 +228,14 @@ describe("docs page contract", () => {
   });
 
   it("is translated, not carried over", async () => {
-    const zh = await (await call("/zh/docs")).text();
+    const zh = decode(await (await call("/zh/docs")).text());
     expect(zh).toContain('<html lang="zh"');
     expect(zh).toContain("使用文档");
     expect(zh).toContain("调用代理");
     expect(zh).toContain("上游凭证");
     expect(zh).toContain("允许调用方引用变量");
+    expect(zh).toContain("两层作用域");
+    expect(zh).toContain("调用方的引用最终变成什么");
     expect(zh).toContain("绝不会被转发到上游");
     expect(zh).toContain("一个 key 还是多个");
     expect(zh).toContain("哪些请求绕过缓存");

@@ -101,9 +101,9 @@ const en = {
     us: {
       auth: "Per-key (`X-Api-Key` or Bearer), keyless access for granted origins, or a hosted instance's shared public key. Keys are stored as hashes in your own D1.",
       secrets:
-        "Header and query rules live in D1 — AES-256-GCM ciphertext when `INJECTION_KEK` is set — and are applied server-side, only on the hosts the key allows. The browser never receives the value.",
+        "Header and query rules live in D1 — AES-256-GCM ciphertext when `INJECTION_KEK` is set — and are applied server-side, only on the hosts the key allows. The browser never receives the value; a variable the key exposes can be referenced by name (`${NAME}`), which is how a caller picks a credential it never holds.",
       scoping:
-        "Rules are scoped by target host on the key (`@api.a.com` then `@api.b.com`), so the proxy picks each upstream's credential and the caller cannot name one. Two rules may share a header name only on disjoint host scopes — an overlap is a 400 at save time — and every host must be on the key's allowlist.",
+        "Two levels: a rule carries the hosts it may apply to (`@api.a.com`), and a **variable** carries the hosts it may ever resolve toward — that second scope bounds operator rules and caller references alike, and a rule that could reach outside it is a 400 at save time. A caller can reference only the variables the key exposes, and only toward those hosts; everything else is forwarded literally, so an unexposed name is indistinguishable from a nonexistent one.",
       hosting:
         "MIT, one Cloudflare Worker with D1 and R2, deployed to your own account; the free plan covers small deployments.",
       caching:
@@ -173,7 +173,7 @@ const en = {
       description:
         "An honest comparison of CORX and Corsfix: both inject upstream secrets server-side and both are open source — the differences are ownership, logging, limits and price, with every competitor claim dated and sourced.",
       lead:
-        "Corsfix is the fair fight: like CORX it keeps upstream API keys out of the browser with server-side secret variables, and like CORX it is open source with a self-hosting path. What differs is where everything lives — their dashboard and servers, or your own Cloudflare account — and what each one defaults to.",
+        "Corsfix is the fair fight: like CORX it keeps upstream API keys out of the browser with server-side secret variables, and like CORX it is open source with a self-hosting path. Both also let a caller reference a stored secret — `{{SECRET_NAME}}` there, `${NAME}` here — so the difference is the bound: their application-wide target list, versus a per-variable host scope that constrains the operator's own rules too. What else differs is where everything lives — their dashboard and servers, or your own Cloudflare account — and what each one defaults to.",
       wins:
         "Corsfix wins where a managed product should: it logs no request URLs, headers or bodies at all (CORX logs to your own D1 by default — with a configurable window, including off), it publishes an availability figure with paid support behind it, and localhost needs no account whatsoever. Pick CORX when the secrets, the cache and the log rows should sit in your own account, and when paying Cloudflare suits you better than a subscription.",
       src: {
@@ -367,7 +367,7 @@ const en = {
     upstream: {
       title: "Upstream credentials",
       lead:
-        "A key can hold the upstream API credentials your app needs and attach them server-side: the browser never receives the value and never learns which credentials exist. Because one front end usually calls several APIs with a different key each, the rules that attach them are scoped per target host.",
+        "A key can hold the upstream API credentials your app needs and attach them server-side: the browser never receives the value. Rules decide what goes where by target host, and a variable you expose can also be referenced by the caller itself.",
       ways: {
         title: "How a credential is attached",
         body:
@@ -376,32 +376,56 @@ const en = {
       client: {
         title: "Letting the caller reference a variable",
         body:
-          "Mark a variable as client-referencable and a caller may write `${VENDOR_KEY}` in its own header or query param; the proxy substitutes the value before forwarding. Exposure is per variable and can carry host patterns (`@api.vendor.com`), and those bound the variable itself: a rule that could resolve it toward another host is a 400 at save time, and a client reference is filtered per redirect hop. A name the proxy does not allow — unknown, private, or scoped away from this host — is left exactly as written, so nothing is rewritten that the proxy does not own and a caller cannot discover which names exist. Rules still win over caller-supplied values, a key with client-referencable variables never reads or writes the shared R2 cache, and the public tier cannot use this at all. Treat an exposed variable as public to anyone who can call the key.",
+          "Exposure is per variable — `client: true` on the Admin API, the **Client-referencable variables** field in the console — and it names the hosts the caller may reference it toward. A caller then writes `${VENDOR_KEY}` in a header or query param of its own request; the proxy substitutes the value before forwarding. The caller only ever learns the name it wrote, never the value, and a variable you do not expose stays invisible to it.",
+      },
+      scoping: {
+        title: "Two scopes, and both must allow the host",
+        body:
+          "A rule's `@hosts` says where *that rule* applies; a variable's own hosts say where *that variable* may ever resolve. The second bounds the first: a rule that could resolve a scoped variable toward another host is rejected at save time — including a key-level rule, because it can reach every allowed host. Patterns are the same everywhere: an exact host, `*.suffix` (label boundary), or `*`, so `*.vendor.com` covers `api.vendor.com` and nothing covers the apex `vendor.com` implicitly. Client references are evaluated per redirect hop, so a variable scoped to one host does not resolve after a redirect to another.",
+      },
+      order: {
+        title: "Order, and what happens when nothing matches",
+        body:
+          "On the way out, caller references resolve first and the key's rules run afterwards, removes before sets. A rule therefore always beats what the caller asked for — `!X-Debug` deletes it, a `set` replaces it — so a browser cannot spoof an injected header. Anything the proxy will not resolve (unknown name, private variable, host outside the scope) is forwarded exactly as written. That keeps the feature additive (a key with no exposed variable behaves exactly as before) and makes an unexposed name indistinguishable from a nonexistent one, so callers cannot probe what a key holds.",
       },
       example: {
         title: "One key, three upstreams",
         body:
-          "The console's key editor has a Variables field, a Header rules field and an allowed-hosts field; the Admin API takes the same three as `vars`, `headerRules` and `allowedHosts`.",
+          "The console's key editor has a Variables field, a **Client-referencable variables** field, a Header rules field and an allowed-hosts field; the Admin API takes them as `vars`, `clientVars`, `headerRules` and `allowedHosts` (or, per variable, `client` and `hosts` on the `vars` array).",
         varsLabel: "Variables",
+        clientVarsLabel: "Client-referencable variables",
         rulesLabel: "Header rules",
         hostsLabel: "Allowed target hosts (required with any injection)",
         note:
           "Every `@host` must fall inside the allowed-hosts list, and the list is mandatory once anything is injected — that is the guard that stops a caller from pointing your credential at a host of their choosing. A rule outside the list is never attached.",
       },
+      matrix: {
+        title: "What a caller's reference becomes",
+        lead:
+          "For the example above: `VENDOR_KEY` is exposed for `api.vendor.com` only, `PRIVATE_KEY` is not exposed, and a header rule sets `Authorization` for `api.vendor.com`.",
+        sent: "Caller sends",
+        host: "Target host",
+        received: "Upstream receives",
+        inScope: "Exposed, and the host is inside the variable's scope → resolved.",
+        outOfScope: "Inside the key's allowlist, but outside the variable's scope → left as written.",
+        privateVar: "Not exposed to callers at all → left as written.",
+        unknown: "No such variable → left as written, exactly like a private one.",
+        ruleWins: "The rule applies afterwards → its value wins over the caller's reference.",
+      },
       uses: {
         title: "What it is for",
         body:
-          "The common case is one front end calling several providers — an LLM at one vendor, payments or maps at others — each with its own key and no secret in the page. It also covers an API that authenticates with a query parameter instead of a header, and the same upstream with different keys per environment (one key per environment, or a variable per deployment). Because the caller only sends the CORX key, the page code can be public: it names no provider credential, not even which ones exist.",
+          "The common case is one front end calling several providers — an LLM at one vendor, payments or maps at others — each with its own key and no secret in the page. It also covers an API that authenticates with a query parameter instead of a header, and the same upstream with different keys per environment (one key per environment, or a variable per deployment). With client references the page can even choose which of several credentials to use without ever holding one — the pattern a browser-side app needs once it talks to more than one provider.",
       },
       keys: {
         title: "One key or several",
         body:
-          "Everything above puts every upstream in a single key — one allowed-hosts union, one rate limit and one allowed-origins list shared by all of them, and one secret store to rotate. Split into one key per upstream when you want separate limits or origins, when a leak should reach only one vendor, or when the same host needs different credentials on different paths (rules are scoped by host, not by path). Keyless access grants an origin exactly one key, so a page that calls several upstreams without carrying a key gets all of them from that key's rules.",
+          "Everything above puts every upstream in a single key — one allowed-hosts union, one rate limit and one allowed-origins list shared by all of them, and one secret store to rotate. Split into one key per upstream when you want separate limits or origins, when a leak should reach only one vendor, or when the same host needs different credentials on different paths (rules are scoped by host, not by path). Keyless access grants an origin exactly one key, so a page that calls several upstreams without carrying a key gets all of them from that key's rules — and, for the variables you exposed, can reference them.",
       },
       rails: {
         title: "Cache and safety",
         body:
-          "Secrets are encrypted at rest when `INJECTION_KEK` is set, masked everywhere they are read (console, logs, playground preview), and the request log stores the pre-injection URL. A key with header rules never reads or writes the R2 cache, because its responses are key-specific; a key that injects only query parameters still caches, under the effective URL. The public tier cannot inject at all — it is GET/HEAD only — so upstream credentials mean a self-hosted instance and a standard key.",
+          "Secrets are encrypted at rest when `INJECTION_KEK` is set, masked everywhere they are read (console, logs, playground preview), and the request log stores the pre-injection URL. A key with header rules never reads or writes the R2 cache, because its responses are key-specific, while a key that injects only query parameters still caches under the effective URL. A key with any client-referencable variable does not use the shared cache at all: the reference is caller-supplied and a redirect can resolve it on a later hop, so no response through that key can be proven free of a secret. The public tier cannot inject at all — it is GET/HEAD only — so upstream credentials mean a self-hosted instance and a standard key. Treat an exposed variable as public to anyone who can call the key.",
       },
     },
     caching: {
@@ -1264,9 +1288,9 @@ const zh: Messages = {
     us: {
       auth: "支持按 key 鉴权（`X-Api-Key` 或 Bearer）、为已授权来源免密钥访问，或使用托管实例的公共 key；密钥以哈希形式存放在你自己的 D1 中。",
       secrets:
-        "上游 header / query 规则存放在 D1（设置 `INJECTION_KEK` 后为 AES-256-GCM 密文），在服务端按白名单主机注入。浏览器始终拿不到密钥值。",
+        "上游 header / query 规则存放在 D1（设置 `INJECTION_KEK` 后为 AES-256-GCM 密文），在服务端按白名单主机注入。浏览器始终拿不到密钥值；如果 key 暴露了某个变量，调用方可以按名字引用它（`${NAME}`）——这就是调用方挑选一个自己并不持有的凭证的方式。",
       scoping:
-        "规则挂在 key 上、按目标 host 限定作用域（先 `@api.a.com` 再 `@api.b.com`），由代理决定每个上游用哪套凭证，调用方无法指定。同一个 header 名只能出现在互不重叠的 host 作用域上——重叠会在保存时被 400 拒绝——且每个 host 都必须在 key 的白名单内。",
+        "两层：规则自带它可生效的 host（`@api.a.com`），而**变量**自带它最多能解析到的 host——第二层同时约束操作方规则与调用方引用，规则一旦可能越界，保存时就 400。调用方只能引用这个 key 暴露出去的变量、且只能发往那些 host；其余一律原样转发，因此「未暴露」与「不存在」无法区分。",
       hosting: "MIT 许可，单个 Cloudflare Worker 配 D1 与 R2，部署到你自己的账号；小规模使用免费套餐即可。",
       caching:
         "R2 GET 缓存，可用 `corx-ttl` / `corx-no-cache` 按请求调整、按 key 封顶；注入请求头的 key 不与他人共享缓存，解析后的响应头规则也是缓存键的一部分。",
@@ -1325,7 +1349,7 @@ const zh: Messages = {
       description:
         "CORX 与 Corsfix 的诚实对比：两者都在服务端做密钥注入，也都开源——差别在于数据归属、日志、限额与价格；每条关于对方的结论都附来源与核查日期。",
       lead:
-        "Corsfix 是同一量级的对手：和 CORX 一样用服务端密钥变量把上游 API key 挡在浏览器之外，也一样开源、有自托管路径。不同的是东西放在哪里——他们的面板和服务器，还是你自己的 Cloudflare 账号——以及各自的默认行为。",
+        "Corsfix 是同一量级的对手：和 CORX 一样用服务端密钥变量把上游 API key 挡在浏览器之外，也一样开源、有自托管路径。两边也都允许调用方引用已存储的密钥——他们写 `{{SECRET_NAME}}`，我们写 `${NAME}`——所以差别在边界：他们是 application 级的目标列表，我们是逐变量的 host 作用域，而且后者同样约束操作方自己的规则。其他差异在于东西放在哪里——他们的面板和服务器，还是你自己的 Cloudflare 账号——以及各自的默认行为。",
       wins:
         "Corsfix 赢在一个托管产品应该赢的地方：它完全不记录请求 URL、header 与 body（CORX 默认写入你自己的 D1，窗口可配置、也可关闭），它公布了可用性数据且背后有付费支持，本地开发甚至不需要账号。如果你希望密钥、缓存与日志留在自己的账号里，并且更愿意把钱付给 Cloudflare 而不是订阅制服务，那就选 CORX。",
       src: {
@@ -1496,7 +1520,7 @@ const zh: Messages = {
     upstream: {
       title: "上游凭证",
       lead:
-        "一个 key 可以保管应用需要的上游 API 凭证并在服务端注入：浏览器拿不到凭证值，也不知道存在哪些凭证。由于一个前端通常要对接多个 API、各自用不同的 key，附加凭证的规则按目标 host 限定作用域。",
+        "一个 key 可以保管应用需要的上游 API 凭证并在服务端注入：浏览器拿不到凭证值。规则按目标 host 决定发什么、发到哪；如果你把某个变量暴露出去，调用方自己也可以在请求里引用它。",
       ways: {
         title: "凭证是怎么附上去的",
         body:
@@ -1505,32 +1529,56 @@ const zh: Messages = {
       client: {
         title: "允许调用方引用变量",
         body:
-          "把某个变量标为「客户端可引用」后，调用方可以在自己的 header 或 query 里写 `${VENDOR_KEY}`，由代理在转发前填入真实值。暴露是逐变量的，并可带 host 作用域（`@api.vendor.com`），而这个作用域约束的是变量本身：任何可能把它解析到作用域之外 host 的规则，保存时就会 400；客户端引用则按每一次重定向跳重新求值。代理不允许的名字——未知、私有、或被作用域排除在本 host 之外——一律原样保留，因此既不会改写不属于它的内容，调用方也无法探测存在哪些名字。规则仍然优先于调用方提供的值；带客户端可引用变量的 key 不读写共享缓存；公共档位完全不可用。被暴露的变量等同于「谁能调用这个 key，谁就能引用它」。",
+          "暴露是逐变量的——API 上是 `client: true`，控制台是 **客户端可引用变量** 字段——并在其中写明允许调用方把它发往哪些 host。调用方随后在自己请求的 header 或 query 里写 `${VENDOR_KEY}`，代理在转发前替换。调用方只知道它自己写的名字，永远拿不到值；你没有暴露的变量对它完全不可见。",
+      },
+      scoping: {
+        title: "两层作用域，且两层都必须允许该 host",
+        body:
+          "规则的 `@hosts` 决定*这条规则*在哪里生效；变量自己的 hosts 决定*这个变量*最多能解析到哪里。后者约束前者：任何可能把被作用域限制的变量解析到别的 host 的规则，保存时就会被拒绝——包括 key 级规则，因为它能覆盖所有允许主机。两处的 pattern 语法一致：精确 host、`*.suffix`（标签边界）或 `*`；`*.vendor.com` 覆盖 `api.vendor.com`，而两者都不覆盖 `vendor.com` 本身。客户端引用按每一次重定向跳求值，所以作用域只到某个 host 的变量，在跳到别的 host 之后不会解析。",
+      },
+      order: {
+        title: "顺序，以及不匹配时会发生什么",
+        body:
+          "转发时先解析调用方引用，再施加该 key 的规则（先 remove 后 set）。因此规则永远赢得过调用方——`!X-Debug` 会删掉它，`set` 会覆盖它——浏览器无法伪造注入的 header。代理不解析的内容（未知名字、私有变量、作用域外的 host）一律原样转发。这既保证功能是纯增量的（没有暴露任何变量的 key 行为与从前完全一致），也让「未暴露」和「不存在」表现一致，调用方无法探测 key 里有什么。",
       },
       example: {
         title: "一个 key，对接三个上游",
         body:
-          "控制台的 key 编辑器有三个字段：变量、header 规则、允许主机；Admin API 对应 `vars`、`headerRules`、`allowedHosts`。",
+          "控制台的 key 编辑器有四个字段：变量、**客户端可引用变量**、header 规则、允许主机；Admin API 对应 `vars`、`clientVars`、`headerRules`、`allowedHosts`（也可以在每个变量上写 `client` 与 `hosts`）。",
         varsLabel: "变量（Variables）",
+        clientVarsLabel: "客户端可引用变量（Client-referencable variables）",
         rulesLabel: "Header 规则（Header rules）",
         hostsLabel: "允许目标主机（配置注入时必填）",
         note:
           "每条 `@host` 都必须落在允许主机列表内，而只要配置了注入，该列表就是必填的——这道守卫防止调用方把你的凭证指向它自己选的 host。不在列表内的规则永远不会被附加。",
       },
+      matrix: {
+        title: "调用方的引用最终变成什么",
+        lead:
+          "以上面的配置为例：`VENDOR_KEY` 只对 `api.vendor.com` 暴露，`PRIVATE_KEY` 未暴露，并且有一条针对 `api.vendor.com` 设置 `Authorization` 的 header 规则。",
+        sent: "调用方发送",
+        host: "目标 host",
+        received: "上游收到",
+        inScope: "已暴露，且该 host 在变量作用域内 → 解析。",
+        outOfScope: "在 key 的白名单内，但在变量作用域之外 → 原样保留。",
+        privateVar: "未对调用方暴露 → 原样保留。",
+        unknown: "不存在该变量 → 原样保留，与私有变量表现一致。",
+        ruleWins: "规则随后生效 → 以规则值为准，覆盖调用方的引用。",
+      },
       uses: {
         title: "用途",
         body:
-          "最常见的是同一个前端调用多个服务——一家厂商的 LLM、另外几家的支付或地图 API——各自一个 key，页面里没有任何密钥。它同样适用于用查询参数而非 header 鉴权的 API，以及同一上游在不同环境用不同 key 的情况（每个环境一个 key，或用变量保存该部署的值）。因为调用方只发送 CORX key，页面代码可以公开：它不包含任何厂商凭证，甚至不知道存在哪些凭证。",
+          "最常见的是同一个前端调用多个服务——一家厂商的 LLM、另外几家的支付或地图 API——各自一个 key，页面里没有任何密钥。它同样适用于用查询参数而非 header 鉴权的 API，以及同一上游在不同环境用不同 key 的情况（每个环境一个 key，或用变量保存该部署的值）。配合客户端引用，页面甚至可以在多个凭证之间选择用哪一个，而始终不持有任何一个——这是浏览器端应用对接多家厂商后需要的模式。",
       },
       keys: {
         title: "一个 key 还是多个",
         body:
-          "以上做法把所有上游放进同一个 key，也就意味着它们共享一份允许主机并集、一份频率限制和一份允许来源列表，以及一个需要轮换的密钥库。当你需要各自独立的限额或来源、希望泄漏时只波及一家厂商、或同一个 host 的不同路径需要不同凭证（规则按 host 而不是按路径限定作用域）时，就拆成每个上游一个 key。免密钥访问只给一个来源授权一个 key，所以不带 key 调用多个上游的页面，拿到的就是那一个 key 的规则。",
+          "以上做法把所有上游放进同一个 key，也就意味着它们共享一份允许主机并集、一份频率限制和一份允许来源列表，以及一个需要轮换的密钥库。当你需要各自独立的限额或来源、希望泄漏时只波及一家厂商、或同一个 host 的不同路径需要不同凭证（规则按 host 而不是按路径限定作用域）时，就拆成每个上游一个 key。免密钥访问只给一个来源授权一个 key，所以不带 key 调用多个上游的页面，拿到的就是那一个 key 的规则——而你暴露出的那些变量，它也可以引用。",
       },
       rails: {
         title: "缓存与安全",
         body:
-          "设置 `INJECTION_KEK` 后密钥静态加密，在所有读取路径（控制台、日志、playground 预览）都以掩码显示，请求日志记录的是注入前的 URL。带 header 规则的 key 完全不读写 R2 缓存，因为它的响应与 key 相关；只用 query 参数注入的 key 仍然缓存，按生效后的 URL 作为缓存键。公共档位完全不能注入——它只支持 GET/HEAD——所以上游凭证意味着自托管实例加 standard key。",
+          "设置 `INJECTION_KEK` 后密钥静态加密，在所有读取路径（控制台、日志、playground 预览）都以掩码显示，请求日志记录的是注入前的 URL。带 header 规则的 key 完全不读写 R2 缓存，因为它的响应与 key 相关；只用 query 参数注入的 key 仍然缓存，按生效后的 URL 作为缓存键。而只要 key 里有任何客户端可引用变量，就完全不使用共享缓存：引用由调用方提供，且重定向可能在后续跳才解析，因此经这个 key 的任何响应都无法证明不含密钥。公共档位完全不能注入——它只支持 GET/HEAD——所以上游凭证意味着自托管实例加 standard key。被暴露的变量等同于「谁能调用这个 key，谁就能引用它」，请谨慎放开。",
       },
     },
     caching: {

@@ -655,8 +655,11 @@ Every \`corx-*\` parameter is namespaced, so it can never collide with the targe
   key must declare its allowed hosts and every \`@host\` must fall inside that list; two rules for the
   same header may not overlap in host scope. A variable marked client-referencable (\`client: true\`) may
   also be referenced by the *caller* as \`\${NAME}\` in its own headers/query — opt-in per variable,
-  scoped by the variable's own hosts, resolved per redirect hop, and left literal when not allowed.
-  Keys with header rules bypass the R2 cache, query-only
+  bounded by the variable's own \`hosts\` (which also bounds operator rules: a rule that could resolve
+  it elsewhere is a save-time 400), resolved per redirect hop for headers and once for the query, and
+  left literal when the name is unknown, private or out of scope — so an unexposed name is
+  indistinguishable from a nonexistent one. A key with any client-referencable variable never uses the
+  shared cache. Keys with header rules bypass the R2 cache, query-only
   injection still caches, and the public tier cannot inject at all.
 - **Keyless browser access** — grant an origin to a key and its visitors call the proxy without
   shipping one. The grant matches on \`Origin\` (or \`Referer\` for same-origin GETs) and is metered
