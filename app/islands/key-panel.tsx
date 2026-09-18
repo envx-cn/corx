@@ -85,6 +85,11 @@ export interface KeyPanelI18n {
   close: string;
   /** Submit-button label while its POST is in flight. */
   saving: string;
+  /** Informational banner in a revoked key's (read-only) panel. */
+  revokedHint: string;
+  revoke: string;
+  revokeTitle: string;
+  revokeHint: string;
 }
 
 function Field(props: { label: string; class?: string; children: Child }) {
@@ -108,6 +113,74 @@ function Check(props: { name: string; label: string; hint: string; checked: bool
       </span>
       <input type="checkbox" name={props.name} value="on" class="toggle mt-0.5" checked={props.checked} />
     </label>
+  );
+}
+
+/**
+ * One "type the key's name to confirm" dialog for a destructive POST
+ * (Revoke, Delete). A sibling of the panel <dialog>, never a descendant:
+ * daisyUI's .modal-box is scaled, so a second top-layer dialog must live
+ * outside it. State-less like the panel — the typed name enables the submit
+ * button imperatively, and the server re-checks it anyway.
+ */
+function NameConfirm(props: {
+  dialogRef: { current: HTMLDialogElement | null };
+  title: string;
+  titleId: string;
+  hint: string;
+  confirmLabel: string;
+  cancel: string;
+  close: string;
+  submit: string;
+  action: string;
+  keyName: string;
+  csrf: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const sync = () => {
+    if (buttonRef.current && inputRef.current) {
+      buttonRef.current.disabled = inputRef.current.value.trim() !== props.keyName;
+    }
+  };
+  // Esc and the backdrop close without running the Cancel handler, so the
+  // reset hangs off the dialog's own close event.
+  const reset = () => {
+    if (inputRef.current) inputRef.current.value = "";
+    sync();
+  };
+  return (
+    <dialog ref={props.dialogRef} class="modal" aria-labelledby={props.titleId} onClose={reset}>
+      <div class="modal-box max-w-md">
+        <h3 id={props.titleId} class="text-lg font-semibold">
+          {props.title}
+        </h3>
+        <p class="mt-2 text-sm text-base-content/75">{props.hint.replace("{name}", props.keyName)}</p>
+        <form method="post" action={props.action} class="mt-4">
+          <input type="hidden" name="csrf" value={props.csrf} />
+          <input
+            ref={inputRef}
+            name="confirmName"
+            onInput={sync}
+            autocomplete="off"
+            placeholder={props.confirmLabel}
+            aria-label={props.confirmLabel}
+            class="input input-bordered w-full"
+          />
+          <div class="modal-action">
+            <button type="button" class="btn btn-ghost" onClick={() => props.dialogRef.current?.close()}>
+              {props.cancel}
+            </button>
+            <button ref={buttonRef} type="submit" class="btn btn-error" disabled>
+              {props.submit}
+            </button>
+          </div>
+        </form>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button aria-label={props.close}>{props.close}</button>
+      </form>
+    </dialog>
   );
 }
 
@@ -140,6 +213,10 @@ export default function KeyPanel(props: {
   error?: string | null;
   /** Delete endpoint — set on the edit panel to render the danger zone. */
   deleteAction?: string;
+  /** Revoke endpoint — absent once revoked (a revoked key has nothing to revoke). */
+  revokeAction?: string;
+  /** Revoked keys keep their row and policy for attribution, but are read-only. */
+  revoked?: boolean;
   /** Session-bound CSRF token, rendered into both POST forms. */
   csrf?: string;
   /** Current name of the key (delete confirmation). */
@@ -148,11 +225,11 @@ export default function KeyPanel(props: {
   const ref = useRef<HTMLDialogElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const submitRef = useRef<HTMLButtonElement>(null);
-  const confirmRef = useRef<HTMLDialogElement>(null);
-  const confirmInputRef = useRef<HTMLInputElement>(null);
-  const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  const deleteRef = useRef<HTMLDialogElement>(null);
+  const revokeRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  const confirmTitleId = useId();
+  const deleteTitleId = useId();
+  const revokeTitleId = useId();
   const { labels } = props;
   const v = props.values;
 
@@ -162,17 +239,6 @@ export default function KeyPanel(props: {
 
   const show = () => ref.current?.showModal();
   const hide = () => ref.current?.close();
-  const closeConfirm = () => {
-    confirmRef.current?.close();
-    if (confirmInputRef.current) confirmInputRef.current.value = "";
-    syncConfirm();
-  };
-  /** Enable the confirm submit only once the typed name matches. */
-  const syncConfirm = () => {
-    if (confirmButtonRef.current && confirmInputRef.current) {
-      confirmButtonRef.current.disabled = confirmInputRef.current.value.trim() !== props.keyName;
-    }
-  };
 
   /**
    * One POST per form. The browser navigates away on submit, but a slow round
@@ -214,182 +280,192 @@ export default function KeyPanel(props: {
               <span>{props.error}</span>
             </div>
           ) : null}
+          {props.revoked ? (
+            <div role="status" class="alert alert-warning mt-4">
+              <span>{labels.revokedHint}</span>
+            </div>
+          ) : null}
           <form ref={formRef} method="post" action={props.action} class="mt-4" onSubmit={onSubmit}>
             {/* Marker: a hand-rolled POST without it (script, stale form) gets
                 the safe defaults (both checks on) instead of an absent -
                 unchecked - field silently turning the guards off. */}
             <input type="hidden" name="checks" value="1" />
             <input type="hidden" name="csrf" value={props.csrf ?? ""} />
-            <div class="grid gap-x-4 gap-y-3 sm:grid-cols-2">
-              <Field label={labels.name}>
-                <input
-                  name="name"
-                  value={v?.name ?? ""}
-                  placeholder={labels.namePh}
-                  class="input input-bordered w-full"
-                  required
-                  autofocus
-                />
-              </Field>
-              <Field label={labels.ratePerMin}>
-                <input
-                  name="rateLimitPerMin"
-                  value={v?.rateLimitPerMin ?? ""}
-                  placeholder={labels.ratePh}
-                  inputmode="numeric"
-                  class="input input-bordered w-full"
-                />
-              </Field>
-              <Field label={labels.allowedOrigins} class="sm:col-span-2">
-                <input
-                  name="allowedOrigins"
-                  value={v?.allowedOrigins ?? ""}
-                  placeholder={labels.originsPh}
-                  class="input input-bordered w-full"
-                />
-              </Field>
-              <div class="sm:col-span-2 rounded-box border border-base-300 p-3">
-                <Check name="keyless" label={labels.keyless} hint={labels.keylessHint} checked={v?.keyless ?? false} />
-              </div>
-              {/* Public tier: the shared key of a hosted instance. It ships with
-                  extra restrictions and daily quotas — see app/proxy/quota.ts. */}
-              <div class="sm:col-span-2 rounded-box border border-base-300 p-3">
-                <Check
-                  name="tier"
-                  label={labels.publicTier}
-                  hint={labels.publicTierHint}
-                  checked={v?.tier ?? false}
-                />
-                <div class="mt-3 grid gap-x-4 gap-y-3 sm:grid-cols-3">
-                  <Field label={labels.dailyLimitPerOrigin}>
-                    <input
-                      name="dailyLimitPerOrigin"
-                      value={v?.dailyLimitPerOrigin ?? ""}
-                      placeholder={labels.dailyLimitPh}
-                      inputmode="numeric"
-                      class="input input-bordered w-full"
-                    />
-                  </Field>
-                  <Field label={labels.dailyLimitPerHost}>
-                    <input
-                      name="dailyLimitPerHost"
-                      value={v?.dailyLimitPerHost ?? ""}
-                      placeholder={labels.dailyLimitPh}
-                      inputmode="numeric"
-                      class="input input-bordered w-full"
-                    />
-                  </Field>
-                  <Field label={labels.dailyLimitTotal}>
-                    <input
-                      name="dailyLimitTotal"
-                      value={v?.dailyLimitTotal ?? ""}
-                      placeholder={labels.dailyLimitPh}
-                      inputmode="numeric"
-                      class="input input-bordered w-full"
-                    />
-                  </Field>
+            {/* A revoked key's policy is history: one disabled fieldset turns
+                every control off without touching the 17 inputs one by one.
+                Delete stays outside it, so cleanup still works. */}
+            <fieldset disabled={props.revoked} class="m-0 min-w-0 border-0 p-0">
+              <div class="grid gap-x-4 gap-y-3 sm:grid-cols-2">
+                <Field label={labels.name}>
+                  <input
+                    name="name"
+                    value={v?.name ?? ""}
+                    placeholder={labels.namePh}
+                    class="input input-bordered w-full"
+                    required
+                    autofocus
+                  />
+                </Field>
+                <Field label={labels.ratePerMin}>
+                  <input
+                    name="rateLimitPerMin"
+                    value={v?.rateLimitPerMin ?? ""}
+                    placeholder={labels.ratePh}
+                    inputmode="numeric"
+                    class="input input-bordered w-full"
+                  />
+                </Field>
+                <Field label={labels.allowedOrigins} class="sm:col-span-2">
+                  <input
+                    name="allowedOrigins"
+                    value={v?.allowedOrigins ?? ""}
+                    placeholder={labels.originsPh}
+                    class="input input-bordered w-full"
+                  />
+                </Field>
+                <div class="sm:col-span-2 rounded-box border border-base-300 p-3">
+                  <Check name="keyless" label={labels.keyless} hint={labels.keylessHint} checked={v?.keyless ?? false} />
                 </div>
-                <p class="mt-2 text-xs text-base-content/75">{labels.dailyLimits}</p>
-              </div>
-              <Field label={labels.allowedHosts} class="sm:col-span-2">
-                <input
-                  name="allowedHosts"
-                  value={v?.allowedHosts ?? ""}
-                  placeholder={labels.allowedHostsPh}
-                  class="input input-bordered w-full font-mono text-xs"
-                />
-              </Field>
-              <Field label={labels.cacheTtl}>
-                <input
-                  name="cacheTtl"
-                  value={v?.cacheTtl ?? ""}
-                  placeholder={labels.ttlPh}
-                  inputmode="numeric"
-                  title={labels.cacheTtlTitle}
-                  class="input input-bordered w-full"
-                />
-              </Field>
-              <Field label={labels.noCache}>
-                <div class="flex h-10 items-center gap-2 text-sm text-base-content/75" title={labels.noCacheHint}>
-                  <input type="checkbox" name="noCache" value="on" class="checkbox" checked={v?.noCache ?? false} />
-                  <span>{labels.noCacheShort}</span>
+                {/* Public tier: the shared key of a hosted instance. It ships with
+                    extra restrictions and daily quotas — see app/proxy/quota.ts. */}
+                <div class="sm:col-span-2 rounded-box border border-base-300 p-3">
+                  <Check
+                    name="tier"
+                    label={labels.publicTier}
+                    hint={labels.publicTierHint}
+                    checked={v?.tier ?? false}
+                  />
+                  <div class="mt-3 grid gap-x-4 gap-y-3 sm:grid-cols-3">
+                    <Field label={labels.dailyLimitPerOrigin}>
+                      <input
+                        name="dailyLimitPerOrigin"
+                        value={v?.dailyLimitPerOrigin ?? ""}
+                        placeholder={labels.dailyLimitPh}
+                        inputmode="numeric"
+                        class="input input-bordered w-full"
+                      />
+                    </Field>
+                    <Field label={labels.dailyLimitPerHost}>
+                      <input
+                        name="dailyLimitPerHost"
+                        value={v?.dailyLimitPerHost ?? ""}
+                        placeholder={labels.dailyLimitPh}
+                        inputmode="numeric"
+                        class="input input-bordered w-full"
+                      />
+                    </Field>
+                    <Field label={labels.dailyLimitTotal}>
+                      <input
+                        name="dailyLimitTotal"
+                        value={v?.dailyLimitTotal ?? ""}
+                        placeholder={labels.dailyLimitPh}
+                        inputmode="numeric"
+                        class="input input-bordered w-full"
+                      />
+                    </Field>
+                  </div>
+                  <p class="mt-2 text-xs text-base-content/75">{labels.dailyLimits}</p>
                 </div>
-              </Field>
-            </div>
-
-            <div class="mt-4 rounded-box border border-base-300 p-3">
-              <div class="mb-2 text-xs font-medium uppercase tracking-wide text-base-content/75">{labels.checks}</div>
-              <div class="space-y-3">
-                <Check name="ipCheck" label={labels.ipCheck} hint={labels.ipCheckHint} checked={v?.ipCheck ?? true} />
-                <Check name="dnsCheck" label={labels.dnsCheck} hint={labels.dnsCheckHint} checked={v?.dnsCheck ?? true} />
+                <Field label={labels.allowedHosts} class="sm:col-span-2">
+                  <input
+                    name="allowedHosts"
+                    value={v?.allowedHosts ?? ""}
+                    placeholder={labels.allowedHostsPh}
+                    class="input input-bordered w-full font-mono text-xs"
+                  />
+                </Field>
+                <Field label={labels.cacheTtl}>
+                  <input
+                    name="cacheTtl"
+                    value={v?.cacheTtl ?? ""}
+                    placeholder={labels.ttlPh}
+                    inputmode="numeric"
+                    title={labels.cacheTtlTitle}
+                    class="input input-bordered w-full"
+                  />
+                </Field>
+                <Field label={labels.noCache}>
+                  <div class="flex h-10 items-center gap-2 text-sm text-base-content/75" title={labels.noCacheHint}>
+                    <input type="checkbox" name="noCache" value="on" class="checkbox" checked={v?.noCache ?? false} />
+                    <span>{labels.noCacheShort}</span>
+                  </div>
+                </Field>
               </div>
-            </div>
 
-            {/* Upstream injection: variables are write-only — the editor shows
-                "NAME=" and a blank value keeps the stored secret. */}
-            <div class="mt-4 rounded-box border border-base-300 p-3">
-              <div class="text-xs font-medium uppercase tracking-wide text-base-content/75">{labels.injection}</div>
-              <p class="mt-1 text-xs text-base-content/75">{labels.injectionHint}</p>
-              <div class="mt-3 grid gap-3">
-                <Field label={labels.vars}>
-                  <textarea
-                    name="vars"
-                    rows={2}
-                    placeholder={labels.varsPh}
-                    class="textarea textarea-bordered w-full font-mono text-xs leading-5"
-                  >
-                    {v?.vars ?? ""}
-                  </textarea>
-                </Field>
-                {/* Which variables a caller may reference, and where they may
-                    go. Same `@hosts` section grammar as the rule fields. */}
-                <Field label={labels.clientVars}>
-                  <textarea
-                    name="clientVars"
-                    rows={2}
-                    placeholder={labels.clientVarsPh}
-                    class="textarea textarea-bordered w-full font-mono text-xs leading-5"
-                  >
-                    {v?.clientVars ?? ""}
-                  </textarea>
-                </Field>
-                <p class="-mt-2 text-xs text-base-content/75">{labels.clientVarsHint}</p>
-                <Field label={labels.headerRules}>
-                  <textarea
-                    name="headerRules"
-                    rows={3}
-                    placeholder={labels.headerRulesPh}
-                    class="textarea textarea-bordered w-full font-mono text-xs leading-5"
-                  >
-                    {v?.headerRules ?? ""}
-                  </textarea>
-                </Field>
-                <Field label={labels.paramRules}>
-                  <textarea
-                    name="paramRules"
-                    rows={2}
-                    placeholder={labels.paramRulesPh}
-                    class="textarea textarea-bordered w-full font-mono text-xs leading-5"
-                  >
-                    {v?.paramRules ?? ""}
-                  </textarea>
-                </Field>
-                {/* Response rules are their own concern (what the caller gets
-                    back), and the embed recipe is the reason they exist — say
-                    so where the operator configures it. */}
-                <Field label={labels.responseRules}>
-                  <textarea
-                    name="responseRules"
-                    rows={2}
-                    placeholder={labels.responseRulesPh}
-                    class="textarea textarea-bordered w-full font-mono text-xs leading-5"
-                  >
-                    {v?.responseRules ?? ""}
-                  </textarea>
-                </Field>
-                <p class="-mt-1 text-xs leading-relaxed text-base-content/75">{labels.responseRulesHint}</p>
+              <div class="mt-4 rounded-box border border-base-300 p-3">
+                <div class="mb-2 text-xs font-medium uppercase tracking-wide text-base-content/75">{labels.checks}</div>
+                <div class="space-y-3">
+                  <Check name="ipCheck" label={labels.ipCheck} hint={labels.ipCheckHint} checked={v?.ipCheck ?? true} />
+                  <Check name="dnsCheck" label={labels.dnsCheck} hint={labels.dnsCheckHint} checked={v?.dnsCheck ?? true} />
+                </div>
               </div>
-            </div>
+
+              {/* Upstream injection: variables are write-only — the editor shows
+                  "NAME=" and a blank value keeps the stored secret. */}
+              <div class="mt-4 rounded-box border border-base-300 p-3">
+                <div class="text-xs font-medium uppercase tracking-wide text-base-content/75">{labels.injection}</div>
+                <p class="mt-1 text-xs text-base-content/75">{labels.injectionHint}</p>
+                <div class="mt-3 grid gap-3">
+                  <Field label={labels.vars}>
+                    <textarea
+                      name="vars"
+                      rows={2}
+                      placeholder={labels.varsPh}
+                      class="textarea textarea-bordered w-full font-mono text-xs leading-5"
+                    >
+                      {v?.vars ?? ""}
+                    </textarea>
+                  </Field>
+                  {/* Which variables a caller may reference, and where they may
+                      go. Same `@hosts` section grammar as the rule fields. */}
+                  <Field label={labels.clientVars}>
+                    <textarea
+                      name="clientVars"
+                      rows={2}
+                      placeholder={labels.clientVarsPh}
+                      class="textarea textarea-bordered w-full font-mono text-xs leading-5"
+                    >
+                      {v?.clientVars ?? ""}
+                    </textarea>
+                  </Field>
+                  <p class="-mt-2 text-xs text-base-content/75">{labels.clientVarsHint}</p>
+                  <Field label={labels.headerRules}>
+                    <textarea
+                      name="headerRules"
+                      rows={3}
+                      placeholder={labels.headerRulesPh}
+                      class="textarea textarea-bordered w-full font-mono text-xs leading-5"
+                    >
+                      {v?.headerRules ?? ""}
+                    </textarea>
+                  </Field>
+                  <Field label={labels.paramRules}>
+                    <textarea
+                      name="paramRules"
+                      rows={2}
+                      placeholder={labels.paramRulesPh}
+                      class="textarea textarea-bordered w-full font-mono text-xs leading-5"
+                    >
+                      {v?.paramRules ?? ""}
+                    </textarea>
+                  </Field>
+                  {/* Response rules are their own concern (what the caller gets
+                      back), and the embed recipe is the reason they exist — say
+                      so where the operator configures it. */}
+                  <Field label={labels.responseRules}>
+                    <textarea
+                      name="responseRules"
+                      rows={2}
+                      placeholder={labels.responseRulesPh}
+                      class="textarea textarea-bordered w-full font-mono text-xs leading-5"
+                    >
+                      {v?.responseRules ?? ""}
+                    </textarea>
+                  </Field>
+                  <p class="-mt-1 text-xs leading-relaxed text-base-content/75">{labels.responseRulesHint}</p>
+                </div>
+              </div>
+            </fieldset>
 
             {/* Danger zone sits inside the save form (its button is
                 type="button", so it never submits) — order-wise it belongs
@@ -400,13 +476,24 @@ export default function KeyPanel(props: {
                   <div class="text-sm font-medium text-error">{labels.danger}</div>
                   <p class="text-xs text-base-content/75">{labels.dangerHint}</p>
                 </div>
-                <button
-                  type="button"
-                  class="btn btn-error btn-outline shrink-0"
-                  onClick={() => confirmRef.current?.showModal()}
-                >
-                  {labels.delete}
-                </button>
+                <div class="flex shrink-0 items-center gap-2">
+                  {props.revokeAction ? (
+                    <button
+                      type="button"
+                      class="btn btn-warning btn-outline"
+                      onClick={() => revokeRef.current?.showModal()}
+                    >
+                      {labels.revoke}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    class="btn btn-error btn-outline"
+                    onClick={() => deleteRef.current?.showModal()}
+                  >
+                    {labels.delete}
+                  </button>
+                </div>
               </div>
             ) : null}
 
@@ -414,9 +501,11 @@ export default function KeyPanel(props: {
               <button type="button" class="btn btn-ghost" onClick={hide}>
                 {labels.cancel}
               </button>
-              <button ref={submitRef} type="submit" class="btn btn-primary">
-                {props.submit}
-              </button>
+              {props.revoked ? null : (
+                <button ref={submitRef} type="submit" class="btn btn-primary">
+                  {props.submit}
+                </button>
+              )}
             </div>
           </form>
         </div>
@@ -426,38 +515,36 @@ export default function KeyPanel(props: {
         </form>
       </dialog>
 
+      {props.revokeAction && props.keyName ? (
+        <NameConfirm
+          dialogRef={revokeRef}
+          titleId={revokeTitleId}
+          title={labels.revokeTitle}
+          hint={labels.revokeHint}
+          confirmLabel={labels.deleteConfirm}
+          cancel={labels.cancel}
+          close={labels.close}
+          submit={labels.revoke}
+          action={props.revokeAction}
+          keyName={props.keyName}
+          csrf={props.csrf ?? ""}
+        />
+      ) : null}
+
       {props.deleteAction && props.keyName ? (
-        <dialog ref={confirmRef} class="modal" aria-labelledby={confirmTitleId}>
-          <div class="modal-box max-w-md">
-            <h3 id={confirmTitleId} class="text-lg font-semibold">
-              {labels.deleteTitle}
-            </h3>
-            <p class="mt-2 text-sm text-base-content/75">{labels.deleteHint.replace("{name}", props.keyName)}</p>
-            <form method="post" action={props.deleteAction} class="mt-4">
-              <input type="hidden" name="csrf" value={props.csrf ?? ""} />
-              <input
-                ref={confirmInputRef}
-                name="confirmName"
-                onInput={syncConfirm}
-                autocomplete="off"
-                placeholder={labels.deleteConfirm}
-                aria-label={labels.deleteConfirm}
-                class="input input-bordered w-full"
-              />
-              <div class="modal-action">
-                <button type="button" class="btn btn-ghost" onClick={closeConfirm}>
-                  {labels.cancel}
-                </button>
-                <button ref={confirmButtonRef} type="submit" class="btn btn-error" disabled>
-                  {labels.delete}
-                </button>
-              </div>
-            </form>
-          </div>
-          <form method="dialog" class="modal-backdrop">
-            <button aria-label={labels.close}>{labels.close}</button>
-          </form>
-        </dialog>
+        <NameConfirm
+          dialogRef={deleteRef}
+          titleId={deleteTitleId}
+          title={labels.deleteTitle}
+          hint={labels.deleteHint}
+          confirmLabel={labels.deleteConfirm}
+          cancel={labels.cancel}
+          close={labels.close}
+          submit={labels.delete}
+          action={props.deleteAction}
+          keyName={props.keyName}
+          csrf={props.csrf ?? ""}
+        />
       ) : null}
     </>
   );

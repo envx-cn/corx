@@ -986,7 +986,9 @@ hour chart, a **Breakdown** selector with vertical bar charts for status /
 method / country, top hosts/keys, recent errors) · API keys (create and edit
 in a modal panel — name, rate limit, per-key origins/cache policy, keyless
 access, allowed target hosts and upstream injection (variables + header/query
-rules); the raw key is shown once; delete asks you to type the key name) ·
+rules); the raw key is shown once; revoke and delete both ask you to type the
+key name — revoke is the kill switch, delete removes the row, and a “show
+revoked” toggle keeps dead keys inspectable so their logs stay attributable) ·
 Playground (compose a proxy request — method, route style `/fetch` /
 `/proxy/*` / bare path / simulated subdomain, headers, body, `ttl` / `no-cache`,
 Origin, simulated client IP, anonymous / stored / pasted key — and inspect the
@@ -1126,7 +1128,7 @@ curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: applicat
 curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"tier":"public","dailyLimitPerOrigin":3000,"dailyLimitPerHost":5000,"dailyLimitTotal":15000}' \
   https://corx.<you>.workers.dev/api/keys/KEY_ID
-# revoke (kill switch; the console's Delete removes the row for good) / block hosts
+# revoke (kill switch; keeps the row; the console has the same button) / block hosts
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" https://corx.<you>.workers.dev/api/keys/KEY_ID/revoke
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"hostname":"evil.example","reason":"abuse"}' \

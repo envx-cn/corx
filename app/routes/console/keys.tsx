@@ -15,9 +15,18 @@ const app = new Hono<{ Bindings: Env }>({ strict: false });
 
 app.get("/", async (c) => {
   const t = consoleT(c);
-  return c.render(<KeysContent keys={await queryKeys(c.env.DB)} newKey={null} csrf={c.get("csrfToken") ?? ""} t={t} />, {
-    title: t("console.title.keys"),
-  });
+  return c.render(
+    <KeysContent
+      keys={await queryKeys(c.env.DB)}
+      newKey={null}
+      showRevoked={c.req.query("revoked") === "1"}
+      csrf={c.get("csrfToken") ?? ""}
+      t={t}
+    />,
+    {
+      title: t("console.title.keys"),
+    },
+  );
 });
 
 app.post("/", async (c) => {
@@ -138,6 +147,40 @@ app.post("/:id/delete", async (c) => {
   if (confirm !== key.name) return fail(t("console.keys.deleteMismatch", { name: key.name }));
   await c.env.DB.prepare("DELETE FROM api_keys WHERE id = ?").bind(id).run();
   return c.redirect("/console/keys", 302);
+});
+
+/**
+ * Kill switch — the row survives so its logs stay attributable; Delete is the
+ * cleanup. Same type-the-name guard as delete, and the redirect turns the
+ * "show revoked" toggle on so the newly dead key is visibly still here.
+ */
+app.post("/:id/revoke", async (c) => {
+  const t = consoleT(c);
+  const id = c.req.param("id") ?? "";
+  const form = await c.req.parseBody();
+  const confirm = String(form["confirmName"] ?? "").trim();
+  const keys = await queryKeys(c.env.DB);
+  const key = keys.find((k) => k.id === id);
+  const fail = (error: string) =>
+    c.render(
+      <KeysContent
+        keys={keys}
+        newKey={null}
+        error={error}
+        editDraft={key ? { id, values: rowValues(key) } : undefined}
+        csrf={c.get("csrfToken") ?? ""}
+        t={t}
+      />,
+      { title: t("console.title.keys") },
+    );
+  if (!key) return fail(t("console.keys.revokeFailed"));
+  if (confirm !== key.name) return fail(t("console.keys.revokeMismatch", { name: key.name }));
+  await c.env.DB.prepare(
+    "UPDATE api_keys SET revoked_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+  )
+    .bind(id)
+    .run();
+  return c.redirect("/console/keys?revoked=1", 302);
 });
 
 export default app;
@@ -271,6 +314,10 @@ function panelLabels(t: TFunc): KeyPanelI18n {
     cancel: t("ui.cancel"),
     close: t("ui.close"),
     saving: t("console.keys.saving"),
+    revokedHint: t("console.keys.revokedHint"),
+    revoke: t("console.keys.revoke"),
+    revokeTitle: t("console.keys.revokeTitle"),
+    revokeHint: t("console.keys.revokeHint"),
   };
 }
 
@@ -282,14 +329,20 @@ function KeysContent(props: {
   createDraft?: KeyFormValues;
   /** Key + values to re-open the edit panel with (a save or delete failed). */
   editDraft?: { id: string; values: KeyFormValues };
+  /** "Show revoked" view state (?revoked=1): dead keys stay inspectable. */
+  showRevoked?: boolean;
   /** Session-bound CSRF token for every POST form on the page. */
   csrf: string;
   t: TFunc;
 }) {
   const { t } = props;
   const labels = panelLabels(t);
-  // Revoked keys (API-side kill switch) are dead: not listed, not editable.
-  const keys = props.keys.filter((k) => !k.revoked_at);
+  // Revoked keys are dead at the edge, but they are not gone: the row keeps
+  // its policy and its traffic attributable until someone cleans it up. Hidden
+  // by default so the working list stays a working list.
+  const showRevoked = props.showRevoked ?? false;
+  const revokedCount = props.keys.filter((k) => k.revoked_at).length;
+  const keys = showRevoked ? props.keys : props.keys.filter((k) => !k.revoked_at);
   // A failed save re-opens exactly one panel, and the message belongs inside
   // it: a top-layer <dialog> covers the page alert. The page alert stays for
   // failures with no panel to land in (e.g. an unknown key on delete).
@@ -299,18 +352,25 @@ function KeysContent(props: {
     <>
       <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
         <h1 class="text-3xl font-semibold tracking-tight">{t("console.title.keys")}</h1>
-        <KeyPanel
-          trigger={t("console.keys.create")}
-          triggerClass="btn btn-primary btn-sm"
-          title={t("console.keys.createTitle")}
-          submit={t("console.keys.create")}
-          action="/console/keys"
-          values={props.createDraft}
-          open={props.createDraft != null}
-          error={props.createDraft ? props.error : null}
-          csrf={props.csrf}
-          labels={labels}
-        />
+        <div class="flex items-center gap-2">
+          {revokedCount > 0 ? (
+            <a class="btn btn-ghost btn-sm" href={showRevoked ? "/console/keys" : "/console/keys?revoked=1"}>
+              {showRevoked ? t("console.keys.hideRevoked") : t("console.keys.showRevoked", { n: revokedCount })}
+            </a>
+          ) : null}
+          <KeyPanel
+            trigger={t("console.keys.create")}
+            triggerClass="btn btn-primary btn-sm"
+            title={t("console.keys.createTitle")}
+            submit={t("console.keys.create")}
+            action="/console/keys"
+            values={props.createDraft}
+            open={props.createDraft != null}
+            error={props.createDraft ? props.error : null}
+            csrf={props.csrf}
+            labels={labels}
+          />
+        </div>
       </div>
 
       {props.error && !panelOpen && (
@@ -353,6 +413,11 @@ function KeysContent(props: {
               <tr>
                 <td class="whitespace-nowrap">
                   {k.name || <span class="text-base-content/75">—</span>}
+                  {k.revoked_at ? (
+                    <span class="badge badge-error badge-outline badge-sm ml-2 align-middle">
+                      {t("console.keys.badgeRevoked")}
+                    </span>
+                  ) : null}
                   {k.keyless ? (
                     <span class="badge badge-outline badge-sm ml-2 align-middle">{t("console.keys.badgeKeyless")}</span>
                   ) : null}
@@ -378,15 +443,17 @@ function KeysContent(props: {
                 <td>
                   <div class="flex items-center justify-end">
                     <KeyPanel
-                      trigger={t("console.keys.edit")}
+                      trigger={k.revoked_at ? t("console.keys.view") : t("console.keys.edit")}
                       triggerClass="btn btn-xs"
-                      title={t("console.keys.editTitle")}
+                      title={k.revoked_at ? t("console.keys.viewTitle") : t("console.keys.editTitle")}
                       submit={t("console.keys.save")}
                       action={`/console/keys/${k.id}`}
                       values={props.editDraft?.id === k.id ? props.editDraft.values : rowValues(k)}
                       open={props.editDraft?.id === k.id}
                       error={props.editDraft?.id === k.id ? props.error : null}
                       deleteAction={`/console/keys/${k.id}/delete`}
+                      revokeAction={k.revoked_at ? undefined : `/console/keys/${k.id}/revoke`}
+                      revoked={!!k.revoked_at}
                       keyName={k.name}
                       csrf={props.csrf}
                       labels={labels}

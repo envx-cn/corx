@@ -1347,6 +1347,14 @@ describe("console key form (integration)", () => {
     daily_limit_total: null,
   };
 
+  const revokedKey = {
+    ...storedKey,
+    id: "key-dead",
+    name: "old-app",
+    revoked_at: "2026-01-03T00:00:00Z",
+    created_at: "2026-01-01T00:00:00Z",
+  };
+
   it("saves the response header rules the edit panel collected", async () => {
     const { env: withDb, updates } = updateDb(storedKey);
     const csrf = await csrfFrom("/console/keys", withDb);
@@ -1418,6 +1426,60 @@ describe("console key form (integration)", () => {
     expect(withError[0]).toContain('action="/console/keys/key-1"');
     // ...not in the page-level alert, which the top layer would cover.
     expect(html).not.toContain("alert-error mb-4");
+  });
+
+  it("hides revoked keys by default, and shows the badge behind ?revoked=1", async () => {
+    const { env: withDb } = updateDb(revokedKey);
+
+    const hidden = await call("/console/keys", { headers: { cookie: `corx_session=${sessionCookie}` } }, withDb);
+    const hiddenHtml = await hidden.text();
+    expect(hiddenHtml).not.toContain("old-app");
+    // The toggle reports what is one click away, even while hidden.
+    expect(hiddenHtml).toContain("Show revoked (1)");
+
+    const shown = await call("/console/keys?revoked=1", { headers: { cookie: `corx_session=${sessionCookie}` } }, withDb);
+    const shownHtml = await shown.text();
+    expect(shownHtml).toContain("old-app");
+    expect(shownHtml).toContain(">revoked</span>");
+    expect(shownHtml).toContain("Hide revoked");
+    // Policy is history: the panel opens read-only (every control disabled)
+    // with no Save button — and Delete stays available for cleanup.
+    expect(shownHtml).toContain("<fieldset disabled");
+    expect(shownHtml).not.toContain(">Save</button>");
+    expect(shownHtml).toContain("This key is revoked");
+    // Nothing left to revoke: no revoke dialog and no revoke button.
+    expect(shownHtml).not.toContain("/console/keys/key-dead/revoke");
+  });
+
+  it("revokes from the console behind the type-the-name check, keeping the row", async () => {
+    const { env: withDb, updates } = updateDb(storedKey);
+    const csrf = await csrfFrom("/console/keys", withDb);
+    const post = (body: string) =>
+      call(
+        "/console/keys/key-1/revoke",
+        {
+          method: "POST",
+          headers: {
+            cookie: `corx_session=${sessionCookie}`,
+            "content-type": "application/x-www-form-urlencoded",
+          },
+          body,
+        },
+        withDb,
+      );
+
+    const mismatch = await post(`confirmName=nope&csrf=${csrf}`);
+    expect(mismatch.status).toBe(200);
+    expect(await mismatch.text()).toContain("was not revoked");
+    expect(updates).toHaveLength(0);
+
+    const ok = await post(`confirmName=my-app&csrf=${csrf}`);
+    expect(ok.status).toBe(302);
+    // The redirect turns the toggle on: the dead key is still visible.
+    expect(ok.headers.get("location")).toBe("/console/keys?revoked=1");
+    const revoke = updates.find((u) => u.sql.includes("revoked_at"));
+    expect(revoke, "revoke must set revoked_at").toBeDefined();
+    expect(revoke?.values).toContain("key-1");
   });
 });
 

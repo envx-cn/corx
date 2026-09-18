@@ -77,8 +77,8 @@ Files: `app/proxy/cors.ts`, `app/lib/auth.ts`, `app/lib/admin.ts`.
 - Public tier is validated at save time: no injection, both SSRF guards must
   stay on, and a daily total cap is required (see §12).
 - Lifecycle: create, partial update (`PATCH` merges with the stored row;
-  blank variable values keep the secret), revoke (kill switch), hard delete
-  from the console (type the key name to confirm).
+  blank variable values keep the secret), revoke (kill switch) and hard delete,
+  both from the console behind a type-the-name confirmation.
 - Read paths never leak secrets: `GET /api/keys` masks variable values to
   names only (`redactKeyRow`); `key_hash` is never selected by the console.
 
@@ -250,8 +250,10 @@ Files: `app/routes/api/**`, `app/lib/admin.ts`, `app/lib/access.ts`.
   recent errors.
 - **Keys**: create/edit modal panel (native `<dialog>`, state-less island so
   fields never re-render while typing) for every per-key field including
-  injection editors; raw key shown once with a copy button; delete behind a
-  type-the-name confirmation; revoked badge.
+  injection editors; raw key shown once with a copy button; revoke and delete
+  behind type-the-name confirmations (revoke = kill switch, delete = cleanup),
+  a revoked badge, and a “show revoked” toggle so dead keys and their logs stay
+  attributable; a revoked key's panel opens read-only.
 - **Playground**: composes a proxy request (method, route style `/fetch` /
   `/proxy/*` / bare path / simulated subdomain, headers, body, `ttl` /
   `no-cache`, Origin, simulated client IP, anonymous / stored / pasted key)
