@@ -34,6 +34,17 @@ describe("responseCacheable — upstream cache semantics", () => {
       expect(responseCacheable(res({ vary: v })), v).toBe(false);
     }
   });
+  it("never buffers an unbounded stream, even without Cache-Control", () => {
+    // SSE and MJPEG only end when the client disconnects: buffering one waits
+    // for the stream to close, so the caller would never receive an event.
+    expect(responseCacheable(res({ "content-type": "text/event-stream" }))).toBe(false);
+    expect(responseCacheable(res({ "content-type": "text/event-stream; charset=utf-8" }))).toBe(false);
+    expect(responseCacheable(res({ "content-type": "multipart/x-mixed-replace; boundary=x" }))).toBe(false);
+  });
+  it("still caches a plain chunked text response", () => {
+    expect(responseCacheable(res({ "content-type": "text/plain" }))).toBe(true);
+    expect(responseCacheable(res({ "content-type": "text/plain", "cache-control": "public, max-age=60" }))).toBe(true);
+  });
   it("allows Vary: Origin (proxy strips Origin before forwarding)", () => {
     expect(responseCacheable(res({ vary: "Origin" }))).toBe(true);
   });

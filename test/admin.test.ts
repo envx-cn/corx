@@ -134,6 +134,24 @@ describe("createApiKey", () => {
     expect(calls.some((c) => c.sql.includes("DELETE FROM keyless_origins"))).toBe(true);
   });
 
+  it("accepts a loopback port wildcard as a keyless grant", async () => {
+    const { db, calls } = recordingDb();
+    const { id } = await createApiKey(db, {
+      name: "dev",
+      allowedOrigins: "http://localhost:*",
+      keyless: true,
+    });
+    const grant = calls.find((c) => c.sql.includes("INSERT OR IGNORE INTO keyless_origins"));
+    expect(grant?.values).toEqual(["http://localhost:*", id]);
+  });
+
+  it("rejects a non-loopback port wildcard for keyless", async () => {
+    const { db } = recordingDb();
+    await expect(
+      createApiKey(db, { name: "dev", allowedOrigins: "https://example.com:*", keyless: true }),
+    ).rejects.toBeInstanceOf(ProxyError);
+  });
+
   it("rejects an origin already granted to another key", async () => {
     const { db, calls } = recordingDb(undefined, { key_id: "other-id", name: "other" });
     await expect(

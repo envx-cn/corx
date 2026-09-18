@@ -29,7 +29,8 @@ map, not the manual.
 | Redirects | `follow` by default; `manual` whenever a key injects headers/rules or declares allowed hosts (a cross-origin redirect must not carry custom secret headers). In-scope hops are re-validated (blocklist + DNS) and re-scoped per rule; a hop outside the allowlist is returned to the caller with an absolute `Location` and never fetched; max 5 hops. Method/body follow the fetch spec: 301/302 rewrite `POST`→`GET`, 303 rewrites every method but `GET`/`HEAD`, both dropping the body. In subdomain mode a `Location` on the target origin is rewritten relative (buffered and streamed paths alike) so the next hop stays inside the proxy. |
 | Response hygiene | `content-encoding`, `content-length`, hop-by-hop and `set-cookie` stripped (lean set on streamed responses so Range/206 survives); per-key **response header rules** then set/remove headers for the caller (the embed recipe), before corx's own markers are written. |
 | Response markers | `X-Corx-Cache: HIT/MISS`, `X-Corx-Target`, `X-Corx-Latency-Ms` on every proxy response. |
-| Streaming | Responses > 5 MiB (`CACHE_MAX_BYTES`) or non-cacheable stream straight through; a stream can never OOM the Worker (`app/proxy/cache.ts#readBounded`). |
+| Streaming | Responses > 5 MiB (`CACHE_MAX_BYTES`) or non-cacheable stream straight through; a stream can never OOM the Worker (`app/proxy/cache.ts#readBounded`). Unbounded streams (`text/event-stream`, `multipart/x-mixed-replace`) are never cacheable whatever their `Cache-Control`, so SSE reaches the caller chunk-by-chunk. |
+| LLM APIs | The mainstream chat APIs are `POST` + SSE and work as-is: OpenAI, Azure OpenAI (`api-key`), Anthropic (`POST /v1/messages`), Gemini (`…:streamGenerateContent?alt=sse`), Ollama, and OpenAI-compatible runtimes. `X-Api-Key`/`X-Admin-Token` are stripped from *client* requests (handler.ts `STRIP_REQUEST`), so an upstream credential header such as Anthropic's `x-api-key` or `x-goog-api-key` must come from a key's header rules (`HeaderRules` with a `${VAR}`, see §6) — the browser never holds it. No key means no injection, and the public tier is GET/HEAD-only, so LLM calls require a standard key on a self-hosted instance. WebSocket/realtime APIs (OpenAI Realtime, Gemini Live) are a non-goal: `Upgrade` is hop-by-hop, and WSS is not CORS-gated, so a browser can connect directly. |
 | Media | Range requests pass through, `206`/`Content-Range`/`Accept-Ranges` preserved, seeking works in `<video>`/`<audio>`; Range always bypasses the cache. |
 | Logging | Every request logged to D1 via `waitUntil` (method, pre-injection target, host, status, latency, client IP, country, key, cache flag, bytes both ways, auth via, origin, injected flag); streamed bodies are byte-counted by `countStream` when they finish or the client disconnects. Configurable per deployment: `LOG_REQUESTS=false` writes no rows at all (nothing else depends on them), `LOG_RETENTION_DAYS` sets the raw window (1–365). |
 
@@ -39,6 +40,14 @@ Files: `app/proxy/handler.ts`, `app/proxy/subdomain.ts`, `app/proxy/guard.ts`, `
 
 - Global `ALLOWED_ORIGINS` (`*` default) or a comma list; **per-key override**
   (blank inherits the global).
+- Origin entries are canonicalized on save (`URL.origin`: lowercase host, default
+  port dropped) and matched exactly, except a **loopback port wildcard**
+  (`http://localhost:*`, `https://localhost:*`, `http://127.0.0.1:*`,
+  `http://[::1]:*`) which covers any port on that loopback host (scheme still
+  pinned). Host wildcards (`https://*.example.com`), non-loopback port wildcards
+  and regexes are rejected with a 400 — a dev server on a random port is the
+  real need, and a subdomain wildcard would hand the key to any subdomain of a
+  possibly-shared host.
 - Preflight `OPTIONS` → 204 with echoed request method/headers, `Max-Age 86400`;
   normal responses echo the origin and add `Vary: Origin` when not `*`.
 - Proxy routes only: `/console/*`, `/api/*` and `/health` never emit ACAO.
@@ -48,7 +57,9 @@ Files: `app/proxy/handler.ts`, `app/proxy/subdomain.ts`, `app/proxy/guard.ts`, `
   `keyless_origins`; explicit origins only (blank/`*` rejected), one origin per
   key (second save names the holder), cannot be combined with SSRF opt-outs,
   metered per `origin + IP`, logged as `auth_via=origin`. Documented as quota
-  attribution, not authentication.
+  attribution, not authentication. A loopback port wildcard is a valid grant
+  ("all localhost requests"); lookup queries the exact origin plus its
+  `scheme://host:*` pattern in one indexed statement, exact grant first.
 
 Files: `app/proxy/cors.ts`, `app/lib/auth.ts`, `app/lib/admin.ts`.
 
@@ -119,7 +130,9 @@ Files: `app/proxy/ip.ts`, `app/proxy/guard.ts`, `app/proxy/dns-check.ts`,
   rules, `Range`, request `Authorization`/`Cookie`, `?corx-no-cache=1`, request
   `Cache-Control: no-cache`.
 - Store policy: honor upstream `Cache-Control` (`no-store`, `private`,
-  `no-cache`, `must-revalidate`, `max-age=0`) and skip responses that `Vary`
+  `no-cache`, `must-revalidate`, `max-age=0`), never buffer an unbounded stream
+  (`text/event-stream`, `multipart/x-mixed-replace` — matched on content type,
+  since an SSE endpoint without `Cache-Control` is still SSE), and skip responses that `Vary`
   on caller-dependent tokens (`accept*`, `cookie`, `authorization`,
   `user-agent`, `host`, `referer`, `x-forwarded-for`, `*`); `set-cookie` and
   credentials never stored. `Vary: Origin` is intentionally cacheable — the
@@ -458,9 +471,10 @@ Files: `app/lib/access.ts`, `app/lib/session.ts`, `app/lib/csrf.ts`,
   quotas, CORS origins, subdomain encoding, media/Range, playground, stats
   bucketing, i18n, the terms page and the assembled app (error pages, JSON
   wire format, body caps, `/fetch` CORS, credential stripping).
-- 9 numbered D1 migrations in `migrations/` (keys → per-key origins/cache →
+- 11 numbered D1 migrations in `migrations/` (keys → per-key origins/cache →
   log bytes → guard toggles → injection → keyless/audit → public tier +
-  quota counters → daily stats rollup).
+  quota counters → daily stats rollup → response header rules → keyless
+  origin normalization).
 
 ---
 
@@ -530,6 +544,8 @@ Product **non-goals** are a separate list from the limitations above — not gap
 but deliberate scope decisions with their reasons: image transforms,
 scraping/extraction and file conversion; caller-selectable egress regions; an
 SLA or support commitment for the hosted instance; HLS/DASH manifest rewriting;
+WebSocket/bidirectional streaming (realtime and voice APIs — WSS is not
+CORS-gated, so a browser needs no proxy for it);
 and control parameters as request headers. They live in README →
 [Non-goals](./README.md#non-goals), so a feature request can be answered with a
 pointer instead of a debate.

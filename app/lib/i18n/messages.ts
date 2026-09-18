@@ -335,7 +335,7 @@ const en = {
       keyless: {
         title: "Keyless origin grants",
         body:
-          "Enable keyless access on a key and browsers from its allowed origins call the proxy without carrying the key at all. The grant matches the `Origin` header (or the `Referer`'s origin for same-origin GETs) and is metered per visitor IP, so one embedded site cannot drain the key. An origin is a convenience, not a credential — scripts can forge it — so pair it with allowed hosts and a rate limit.",
+          "Enable keyless access on a key and browsers from its allowed origins call the proxy without carrying the key at all. The grant matches the `Origin` header (or the `Referer`'s origin for same-origin GETs) and is metered per visitor IP, so one embedded site cannot drain the key. Origins are canonicalized on save (lowercase host, default port dropped), and the one wildcard form is a loopback port — `http://localhost:*` covers any localhost port, so a dev server on a random port needs a single entry. Host wildcards (`https://*.example.com`) and regexes are rejected. An origin is a convenience, not a credential — scripts can forge it — so pair it with allowed hosts and a rate limit.",
       },
       public: {
         title: "Public tier",
@@ -855,7 +855,7 @@ const en = {
       dnsCheck: "DNS check",
       dnsCheckHint: "Resolve the host via DoH and block names that point at a non-public IP.",
       keyless: "Keyless access",
-      keylessHint: "The allowed origins above can use this key without sending it. Origin is a convenience, not a credential — non-browser clients can forge it.",
+      keylessHint: "The allowed origins above can use this key without sending it. A loopback port wildcard (http://localhost:*) covers every port on that host. Origin is a convenience, not a credential — non-browser clients can forge it.",
       publicTier: "Public tier",
       publicTierHint:
         "The shared key for this hosted instance: GET/HEAD only, no cache control, no subdomain mode, credentials never forwarded, and the daily quotas below. Safe to hand out.",
@@ -888,7 +888,7 @@ const en = {
       deleteConfirm: "key name",
       namePh: "my-app",
       ratePh: "120 (blank = default)",
-      originsPh: "* or https://app.example (blank = global)",
+      originsPh: "* or https://app.example, http://localhost:* (blank = global)",
       ttlPh: "blank = global",
       cacheTtlTitle: "TTL seconds (blank = global, 0 = never store)",
       noCacheTitle: "Skip the R2 cache entirely for this key",
@@ -1406,7 +1406,7 @@ const zh: Messages = {
       keyless: {
         title: "免密钥来源授权",
         body:
-          "给 key 开启免密钥（keyless）后，其允许来源的浏览器调用代理时完全无需携带 key。授权按 `Origin` 匹配（同源 GET 时回退到 `Referer` 的来源），并按访客 IP 计量，因此单个嵌入站点无法耗尽整个 key。来源是便利措施而非凭证——脚本可以伪造——请配合允许主机和频率限制使用。",
+          "给 key 开启免密钥（keyless）后，其允许来源的浏览器调用代理时完全无需携带 key。授权按 `Origin` 匹配（同源 GET 时回退到 `Referer` 的来源），并按访客 IP 计量，因此单个嵌入站点无法耗尽整个 key。允许来源在保存时会规范化（主机小写、省略默认端口），唯一的通配形式是 loopback 端口——`http://localhost:*` 覆盖 localhost 的所有端口，随机端口的开发服务器只需一条。主机通配（`https://*.example.com`）和正则会被拒绝。来源是便利措施而非凭证——脚本可以伪造——请配合允许主机和频率限制使用。",
       },
       public: {
         title: "公共档位",
@@ -1905,7 +1905,7 @@ const zh: Messages = {
       dnsCheck: "DNS 检查",
       dnsCheckHint: "通过 DoH 解析主机，拦截指向非公网 IP 的域名。",
       keyless: "免密钥访问",
-      keylessHint: "上面的允许来源无需携带密钥即可使用该密钥。Origin 只是便利手段，不是凭证——非浏览器客户端可以伪造它。",
+      keylessHint: "上面的允许来源无需携带密钥即可使用该密钥。loopback 端口通配（http://localhost:*）覆盖该主机的所有端口。Origin 只是便利手段，不是凭证——非浏览器客户端可以伪造它。",
       publicTier: "公共档位",
       publicTierHint:
         "面向本站访客的共享 key：仅 GET/HEAD、不支持缓存控制、不支持子域模式、不转发凭证，并受下方每日配额约束。可以放心分发。",
@@ -1938,7 +1938,7 @@ const zh: Messages = {
       deleteConfirm: "密钥名称",
       namePh: "my-app",
       ratePh: "120（留空 = 默认）",
-      originsPh: "* 或 https://app.example（留空 = 全局）",
+      originsPh: "* 或 https://app.example、http://localhost:*（留空 = 全局）",
       ttlPh: "留空 = 全局",
       cacheTtlTitle: "TTL 秒数（留空 = 全局，0 = 从不存储）",
       noCacheTitle: "该密钥完全跳过 R2 缓存",

@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import type { Env } from "../lib/types.js";
 import { ProxyError } from "../lib/types.js";
 import type { ProxyVariables } from "../lib/auth.js";
-import { normalizeOrigin } from "../lib/auth.js";
+import { normalizeOrigin } from "./cors.js";
 import { assertKnownControlParams, hasControl } from "../lib/control.js";
 import { validateTargetUrl, checkDbBlocklist } from "./guard.js";
 import { resolveRawTarget } from "./subdomain.js";

@@ -246,16 +246,25 @@ this is a self-hosting feature.
 Turn on `keyless` and browsers from the key's **allowed origins** can call the
 proxy without sending the key at all:
 
-- The caller's origin is matched exactly against the origins the key already
-  declares — `Origin` when the browser sends one, otherwise the `Referer`'s
-  origin (`app/lib/auth.ts` → `callerOrigin`). The fallback matters: browsers
-  omit `Origin` on same-origin GETs (the landing page's live demo) and on
-  no-cors subresource loads (plain `<img>`/`<script>`, JSONP), which is exactly
-  where a key cannot be attached conveniently. Keep an eye on
+- The caller's origin is matched against the origins the key already declares —
+  `Origin` when the browser sends one, otherwise the `Referer`'s origin
+  (`app/lib/auth.ts` → `callerOrigin`). The fallback matters: browsers omit
+  `Origin` on same-origin GETs (the landing page's live demo) and on no-cors
+  subresource loads (plain `<img>`/`<script>`, JSONP), which is exactly where a
+  key cannot be attached conveniently. Keep an eye on
   `Referrer-Policy: no-referrer` callers — they send neither header, fall
   through to anonymous, and need `?corx-key=` instead.
+- Entries are canonicalized on save (lowercase host, default port dropped), so
+  `https://App.Example.com:443` is stored and matched as
+  `https://app.example.com`. A **loopback port wildcard** is the one wildcard
+  form: `http://localhost:*`, `https://localhost:*`, `http://127.0.0.1:*` or
+  `http://[::1]:*` matches any port on that loopback host (scheme is still
+  pinned) — one entry covers a dev server whose port changes every run. Host
+  wildcards (`https://*.example.com`), ports on non-loopback hosts and regexes
+  are rejected with a 400.
 - Blank and `*` are rejected (keyless needs an explicit list), and an origin
   can be granted to exactly one key — the second save fails naming the holder.
+  A concrete grant wins over a loopback pattern that would also cover it.
 - The SSRF opt-outs (`ipCheck`/`dnsCheck` off) cannot be combined with keyless.
 - Keyless requests are rate-limited per `origin + IP` (not per key), and logs
   record `auth_via = origin` plus the matched origin (the console's Logs table
@@ -270,8 +279,11 @@ proxy without sending the key at all:
 read or write the cache (the key is the URL only, so user-specific responses
 would leak across callers). Upstream responses marked `Cache-Control:
 no-store/private/no-cache` (or varying on `Accept`/`Accept-Language`/… ) are
-never stored either. `Vary: Origin` is safe to cache here: the proxy strips the
-caller's `Origin` before forwarding, so upstream can never vary on it.
+never stored either, and neither is an unbounded stream (`text/event-stream`,
+`multipart/x-mixed-replace`) — SSE is excluded by content type rather than by
+trusting the upstream's `Cache-Control`, so an event stream always reaches the
+caller chunk-by-chunk. `Vary: Origin` is safe to cache here: the proxy strips
+the caller's `Origin` before forwarding, so upstream can never vary on it.
 
 Responses carry `X-Corx-Cache: HIT/MISS`, `X-Corx-Target`, `X-Corx-Latency-Ms`.
 Preflight `OPTIONS` is answered on every route. Upstream `set-cookie` is stripped.
@@ -298,6 +310,40 @@ R2 cache; everything else streams straight through untouched, so:
 One limitation: HLS/DASH playlists (`.m3u8`/`.mpd`) with absolute segment URLs
 break out of the proxy — relative URLs (or subdomain mode) work fine. That is a
 [non-goal](#non-goals), not a backlog item.
+
+**SSE and LLM APIs**
+
+Yes — no LLM-specific code, because the mainstream chat APIs are ordinary
+`POST`-with-`stream: true` calls and the proxy already streams non-cacheable
+responses chunk-by-chunk. What works out of the box:
+
+- **OpenAI-compatible** (`POST /v1/chat/completions`, `Authorization: Bearer`,
+  `stream: true`), **Azure OpenAI** (`api-key`), **Ollama** and any
+  OpenAI-compatible self-hosted runtime (vLLM, LM Studio, …).
+- **Google Gemini** (`POST …:streamGenerateContent?alt=sse`, with `?key=`).
+- **Anthropic** (`POST /v1/messages`) — with one caveat: CORX strips
+  `X-Api-Key` from client requests (it is CORX's own key header, and
+  forwarding it would leak the proxy key to the target). Anthropic's
+  `x-api-key` must therefore be **injected server-side from a key's config**,
+  not sent by the browser: create a key, add a variable for the Anthropic
+  secret, and a header rule `x-api-key: ${ANTHROPIC_KEY}`, then call
+  `/fetch?url=https://api.anthropic.com/v1/messages` with that key. The same
+  recipe covers `x-goog-api-key` and any other credential header.
+- `Accept: text/event-stream`, `anthropic-version` and every other non-reserved
+  request header pass through; the SSE body is forwarded as it arrives and is
+  never buffered (`text/event-stream` is excluded from the R2 cache by content
+  type, not by trusting the upstream's `Cache-Control`).
+
+Two constraints, both deliberate:
+
+- **This needs a real key, never the public tier.** The shared public key is
+  GET/HEAD-only and cannot inject variables or rules, so it *cannot* carry an
+  upstream secret and cannot `POST` a chat completion at all. LLM traffic means
+  a self-hosted instance and a standard key.
+- **No WebSocket.** None of the text-completion APIs need it; the realtime /
+  voice APIs do (OpenAI Realtime, Gemini Live), and those are out of scope —
+  `Upgrade` is stripped as a hop-by-hop header. See
+  [non-goals](#non-goals).
 
 ## Landing page
 
@@ -800,7 +846,7 @@ vars are rewritten from the config file each time.
 | Var | Default | Meaning |
 | --- | --- | --- |
 | `PROXY_ZONE` (secret) | `""` | Suffix for subdomain mode (`example.corx.com` → `example.com`); empty = auto-detect from the request Host |
-| `ALLOWED_ORIGINS` | `*` | `*` or comma-separated origins allowed to use the **proxy routes only** (console/API never get CORS headers) |
+| `ALLOWED_ORIGINS` | `*` | `*` or comma-separated origins allowed to use the **proxy routes only** (console/API never get CORS headers); a loopback port wildcard (`http://localhost:*`) is allowed |
 | `REQUIRE_API_KEY` | `false` | `"true"` to require an API key |
 | `CACHE_TTL_SECONDS` | `3600` | Default R2 TTL for GET 200s; also caps per-request `?corx-ttl=` |
 | `TIMEOUT_MS` | `30000` | Upstream timeout |
@@ -999,7 +1045,9 @@ curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: applicati
   https://corx.<you>.workers.dev/api/keys
 
 # per-key CORS origins: override the global ALLOWED_ORIGINS for callers of that key
-# ("*", comma-separated origins, or "" to inherit the global). Update anytime:
+# ("*", comma-separated origins, or "" to inherit the global). Update anytime.
+# Origins are canonicalized (lowercase host, default port dropped); the only
+# wildcard is a loopback port: "http://localhost:*" covers any localhost port.
 # ipCheck / dnsCheck turn the SSRF guards off for this key (default true):
 curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"allowedOrigins":"https://app.example","cacheTtl":"300","ipCheck":false}' \
@@ -1016,9 +1064,10 @@ curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: applicat
   https://corx.<you>.workers.dev/api/keys/KEY_ID
 
 # keyless access: these origins may call without presenting the key
-# (blank/"*" origins are rejected; one key per origin)
+# (blank/"*" origins are rejected; one key per origin). A loopback port wildcard
+# is allowed, so one line covers a dev server on a random port:
 curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"keyless":true,"allowedOrigins":"https://app.example"}' \
+  -d '{"keyless":true,"allowedOrigins":"http://localhost:*"}' \
   https://corx.<you>.workers.dev/api/keys/KEY_ID
 
 # public tier: shared, limited, GET/HEAD-only key for the hosted instance.
@@ -1062,6 +1111,13 @@ gets an answer instead of an argument.
   seeking work), but rewriting absolute segment URLs inside `.m3u8`/`.mpd`
   manifests would make CORX interpret the payload — a content rewriter with a
   dialect per player. Relative URLs and subdomain mode are the supported paths.
+- **WebSocket / bidirectional streaming.** The text LLM APIs are `POST` +
+  SSE and need nothing extra (see [SSE and LLM APIs](#sse-and-llm-apis)). The
+  realtime and voice APIs that need a socket (OpenAI Realtime, Gemini Live) are
+  the ones left out: `Upgrade` is hop-by-hop and stripped, and — more to the
+  point — a browser can open `wss://` directly. WebSocket is not gated by CORS,
+  so there is no proxy problem for CORX to solve there, and adding one would
+  mean a second transport through the guard, log and quota pipeline.
 - **Control parameters as request headers.** `corx-*` lives in the query string
   because that is what the callers who need it can set: a `<script src>` (JSONP),
   an `<img>`/`<video>` tag, a browser address bar, a copied link. Custom headers
@@ -1093,7 +1149,7 @@ browser ──► CORX (Worker)
 
 ```
 wrangler.jsonc          bindings (D1, R2), vars, cron
-migrations/       numbered D1 migrations (0001…0009)
+migrations/       numbered D1 migrations (0001…0011)
 app/              HonoX frontend (entry + console UI + API routes)
   server.ts     worker entry: createApp + manual mounts (proxy only).
                 File routes register at createApp time, so the manual /*

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { callerOrigin, extractRawKey } from "../app/lib/auth.js";
+import { callerOrigin, extractRawKey, lookupKeyByOrigin } from "../app/lib/auth.js";
 import previewSrc from "../app/components/response-preview.tsx?raw";
 import demoSrc from "../app/islands/cors-demo.tsx?raw";
 
@@ -61,5 +61,51 @@ describe("extractRawKey precedence", () => {
     expect(extractRawKey(req({ authorization: "Bearer from-bearer" }), url)).toBe("from-bearer");
     expect(extractRawKey(req(), url)).toBe("from-query");
     expect(extractRawKey(req(), new URL("https://corx.test/fetch?url=x")), ).toBeNull();
+  });
+});
+
+/**
+ * D1 stub that captures the statement and its bindings, and returns `row`.
+ * `lookupKeyByOrigin` must look up both the exact origin and (for loopback) its
+ * port wildcard in one indexed query.
+ */
+function lookupDb(row: unknown, capture: { sql?: string; binds?: unknown[] }) {
+  return {
+    prepare: (sql: string) => {
+      capture.sql = sql;
+      return {
+        bind: (...binds: unknown[]) => {
+          capture.binds = binds;
+          return { first: async () => row };
+        },
+      };
+    },
+  } as unknown as D1Database;
+}
+
+describe("lookupKeyByOrigin", () => {
+  const row = { id: "k1", vars: "[]", header_rules: "[]", param_rules: "[]", response_rules: "[]", revoked_at: null };
+
+  it("queries the exact grant plus a loopback port wildcard", async () => {
+    const capture: { sql?: string; binds?: unknown[] } = {};
+    const found = await lookupKeyByOrigin(lookupDb(row, capture), "http://localhost:5173");
+    expect(found).toBe(row);
+    expect(capture.binds).toEqual(["http://localhost:5173", "http://localhost:*", "http://localhost:5173"]);
+    // An exact grant must win when a pattern also covers it.
+    expect(capture.sql).toContain("ORDER BY (o.origin = ?) DESC");
+  });
+
+  it("does not invent a wildcard for a non-loopback host", async () => {
+    const capture: { sql?: string; binds?: unknown[] } = {};
+    await lookupKeyByOrigin(lookupDb(null, capture), "https://app.example.com");
+    expect(capture.binds).toEqual(["https://app.example.com", "https://app.example.com"]);
+  });
+
+  it("treats an unknown origin and a revoked key as no grant", async () => {
+    const capture: { sql?: string; binds?: unknown[] } = {};
+    expect(await lookupKeyByOrigin(lookupDb(null, capture), "https://app.example.com")).toBeNull();
+    expect(
+      await lookupKeyByOrigin(lookupDb({ ...row, revoked_at: "2026-01-01" }, capture), "https://app.example.com"),
+    ).toBeNull();
   });
 });

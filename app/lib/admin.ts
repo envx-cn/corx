@@ -3,7 +3,7 @@ import { ProxyError } from "./types.js";
 import { hashKey, newRawKey } from "./auth.js";
 import { decryptRowInjection, decryptVarsForEdit, encryptVars } from "./crypto.js";
 import { DEFAULT_LOG_RETENTION_DAYS } from "./db.js";
-import { normalizeOriginsInput, parseOrigins } from "../proxy/cors.js";
+import { normalizeOriginsInput, normalizeOriginPattern, parseOrigins } from "../proxy/cors.js";
 import { normalizeCacheTtlInput } from "../proxy/cache.js";
 import { utcDay } from "../proxy/quota.js";
 import {
@@ -617,7 +617,15 @@ function keylessGrants(keyless: boolean, allowedOrigins: string, ipCheck: number
   if (ipCheck === 0 || dnsCheck === 0) {
     throw new ProxyError(400, "Keyless access cannot disable the SSRF checks");
   }
-  return origins;
+  // Canonicalize here too: a grant saved before origins were normalized (or
+  // hand-edited in the DB) still becomes matchable on the next key save.
+  const grants = origins
+    .map((o) => normalizeOriginPattern(o))
+    .filter((o): o is string => o !== null && o !== "*");
+  if (grants.length === 0) {
+    throw new ProxyError(400, "Keyless access requires at least one valid origin");
+  }
+  return [...new Set(grants)];
 }
 
 interface GrantOwner {
