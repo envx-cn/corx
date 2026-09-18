@@ -126,11 +126,26 @@ const VARY_BLACKLIST = new Set([
 ]);
 
 /**
+ * Content types that are semantically unbounded streams: the body only ends
+ * when the client disconnects (SSE, MJPEG). They must stream chunk-by-chunk,
+ * so they are never cacheable — buffering one would hold every event until the
+ * stream closed (or the cache cap filled), which for an open connection means
+ * the client sees nothing at all.
+ *
+ * This cannot rely on upstream `Cache-Control`: an SSE endpoint that omits it
+ * is still an SSE endpoint. Most LLM APIs send `no-cache` on their streaming
+ * responses, but not all of them do.
+ */
+const UNBOUNDED_STREAM_RE = /^\s*(text\/event-stream|multipart\/x-mixed-replace)\b/i;
+
+/**
  * A response is only cacheable when upstream says it is: honor Cache-Control
- * (private/no-store/no-cache…) and skip responses whose Vary makes the body
- * caller-dependent (we key the cache on the URL alone).
+ * (private/no-store/no-cache…), never buffer an unbounded stream, and skip
+ * responses whose Vary makes the body caller-dependent (we key the cache on
+ * the URL alone).
  */
 export function responseCacheable(res: Response): boolean {
+  if (UNBOUNDED_STREAM_RE.test(res.headers.get("content-type") ?? "")) return false;
   const cc = res.headers.get("cache-control") ?? "";
   if (NO_STORE_RE.test(cc)) return false;
   const vary = (res.headers.get("vary") ?? "")

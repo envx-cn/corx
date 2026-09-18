@@ -270,8 +270,11 @@ proxy without sending the key at all:
 read or write the cache (the key is the URL only, so user-specific responses
 would leak across callers). Upstream responses marked `Cache-Control:
 no-store/private/no-cache` (or varying on `Accept`/`Accept-Language`/… ) are
-never stored either. `Vary: Origin` is safe to cache here: the proxy strips the
-caller's `Origin` before forwarding, so upstream can never vary on it.
+never stored either, and neither is an unbounded stream (`text/event-stream`,
+`multipart/x-mixed-replace`) — SSE is excluded by content type rather than by
+trusting the upstream's `Cache-Control`, so an event stream always reaches the
+caller chunk-by-chunk. `Vary: Origin` is safe to cache here: the proxy strips
+the caller's `Origin` before forwarding, so upstream can never vary on it.
 
 Responses carry `X-Corx-Cache: HIT/MISS`, `X-Corx-Target`, `X-Corx-Latency-Ms`.
 Preflight `OPTIONS` is answered on every route. Upstream `set-cookie` is stripped.
@@ -298,6 +301,40 @@ R2 cache; everything else streams straight through untouched, so:
 One limitation: HLS/DASH playlists (`.m3u8`/`.mpd`) with absolute segment URLs
 break out of the proxy — relative URLs (or subdomain mode) work fine. That is a
 [non-goal](#non-goals), not a backlog item.
+
+**SSE and LLM APIs**
+
+Yes — no LLM-specific code, because the mainstream chat APIs are ordinary
+`POST`-with-`stream: true` calls and the proxy already streams non-cacheable
+responses chunk-by-chunk. What works out of the box:
+
+- **OpenAI-compatible** (`POST /v1/chat/completions`, `Authorization: Bearer`,
+  `stream: true`), **Azure OpenAI** (`api-key`), **Ollama** and any
+  OpenAI-compatible self-hosted runtime (vLLM, LM Studio, …).
+- **Google Gemini** (`POST …:streamGenerateContent?alt=sse`, with `?key=`).
+- **Anthropic** (`POST /v1/messages`) — with one caveat: CORX strips
+  `X-Api-Key` from client requests (it is CORX's own key header, and
+  forwarding it would leak the proxy key to the target). Anthropic's
+  `x-api-key` must therefore be **injected server-side from a key's config**,
+  not sent by the browser: create a key, add a variable for the Anthropic
+  secret, and a header rule `x-api-key: ${ANTHROPIC_KEY}`, then call
+  `/fetch?url=https://api.anthropic.com/v1/messages` with that key. The same
+  recipe covers `x-goog-api-key` and any other credential header.
+- `Accept: text/event-stream`, `anthropic-version` and every other non-reserved
+  request header pass through; the SSE body is forwarded as it arrives and is
+  never buffered (`text/event-stream` is excluded from the R2 cache by content
+  type, not by trusting the upstream's `Cache-Control`).
+
+Two constraints, both deliberate:
+
+- **This needs a real key, never the public tier.** The shared public key is
+  GET/HEAD-only and cannot inject variables or rules, so it *cannot* carry an
+  upstream secret and cannot `POST` a chat completion at all. LLM traffic means
+  a self-hosted instance and a standard key.
+- **No WebSocket.** None of the text-completion APIs need it; the realtime /
+  voice APIs do (OpenAI Realtime, Gemini Live), and those are out of scope —
+  `Upgrade` is stripped as a hop-by-hop header. See
+  [non-goals](#non-goals).
 
 ## Landing page
 
@@ -1062,6 +1099,13 @@ gets an answer instead of an argument.
   seeking work), but rewriting absolute segment URLs inside `.m3u8`/`.mpd`
   manifests would make CORX interpret the payload — a content rewriter with a
   dialect per player. Relative URLs and subdomain mode are the supported paths.
+- **WebSocket / bidirectional streaming.** The text LLM APIs are `POST` +
+  SSE and need nothing extra (see [SSE and LLM APIs](#sse-and-llm-apis)). The
+  realtime and voice APIs that need a socket (OpenAI Realtime, Gemini Live) are
+  the ones left out: `Upgrade` is hop-by-hop and stripped, and — more to the
+  point — a browser can open `wss://` directly. WebSocket is not gated by CORS,
+  so there is no proxy problem for CORX to solve there, and adding one would
+  mean a second transport through the guard, log and quota pipeline.
 - **Control parameters as request headers.** `corx-*` lives in the query string
   because that is what the callers who need it can set: a `<script src>` (JSONP),
   an `<img>`/`<video>` tag, a browser address bar, a copied link. Custom headers
