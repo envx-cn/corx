@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createApiKey, queryKeyById, queryLogs, queryStats, updateApiKey } from "../app/lib/admin.js";
+import { createApiKey, queryKeyById, queryLastUsed, queryLogs, queryStats, updateApiKey } from "../app/lib/admin.js";
 import { ProxyError } from "../app/lib/types.js";
 import { decryptSecret, encryptVars } from "../app/lib/crypto.js";
 
@@ -600,5 +600,23 @@ describe("clientVars-only updates", () => {
     await expect(updateApiKey(db, "key-1", { clientVars: "NOPE" })).rejects.toThrowError(
       /not defined in Variables/,
     );
+  });
+});
+
+describe("log queries", () => {
+  it("filters logs by key and keeps the window bound", async () => {
+    const { db, calls } = recordingDb();
+    await queryLogs(db, { hours: 24, limit: 50, key: "key-1" });
+    const call = calls.find((c) => c.sql.includes("FROM request_logs"));
+    expect(call?.sql).toContain("api_key_id = ?");
+    expect(call?.values).toEqual(["-24 hours", "key-1", 50]);
+  });
+
+  it("reads last-used per key inside the retention window", async () => {
+    const { db, calls } = recordingDb();
+    await queryLastUsed(db, 30);
+    const call = calls.find((c) => c.sql.includes("MAX(created_at)"));
+    expect(call?.sql).toContain("GROUP BY api_key_id");
+    expect(call?.values).toEqual(["-30 days"]);
   });
 });

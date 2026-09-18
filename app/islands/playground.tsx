@@ -189,13 +189,18 @@ function replayUrlOf(result: PlaygroundResult | null): string {
  */
 export default function Playground(props: {
   keys: PlaygroundKeyOption[];
+  /** Preselect a stored key (?key=, the keys table's "Playground" link). */
+  initialKeyId?: string;
   /** Session-bound CSRF token for the run POST. */
   csrf: string;
   i18n: PlaygroundI18n;
   preview: ResponsePreviewI18n;
 }) {
   const { i18n, preview } = props;
-  const [spec, setSpec] = useState<Spec>(emptySpec());
+  const [spec, setSpec] = useState<Spec>(() => {
+    const base = emptySpec();
+    return props.initialKeyId ? { ...base, keyMode: "stored" as const, keyId: props.initialKeyId } : base;
+  });
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<PlaygroundResult | null>(null);
   const [lastSpec, setLastSpec] = useState<Spec | null>(null);

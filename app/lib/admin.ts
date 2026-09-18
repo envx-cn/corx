@@ -414,22 +414,52 @@ export interface LogQuery {
   limit?: number;
   /** Only rows newer than N hours (1–168 = 7 days). Omit for no time filter. */
   hours?: number;
+  /** Only rows authorized by this key id (the keys table's "logs" link). */
+  key?: string;
 }
 
 export async function queryLogs(db: D1Database, q: LogQuery = {}): Promise<LogRow[]> {
   const limit = Math.min(Math.max(Math.round(q.limit ?? 50) || 50, 1), 200);
   const hours =
     q.hours == null || !Number.isFinite(q.hours) ? null : Math.min(Math.max(Math.round(q.hours), 1), 168);
+  const where: string[] = [];
+  const binds: Array<string | number> = [];
+  if (hours != null) {
+    where.push(`created_at > ${ISO_SINCE}`);
+    binds.push(`-${hours} hours`);
+  }
+  if (q.key) {
+    where.push("api_key_id = ?");
+    binds.push(q.key);
+  }
   const rows = await db
     .prepare(
       `SELECT id, created_at, method, target_host, status, latency_ms, country, cached, error, req_bytes, res_bytes,
               api_key_id, auth_via, origin
-       FROM request_logs ${hours == null ? "" : `WHERE created_at > ${ISO_SINCE}`}
+       FROM request_logs ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
        ORDER BY created_at DESC, id DESC LIMIT ?`,
     )
-    .bind(...(hours == null ? [limit] : [`-${hours} hours`, limit]))
+    .bind(...binds, limit)
     .all<LogRow>();
   return rows.results;
+}
+
+/**
+ * Last request per key inside the raw-log window. Raw rows are pruned after
+ * `LOG_RETENTION_DAYS`, so a key with no entry was not used in that window —
+ * which is not the same as never used, and the console says so rather than
+ * inventing a timestamp.
+ */
+export async function queryLastUsed(db: D1Database, days: number): Promise<Map<string, string>> {
+  const rows = await db
+    .prepare(
+      `SELECT api_key_id, MAX(created_at) AS last_used FROM request_logs
+       WHERE api_key_id IS NOT NULL AND created_at > ${ISO_SINCE}
+       GROUP BY api_key_id`,
+    )
+    .bind(`-${Math.max(1, Math.round(days))} days`)
+    .all<{ api_key_id: string; last_used: string }>();
+  return new Map(rows.results.map((r) => [r.api_key_id, r.last_used]));
 }
 
 export interface KeyRow {

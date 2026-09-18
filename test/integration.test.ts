@@ -1390,6 +1390,25 @@ describe("console key form (integration)", () => {
       e,
     );
 
+  /** D1 for the keys table: api_keys rows plus the per-key last-used rollup. */
+  function keyTableDb(
+    keys: Array<Record<string, unknown>>,
+    lastUsed: Array<{ api_key_id: string; last_used: string }> = [],
+  ) {
+    const prepare = (sql: string) => {
+      const stmt = {
+        bind: () => stmt,
+        run: async () => ({ meta: { changes: 1 } }),
+        first: async () => (sql.includes("FROM api_keys") ? keys[0] ?? null : null),
+        all: async () => ({
+          results: sql.includes("FROM request_logs") ? lastUsed : sql.includes("FROM api_keys") ? keys : [],
+        }),
+      };
+      return stmt;
+    };
+    return { ...env, DB: { prepare } } as unknown as Env;
+  }
+
   it("pre-fills the create panel from ?preset= and the server accepts it", async () => {
     const local = await call("/console/keys?preset=local", { headers: { cookie: `corx_session=${sessionCookie}` } });
     const localHtml = await local.text();
@@ -1423,6 +1442,76 @@ describe("console key form (integration)", () => {
     );
     expect(publicKey.status).toBe(200);
     expect(await publicKey.text()).toContain("New key created");
+  });
+
+  it("shows last used from the log window, and a dash without an entry", async () => {
+    const used = { ...storedKey, id: "key-used", name: "used-app", created_at: "2026-01-01T00:00:00Z" };
+    const idle = { ...storedKey, id: "key-idle", name: "idle-app", created_at: "2026-01-01T00:00:00Z" };
+    const e = keyTableDb([used, idle], [{ api_key_id: "key-used", last_used: "2026-01-02T03:04:05Z" }]);
+    const res = await call("/console/keys", { headers: { cookie: `corx_session=${sessionCookie}` } }, e);
+    const html = await res.text();
+    // The exact stamp is the record — never a guessed or rounded timestamp.
+    expect(html).toContain('datetime="2026-01-02T03:04:05Z"');
+    // A key with no request in the window gets a dash, not a fake date.
+    const idleRow = html.slice(html.indexOf("idle-app"), html.indexOf("idle-app") + 1500);
+    expect(idleRow).toContain("—");
+    expect(html).toContain("kept 30 days");
+  });
+
+  it("filters and sorts the keys table server-side", async () => {
+    const a = { ...storedKey, id: "k-a", name: "alpha", allowed_origins: "https://alpha.example" };
+    const b = { ...storedKey, id: "k-b", name: "beta", allowed_hosts: "api.beta.example" };
+    const e = keyTableDb([a, b]);
+
+    const filtered = await call("/console/keys?q=beta", { headers: { cookie: `corx_session=${sessionCookie}` } }, e);
+    const fHtml = await filtered.text();
+    expect(fHtml).toContain(">beta<");
+    expect(fHtml).not.toContain("alpha");
+    // The filter input keeps the text that was typed.
+    expect(fHtml).toContain('value="beta"');
+
+    const sorted = await call(
+      "/console/keys?sort=name&dir=asc",
+      { headers: { cookie: `corx_session=${sessionCookie}` } },
+      e,
+    );
+    const sHtml = await sorted.text();
+    expect(sHtml.indexOf(">alpha<")).toBeLessThan(sHtml.indexOf(">beta<"));
+    // The active column's header links to the other direction.
+    expect(sHtml).toContain("sort=name&amp;dir=desc");
+  });
+
+  it("lands on the logs page filtered to one key", async () => {
+    const seen: unknown[][] = [];
+    const prepare = (sql: string) => {
+      const stmt = {
+        bind(...values: unknown[]) {
+          seen.push(values);
+          return stmt;
+        },
+        run: async () => ({ meta: { changes: 0 } }),
+        first: async () => (sql.includes("FROM api_keys") ? { ...storedKey, id: "key-1", name: "my-app" } : null),
+        all: async () => ({ results: [] }),
+      };
+      return stmt;
+    };
+    const e = { ...env, DB: { prepare } } as unknown as Env;
+    const res = await call("/console/logs?key=key-1", { headers: { cookie: `corx_session=${sessionCookie}` } }, e);
+    const html = await res.text();
+    // The filter is applied in SQL and visible on the page (and survives refresh).
+    expect(seen.some((v) => v.includes("key-1") && v.includes("-24 hours"))).toBe(true);
+    expect(html).toContain("key: my-app");
+    expect(html).toContain('name="key" value="key-1"');
+  });
+
+  it("prefills the playground's key selector from ?key=", async () => {
+    const e = keyTableDb([storedKey]);
+    const res = await call("/console/playground?key=key-1", { headers: { cookie: `corx_session=${sessionCookie}` } }, e);
+    const html = await res.text();
+    expect(html).toMatch(/initialKeyId[^,]*key-1/);
+    // An id that is gone falls back to no preselect.
+    const bogus = await call("/console/playground?key=nope", { headers: { cookie: `corx_session=${sessionCookie}` } }, e);
+    expect(await bogus.text()).not.toMatch(/initialKeyId[^,]*nope/);
   });
 
   it("saves the injection page's variables and rules", async () => {

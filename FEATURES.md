@@ -260,8 +260,11 @@ Files: `app/routes/api/**`, `app/lib/admin.ts`, `app/lib/access.ts`.
   copy button;
   revoke and delete behind type-the-name confirmations (revoke = kill switch,
   delete = cleanup), a revoked badge, and a “show revoked” toggle so dead keys
-  and their logs stay attributable; a revoked key's panel opens read-only.
-  Injection lives on its own page (`/console/keys/:id`, state-less form island)
+  and their logs stay attributable; a revoked key's panel opens read-only. The
+  table shows a **Last used** column (from the raw-log window — a dash means
+  no request in the window, never a guessed timestamp), a name/host/origin
+  filter, sortable columns, and per-row Logs / Playground links that open the
+  target page already filtered or selected. Injection lives on its own page (`/console/keys/:id`, state-less form island)
   — variables as rows (name, write-only value, client toggle, host scope), the
   header/query/response rule textareas with line-anchored errors, and a masked
   preview of what the upstream receives; saving it is a partial update, so it
@@ -281,7 +284,9 @@ Files: `app/routes/api/**`, `app/lib/admin.ts`, `app/lib/access.ts`.
   (cache, SSRF block, metadata host, CORS preflight, Range, POST echo) and
   localStorage run history.
 - **Logs**: per-request rows with bytes, status, key, cache/auth-via badges,
-  and a 1 h–7 d lookback slider that re-filters on release.
+  and a 1 h–7 d lookback slider that re-filters on release; `?key=` narrows the
+  table to one key (badge + clear link), which is where the keys table's Logs
+  link lands.
 - **Blocklist**: inline add, removal behind a confirm dialog; blocking a domain
 also covers its subdomains.
 - **Profile**: identity (email, auth method) and a note that changes to the

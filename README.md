@@ -994,7 +994,10 @@ rules are textareas with line-anchored errors, and a masked preview shows
 what the upstream receives; the raw key is shown once; revoke and delete both
 ask you to type the key name — revoke is the kill switch, delete removes the
 row, and a “show revoked” toggle keeps dead keys inspectable so their logs
-stay attributable) ·
+stay attributable. The table adds a **Last used** column read from the
+raw-log window, a name/host/origin filter, sortable columns, and per-row
+**Logs** / **Playground** links that land with that key already selected or
+filtered) ·
 Playground (compose a proxy request — method, route style `/fetch` /
 `/proxy/*` / bare path / simulated subdomain, headers, body, `ttl` / `no-cache`,
 Origin, simulated client IP, anonymous / stored / pasted key — and inspect the
@@ -1208,7 +1211,7 @@ browser ──► CORX (Worker)
 
 ```
 wrangler.jsonc          bindings (D1, R2), vars, cron
-migrations/       numbered D1 migrations (0001…0011)
+migrations/       numbered D1 migrations (0001…0012)
 app/              HonoX frontend (entry + console UI + API routes)
   server.ts     worker entry: createApp + manual mounts (proxy only).
                 File routes register at createApp time, so the manual /*
