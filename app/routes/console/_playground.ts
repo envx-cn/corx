@@ -48,6 +48,9 @@ export async function runPlayground(c: Ctx, spec: PlaygroundSpec): Promise<Playg
     sub.use(async (c2, next) => {
       c2.set("apiKey", storedRow);
       c2.set("authVia", "key");
+      // The console pinned this key out of band — no header presented it, so
+      // the spec's own `Authorization` (if any) is meant for the target.
+      c2.set("keySource", null);
       await next();
     });
   }

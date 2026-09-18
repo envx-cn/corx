@@ -56,11 +56,27 @@ describe("callerOrigin", () => {
 describe("extractRawKey precedence", () => {
   const url = new URL("https://corx.test/fetch?url=https://example.com/&corx-key=from-query");
 
-  it("header wins over the query string", () => {
-    expect(extractRawKey(req({ "x-api-key": "from-header" }), url)).toBe("from-header");
-    expect(extractRawKey(req({ authorization: "Bearer from-bearer" }), url)).toBe("from-bearer");
-    expect(extractRawKey(req(), url)).toBe("from-query");
-    expect(extractRawKey(req(), new URL("https://corx.test/fetch?url=x")), ).toBeNull();
+  it("reports the key and which form presented it", () => {
+    expect(extractRawKey(req({ "x-api-key": "from-header" }), url)).toEqual({
+      raw: "from-header",
+      source: "x-api-key",
+    });
+    expect(extractRawKey(req({ authorization: "Bearer from-bearer" }), url)).toEqual({
+      raw: "from-bearer",
+      source: "authorization",
+    });
+    expect(extractRawKey(req(), url)).toEqual({ raw: "from-query", source: "query" });
+    expect(extractRawKey(req(), new URL("https://corx.test/fetch?url=x"))).toBeNull();
+  });
+
+  it("prefers x-api-key, and only treats a bearer Authorization as a key", () => {
+    expect(extractRawKey(req({ "x-api-key": "from-header", authorization: "Bearer from-bearer" }), url)).toEqual({
+      raw: "from-header",
+      source: "x-api-key",
+    });
+    // Anything else in Authorization is the caller's own header, not a key.
+    expect(extractRawKey(req({ authorization: "Basic dXNlcjpwdw==" }), url)).toEqual({ raw: "from-query", source: "query" });
+    expect(extractRawKey(req({ authorization: "Bearer    " }), url)).toEqual({ raw: "from-query", source: "query" });
   });
 });
 

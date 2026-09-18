@@ -11,6 +11,14 @@ export type ProxyVariables = {
   /** How the caller was authorized: presented key, keyless origin grant, or nobody. */
   authVia: "key" | "origin" | null;
   /**
+   * Which credential form presented the key. `authorization` means the header
+   * *is* CORX's own credential, so the handler must not forward it to the
+   * target; the other forms leave the caller's `Authorization` alone (the
+   * OAuth pattern: a CORX key in `X-Api-Key`/`?corx-key=`, the caller's own
+   * bearer token in `Authorization`). Null for a keyless grant or anonymous.
+   */
+  keySource: KeySource | null;
+  /**
    * Origin the keyless grant matched on (`Origin` header, else `Referer`).
    * Quota and logs read this too, so one caller is always one bucket whichever
    * header identified them.
@@ -33,14 +41,25 @@ export function newRawKey(): string {
   return `corx_${b64}`;
 }
 
+/** Where a presented key came from. */
+export type KeySource = "x-api-key" | "authorization" | "query";
+
+export interface PresentedKey {
+  raw: string;
+  source: KeySource;
+}
+
 /** Pull a key from `x-api-key`, `Authorization: Bearer`, or `?corx-key=`. */
-export function extractRawKey(req: Request, url: URL): string | null {
+export function extractRawKey(req: Request, url: URL): PresentedKey | null {
   const header = req.headers.get("x-api-key");
-  if (header?.trim()) return header.trim();
+  if (header?.trim()) return { raw: header.trim(), source: "x-api-key" };
   const auth = req.headers.get("authorization");
-  if (auth?.toLowerCase().startsWith("bearer ")) return auth.slice(7).trim() || null;
+  if (auth?.toLowerCase().startsWith("bearer ")) {
+    const raw = auth.slice(7).trim();
+    if (raw) return { raw, source: "authorization" };
+  }
   const q = readControl(url, "key");
-  if (q?.trim()) return q.trim();
+  if (q?.trim()) return { raw: q.trim(), source: "query" };
   return null;
 }
 
@@ -127,8 +146,8 @@ export async function apiKeyMiddleware(
   c: Context<{ Bindings: Env; Variables: ProxyVariables }>,
   next: Next,
 ): Promise<void> {
-  const raw = extractRawKey(c.req.raw, new URL(c.req.url));
-  let row = raw ? await lookupApiKey(c.env.DB, raw, c.env.INJECTION_KEK) : null;
+  const presented = extractRawKey(c.req.raw, new URL(c.req.url));
+  let row = presented ? await lookupApiKey(c.env.DB, presented.raw, c.env.INJECTION_KEK) : null;
   let authVia: "key" | "origin" | null = row ? "key" : null;
   const caller = callerOrigin(c.req.raw);
   if (!row && caller) {
@@ -140,6 +159,10 @@ export async function apiKeyMiddleware(
   }
   c.set("apiKey", row);
   c.set("authVia", authVia);
+  // Only a key that actually authenticated this request is CORX's credential:
+  // an unknown `Authorization` that fell through to a keyless grant is the
+  // caller's own header and must still reach the target.
+  c.set("keySource", authVia === "key" && presented ? presented.source : null);
   c.set("callerOrigin", caller);
   await next();
 }

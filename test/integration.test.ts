@@ -427,6 +427,41 @@ describe("upstream injection + keyless access (integration)", () => {
     expect(calls[0]?.headers.get("authorization")).toBe("Bearer sk-live-1");
   });
 
+  it("never forwards the credential it authenticated this proxy with", async () => {
+    const row = { ...injectingRow, vars: "[]", header_rules: "[]", param_rules: "[]", allowed_hosts: null };
+    const calls = stubFetch(() => new Response("ok", { status: 200 }));
+    const { env: keyed } = envForKey(row);
+
+    // The CORX key presented as `Authorization: Bearer corx_…` is CORX's own
+    // credential, not the target's — it must not reach upstream.
+    const bearer = await call(
+      "/fetch?url=https://example.com/data",
+      { headers: { authorization: "Bearer corx_k" } },
+      keyed,
+    );
+    expect(bearer.status).toBe(200);
+
+    // The same key presented any other way leaves the caller's own bearer
+    // token alone (the OAuth passthrough the proxy exists for).
+    await call(
+      "/fetch?url=https://example.com/data",
+      { headers: { "x-api-key": "corx_k", authorization: "Bearer user-token" } },
+      keyed,
+    );
+    await call(
+      "/fetch?url=https://example.com/data&corx-key=corx_k",
+      { headers: { authorization: "Basic dXNlcjpwdw==" } },
+      keyed,
+    );
+
+    expect(calls.map((c) => c.headers.get("authorization"))).toEqual([
+      null,
+      "Bearer user-token",
+      "Basic dXNlcjpwdw==",
+    ]);
+    expect(calls.every((c) => c.headers.get("x-api-key") === null)).toBe(true);
+  });
+
   it("gives the same header a different value per target host", async () => {
     // The multi-upstream case: one key, two APIs that both authenticate with
     // `Authorization`, each getting its own credential — and never the other's.

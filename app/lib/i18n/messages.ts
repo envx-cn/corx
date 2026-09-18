@@ -342,7 +342,7 @@ const en = {
     auth: {
       title: "Authentication",
       lead: "Three ways in — roughly the order a self-hosted deployment turns them on.",
-      formsNote: "All three are equivalent; use whichever survives your client or tooling.",
+      formsNote: "All three are equivalent; use whichever survives your client or tooling. The credential itself is never forwarded upstream — if you need to send your own `Authorization` to the target, present the CORX key with `X-Api-Key` (a `Bearer` header takes precedence over `?corx-key=`).",
       key: {
         title: "API key (per caller)",
         body:
@@ -1462,7 +1462,7 @@ const zh: Messages = {
     auth: {
       title: "鉴权",
       lead: "三种进入方式，大致就是自托管部署逐步启用的顺序。",
-      formsNote: "三种形式完全等价，用你手头客户端支持的那种即可。",
+      formsNote: "三种形式完全等价，用你手头客户端支持的那种即可。凭证本身绝不会被转发到上游——如果你需要把自己的 `Authorization` 发给目标，请用 `X-Api-Key` 携带 CORX key（`Bearer` 形式优先于 `?corx-key=`）。",
       key: {
         title: "API key（按调用方）",
         body:

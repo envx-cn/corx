@@ -111,8 +111,13 @@ Files: `app/lib/auth.ts`, `app/lib/admin.ts`, `app/routes/api/keys*`,
   → `429` + `Retry-After` + `{ scope, limit, resetAt }`; announced via
   `X-Corx-Quota-*` (see §12).
 - Credentials never reach upstream: `X-Api-Key` / `X-Admin-Token` are always
-  stripped (they belong to this proxy), and for public keys `Cookie` +
-  `Authorization` are stripped too.
+  stripped (they belong to this proxy), a key presented as
+  `Authorization: Bearer corx_…` is stripped once it has authenticated the
+  request (`keySource` in `app/lib/auth.ts`), and for public keys `Cookie` +
+  `Authorization` are stripped too. A caller's own `Authorization` still passes
+  through when the CORX key came from `X-Api-Key` / `?corx-key=` — the OAuth
+  pattern (a `Bearer` header takes precedence over `?corx-key=`, so use
+  `X-Api-Key` for the proxy key in that case).
 - Body cap: `MAX_BODY_BYTES` (default 10 MiB) — enforced from `Content-Length`
   before buffering and again on the buffered bytes; an unreadable body is a 400
   rather than a silently-empty forward.

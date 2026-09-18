@@ -100,7 +100,11 @@ Options:
 | `?corx-wrap=json` | Wrap the text body as `{"contents":"…"}` with `application/json`, so `r.json()` works for HTML too (binary responses are a 400) |
 
 Pass an API key with `X-Api-Key`, `Authorization: Bearer …`, or `?corx-key=…`
-(required when `REQUIRE_API_KEY=true`).
+(required when `REQUIRE_API_KEY=true`). The credential you authenticate with is
+never forwarded upstream: `X-Api-Key`/`X-Admin-Token` always, and an
+`Authorization: Bearer corx_…` header once it has authenticated the request. To
+send your own `Authorization` to the target, present the CORX key with
+`X-Api-Key` — a `Bearer` header takes precedence over `?corx-key=`.
 
 The same facts — the four call shapes, the `corx-*` table, the auth tiers,
 caching, limits and the security model — are rendered for humans at `/docs`
@@ -658,7 +662,9 @@ a reduced product:
 - **Credentials are never forwarded** — `Cookie` and `Authorization` are
   stripped from the outgoing request, so a public caller cannot use CORX to
   authenticate as themselves upstream. `X-Api-Key` / `X-Admin-Token` are
-  always stripped too: they belong to this proxy, never to the target.
+  always stripped too, and so is an `Authorization: Bearer corx_…` header once
+  it has authenticated the request: they belong to this proxy, never to the
+  target.
 - **Daily quotas** — per calling `Origin`, per target host, and for the key as
   a whole, counted in UTC days, plus the usual per-minute limit (metered per
   IP for a public key, since every caller shares it). Cache hits count as well.
