@@ -270,6 +270,7 @@ function panelLabels(t: TFunc): KeyPanelI18n {
     deleteConfirm: t("console.keys.deleteConfirm"),
     cancel: t("ui.cancel"),
     close: t("ui.close"),
+    saving: t("console.keys.saving"),
   };
 }
 

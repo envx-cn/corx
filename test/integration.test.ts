@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../app/server.js";
+import keyPanelSrc from "../app/islands/key-panel.tsx?raw";
 import { signSession } from "../app/lib/session.js";
 import type { Env } from "../app/lib/types.js";
 
@@ -1367,6 +1368,22 @@ describe("console key form (integration)", () => {
     const update = updates.find((u) => u.sql.includes("response_rules = ?"));
     expect(update, "the update must carry the response rules column").toBeDefined();
     expect(update?.values.some((v) => typeof v === "string" && v.includes("X-Frame-Options"))).toBe(true);
+  });
+
+  it("carries the save form's double-submit guard", async () => {
+    // The double click itself has no DOM harness here (the issue says so), and
+    // an island's onSubmit never reaches the SSR markup — so this pins the
+    // guard at the island's source, like the referrer-policy assertions in
+    // test/auth.test.ts. It fails if the guard is dropped.
+    expect(keyPanelSrc).toContain("onSubmit={onSubmit}");
+    expect(keyPanelSrc).toContain('setAttribute("aria-busy", "true")');
+    expect(keyPanelSrc).toContain("submitRef.current.disabled = true");
+    expect(keyPanelSrc).toContain("submitRef.current.textContent = labels.saving");
+    // ...the form it guards is on the console page it is rendered into.
+    const res = await call("/console/keys", { headers: { cookie: `corx_session=${sessionCookie}` } });
+    const html = await res.text();
+    expect(html).toContain('action="/console/keys"');
+    expect(html).toContain('type="submit"');
   });
 
   it("renders a failed save inside the re-opened edit panel, not behind it", async () => {

@@ -83,6 +83,8 @@ export interface KeyPanelI18n {
   deleteConfirm: string;
   cancel: string;
   close: string;
+  /** Submit-button label while its POST is in flight. */
+  saving: string;
 }
 
 function Field(props: { label: string; class?: string; children: Child }) {
@@ -144,6 +146,8 @@ export default function KeyPanel(props: {
   keyName?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLDialogElement>(null);
   const confirmInputRef = useRef<HTMLInputElement>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
@@ -167,6 +171,20 @@ export default function KeyPanel(props: {
   const syncConfirm = () => {
     if (confirmButtonRef.current && confirmInputRef.current) {
       confirmButtonRef.current.disabled = confirmInputRef.current.value.trim() !== props.keyName;
+    }
+  };
+
+  /**
+   * One POST per form. The browser navigates away on submit, but a slow round
+   * trip would still let a second click create a second key — and only that
+   * key's raw value is ever shown. Disabling imperatively keeps the panel
+   * state-less, so honox never re-renders over what is being typed.
+   */
+  const onSubmit = () => {
+    if (formRef.current) formRef.current.setAttribute("aria-busy", "true");
+    if (submitRef.current) {
+      submitRef.current.disabled = true;
+      submitRef.current.textContent = labels.saving;
     }
   };
 
@@ -196,7 +214,7 @@ export default function KeyPanel(props: {
               <span>{props.error}</span>
             </div>
           ) : null}
-          <form method="post" action={props.action} class="mt-4">
+          <form ref={formRef} method="post" action={props.action} class="mt-4" onSubmit={onSubmit}>
             {/* Marker: a hand-rolled POST without it (script, stale form) gets
                 the safe defaults (both checks on) instead of an absent -
                 unchecked - field silently turning the guards off. */}
@@ -396,7 +414,7 @@ export default function KeyPanel(props: {
               <button type="button" class="btn btn-ghost" onClick={hide}>
                 {labels.cancel}
               </button>
-              <button type="submit" class="btn btn-primary">
+              <button ref={submitRef} type="submit" class="btn btn-primary">
                 {props.submit}
               </button>
             </div>
