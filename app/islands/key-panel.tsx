@@ -1,5 +1,6 @@
 import type { Child } from "hono/jsx";
 import { useEffect, useId, useRef } from "hono/jsx/dom";
+import { checkInjectionForm } from "../proxy/inject.js";
 
 /**
  * Raw API-key form values, kept as strings. The server reads the same shape off
@@ -92,6 +93,24 @@ export interface KeyPanelI18n {
   revoke: string;
   revokeTitle: string;
   revokeHint: string;
+}
+
+/**
+ * Variable names from an editor's `NAME=` lines. The console never receives
+ * the stored values — a blank one means "keep" — so client-side validation
+ * reads the names from the initial text to tell a known name with a blank
+ * value from a new name with no value.
+ */
+function storedVarNames(text: string | undefined): string[] {
+  if (!text) return [];
+  const names: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) continue;
+    const eq = t.indexOf("=");
+    if (eq > 0) names.push(t.slice(0, eq).trim());
+  }
+  return names;
 }
 
 function Field(props: { label: string; class?: string; children: Child }) {
@@ -227,6 +246,8 @@ export default function KeyPanel(props: {
   const ref = useRef<HTMLDialogElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const submitRef = useRef<HTMLButtonElement>(null);
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const clientErrorRef = useRef<HTMLDivElement>(null);
   const deleteRef = useRef<HTMLDialogElement>(null);
   const revokeRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -234,6 +255,8 @@ export default function KeyPanel(props: {
   const revokeTitleId = useId();
   const { labels } = props;
   const v = props.values;
+  /** Stored variable names: a blank value for one of them means "keep". */
+  const previousNames = storedVarNames(v?.vars);
 
   useEffect(() => {
     if (props.open && ref.current && !ref.current.open) ref.current.showModal();
@@ -243,13 +266,41 @@ export default function KeyPanel(props: {
   const hide = () => ref.current?.close();
 
   /**
-   * One POST per form. The browser navigates away on submit, but a slow round
-   * trip would still let a second click create a second key — and only that
-   * key's raw value is ever shown. Disabling imperatively keeps the panel
-   * state-less, so honox never re-renders over what is being typed.
+   * One POST per form. First the fast path: run the injection checks the route
+   * will run, on the typed text, so a cross-reference mistake costs no
+   * round-trip. Then disable imperatively so a slow round trip cannot take a
+   * second click — keep the panel state-less, so honox never re-renders over
+   * what is being typed.
    */
-  const onSubmit = () => {
-    if (formRef.current) formRef.current.setAttribute("aria-busy", "true");
+  const onSubmit = (e: Event) => {
+    const form = formRef.current;
+    if (!form) return;
+    const fd = new FormData(form);
+    const field = (name: string) => String(fd.get(name) ?? "");
+    const message = checkInjectionForm(
+      {
+        vars: field("vars"),
+        clientVars: field("clientVars"),
+        headerRules: field("headerRules"),
+        paramRules: field("paramRules"),
+        responseRules: field("responseRules"),
+        allowedHosts: field("allowedHosts"),
+      },
+      previousNames,
+    );
+    if (message) {
+      e.preventDefault();
+      // The offending field is often behind the advanced <details>: open it
+      // and write the server's wording into the shared error slot.
+      if (detailsRef.current) detailsRef.current.open = true;
+      const slot = clientErrorRef.current;
+      if (slot) {
+        slot.textContent = message;
+        slot.classList.remove("hidden");
+      }
+      return;
+    }
+    form.setAttribute("aria-busy", "true");
     if (submitRef.current) {
       submitRef.current.disabled = true;
       submitRef.current.textContent = labels.saving;
@@ -276,12 +327,15 @@ export default function KeyPanel(props: {
           </h3>
           {/* A re-opened dialog is top-layer: a page-level alert behind it is
               invisible. The server message is rendered here verbatim (line
-              prefixes and all) so the failed save explains itself. */}
-          {props.error ? (
-            <div role="alert" class="alert alert-error mt-4">
-              <span>{props.error}</span>
-            </div>
-          ) : null}
+              prefixes and all); the client-side fast path writes into the same
+              slot imperatively (the island is state-less). */}
+          <div
+            ref={clientErrorRef}
+            role="alert"
+            class={`alert alert-error mt-4${props.error ? "" : " hidden"}`}
+          >
+            <span>{props.error ?? ""}</span>
+          </div>
           {props.revoked ? (
             <div role="status" class="alert alert-warning mt-4">
               <span>{labels.revokedHint}</span>
@@ -337,7 +391,7 @@ export default function KeyPanel(props: {
               {/* A failed save re-opens the panel with every section expanded,
                   so the field the server complained about is reachable without
                   a click. */}
-              <details class="mt-4 rounded-box border border-base-300" open={props.error != null}>
+              <details ref={detailsRef} class="mt-4 rounded-box border border-base-300" open={props.error != null}>
                 <summary class="cursor-pointer select-none px-3 py-2 text-xs font-medium uppercase tracking-wide text-base-content/75">
                   {labels.advanced}
                 </summary>

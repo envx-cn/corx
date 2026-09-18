@@ -610,6 +610,51 @@ export function assertVarHostScopes(
   }
 }
 
+/**
+ * The console's injection fields as the panel submits them: raw textarea text.
+ * The island runs the save-time checks on this shape before the POST.
+ */
+export interface InjectionFormInput {
+  vars: string;
+  clientVars: string;
+  headerRules: string;
+  paramRules: string;
+  responseRules: string;
+  allowedHosts: string;
+}
+
+/**
+ * Fast path for the console form: replay the save-time injection checks on the
+ * typed text so a cross-reference mistake costs no round-trip. `previousNames`
+ * are the stored variable names — the editor shows `NAME=` for them and a blank
+ * value means "keep", so only names outside that set need a value (the console
+ * never receives secrets to put in the placeholders).
+ *
+ * Returns the first error message (same wording as the server's) or null. The
+ * server stays the authority: it re-runs everything against the real stored
+ * values and scopes.
+ */
+export function checkInjectionForm(input: InjectionFormInput, previousNames: string[] = []): string | null {
+  try {
+    const previous: InjectionVar[] = previousNames.map((name) => ({ name, value: "keep" }));
+    const vars = withClientVars(parseVarsInput(input.vars, previous), input.clientVars);
+    const names = new Set(vars.map((v) => v.name));
+    const parts: InjectionParts = {
+      vars,
+      headers: parseRulesInput(input.headerRules, "header", names),
+      params: parseRulesInput(input.paramRules, "param", names),
+      responseHeaders: parseRulesInput(input.responseRules, "response", names),
+      hosts: parseHostsInput(input.allowedHosts),
+    };
+    assertInjectionParts(parts);
+    assertVarHostScopes(parts);
+    return null;
+  } catch (err) {
+    if (err instanceof ProxyError) return err.message;
+    throw err;
+  }
+}
+
 export function serializeInjection(parts: InjectionParts): StoredInjectionFields {
   return {
     vars: JSON.stringify(parts.vars),

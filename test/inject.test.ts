@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { ProxyError } from "../app/lib/types.js";
 import {
+  DOCS_CLIENT_VARS,
+  DOCS_INJECTION_HOSTS,
+  DOCS_INJECTION_RULES,
+  DOCS_INJECTION_VARS,
+} from "../app/lib/docs.js";
+import {
   applyHeaderRules,
   applyParamRules,
   assertHostAllowed,
   assertInjectionParts,
   assertVarHostScopes,
+  checkInjectionForm,
   clientVarMap,
   clientVarsToText,
   collectVarRefs,
@@ -444,5 +451,65 @@ describe("resolveClientRefs", () => {
     expect(resolveClientRefs("plain", here)).toEqual({ value: "plain", resolved: false });
     // No exposed variables on this host: nothing is touched at all.
     expect(resolveClientRefs("${ANYWHERE}", new Map())).toEqual({ value: "${ANYWHERE}", resolved: false });
+  });
+});
+
+describe("checkInjectionForm (console fast path)", () => {
+  const base = {
+    vars: "",
+    clientVars: "",
+    headerRules: "",
+    paramRules: "",
+    responseRules: "",
+    allowedHosts: "api.vendor.com",
+  };
+
+  it("accepts the documented multi-upstream example", () => {
+    expect(
+      checkInjectionForm({
+        ...base,
+        vars: DOCS_INJECTION_VARS.join("\n"),
+        clientVars: DOCS_CLIENT_VARS.join("\n"),
+        headerRules: DOCS_INJECTION_RULES.join("\n"),
+        allowedHosts: DOCS_INJECTION_HOSTS,
+      }),
+    ).toBeNull();
+  });
+
+  it("flags a rule that references an undefined variable, with its line", () => {
+    expect(checkInjectionForm({ ...base, vars: "TOKEN=abc", headerRules: "# note\nAuthorization: Bearer ${OTHER}" })).toBe(
+      "Header rules line 2: unknown variable ${OTHER}",
+    );
+  });
+
+  it("flags a client-referencable name that does not exist", () => {
+    expect(checkInjectionForm({ ...base, vars: "TOKEN=abc", clientVars: "GHOST" })).toBe(
+      'Client-referencable variables: "GHOST" is not defined in Variables',
+    );
+  });
+
+  it("flags a rule reaching outside a scoped variable", () => {
+    expect(
+      checkInjectionForm({
+        ...base,
+        vars: "VENDOR_KEY=abc",
+        clientVars: "@api.vendor.com\nVENDOR_KEY",
+        headerRules: "@api.other.com\nAuthorization: Bearer ${VENDOR_KEY}",
+        allowedHosts: "api.vendor.com, api.other.com",
+      }),
+    ).toBe(
+      'Header rule "Authorization" references VENDOR_KEY, which is scoped to api.vendor.com — it cannot apply to api.other.com',
+    );
+  });
+
+  it("flags injection without an allowed target host", () => {
+    expect(checkInjectionForm({ ...base, vars: "TOKEN=abc", allowedHosts: "" })).toBe(
+      "Set at least one allowed target host before adding variables or injection rules",
+    );
+  });
+
+  it("accepts a blank value for a stored variable and requires one for a new name", () => {
+    expect(checkInjectionForm({ ...base, vars: "TOKEN=" }, ["TOKEN"])).toBeNull();
+    expect(checkInjectionForm({ ...base, vars: "TOKEN=" })).toBe('Variables line 1: value is required for "TOKEN"');
   });
 });
