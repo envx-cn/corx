@@ -276,6 +276,7 @@ function panelLabels(t: TFunc): KeyPanelI18n {
     noCacheShort: t("console.keys.noCacheShort"),
     noCacheHint: t("console.keys.noCacheTitle"),
     checks: t("console.keys.checks"),
+    advanced: t("console.keys.advanced"),
     ipCheck: t("console.keys.ipCheck"),
     ipCheckHint: t("console.keys.ipCheckHint"),
     dnsCheck: t("console.keys.dnsCheck"),

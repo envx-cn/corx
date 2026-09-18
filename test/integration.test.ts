@@ -209,6 +209,11 @@ describe("route wiring (integration)", () => {
     // The key panel carries the injection + keyless fields (island SSR).
     expect(page).toContain("Upstream injection");
     expect(page).toContain("Keyless access");
+    // Create opens on the fast path: name/rate/origins and keyless. The
+    // advanced policy is a collapsed <details> whose inputs still submit.
+    expect(page).toContain("Advanced policy");
+    expect(page).not.toMatch(/<details[^>]*\sopen/);
+    expect(page).toContain('name="allowedHosts"');
     expect(page).toContain('name="headerRules"');
     expect(page).toContain('name="clientVars"');
     expect(page).toContain("Client-referencable variables");
@@ -1424,6 +1429,9 @@ describe("console key form (integration)", () => {
     const withError = dialogs.filter((d) => d.includes("Header rules line 4"));
     expect(withError).toHaveLength(1);
     expect(withError[0]).toContain('action="/console/keys/key-1"');
+    // A failed save re-opens the advanced policy expanded, so a rejected rule
+    // is on screen without another click.
+    expect(withError[0]).toMatch(/<details[^>]*\sopen/);
     // ...not in the page-level alert, which the top layer would cover.
     expect(html).not.toContain("alert-error mb-4");
   });

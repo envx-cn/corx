@@ -46,6 +46,8 @@ export interface KeyPanelI18n {
   noCacheShort: string;
   noCacheHint: string;
   checks: string;
+  /** Section header for the rarely-touched fields behind a <details>. */
+  advanced: string;
   ipCheck: string;
   ipCheckHint: string;
   dnsCheck: string;
@@ -295,6 +297,10 @@ export default function KeyPanel(props: {
                 every control off without touching the 17 inputs one by one.
                 Delete stays outside it, so cleanup still works. */}
             <fieldset disabled={props.revoked} class="m-0 min-w-0 border-0 p-0">
+              {/* The fast path: a name, a rate and who may call. Everything
+                  else lives behind the <details> below — its inputs stay in
+                  the DOM and submit whether it is open or not, so this is
+                  presentation only: one POST, no data loss. */}
               <div class="grid gap-x-4 gap-y-3 sm:grid-cols-2">
                 <Field label={labels.name}>
                   <input
@@ -326,79 +332,93 @@ export default function KeyPanel(props: {
                 <div class="sm:col-span-2 rounded-box border border-base-300 p-3">
                   <Check name="keyless" label={labels.keyless} hint={labels.keylessHint} checked={v?.keyless ?? false} />
                 </div>
-                {/* Public tier: the shared key of a hosted instance. It ships with
-                    extra restrictions and daily quotas — see app/proxy/quota.ts. */}
-                <div class="sm:col-span-2 rounded-box border border-base-300 p-3">
-                  <Check
-                    name="tier"
-                    label={labels.publicTier}
-                    hint={labels.publicTierHint}
-                    checked={v?.tier ?? false}
-                  />
-                  <div class="mt-3 grid gap-x-4 gap-y-3 sm:grid-cols-3">
-                    <Field label={labels.dailyLimitPerOrigin}>
-                      <input
-                        name="dailyLimitPerOrigin"
-                        value={v?.dailyLimitPerOrigin ?? ""}
-                        placeholder={labels.dailyLimitPh}
-                        inputmode="numeric"
-                        class="input input-bordered w-full"
-                      />
-                    </Field>
-                    <Field label={labels.dailyLimitPerHost}>
-                      <input
-                        name="dailyLimitPerHost"
-                        value={v?.dailyLimitPerHost ?? ""}
-                        placeholder={labels.dailyLimitPh}
-                        inputmode="numeric"
-                        class="input input-bordered w-full"
-                      />
-                    </Field>
-                    <Field label={labels.dailyLimitTotal}>
-                      <input
-                        name="dailyLimitTotal"
-                        value={v?.dailyLimitTotal ?? ""}
-                        placeholder={labels.dailyLimitPh}
-                        inputmode="numeric"
-                        class="input input-bordered w-full"
-                      />
-                    </Field>
-                  </div>
-                  <p class="mt-2 text-xs text-base-content/75">{labels.dailyLimits}</p>
-                </div>
-                <Field label={labels.allowedHosts} class="sm:col-span-2">
-                  <input
-                    name="allowedHosts"
-                    value={v?.allowedHosts ?? ""}
-                    placeholder={labels.allowedHostsPh}
-                    class="input input-bordered w-full font-mono text-xs"
-                  />
-                </Field>
-                <Field label={labels.cacheTtl}>
-                  <input
-                    name="cacheTtl"
-                    value={v?.cacheTtl ?? ""}
-                    placeholder={labels.ttlPh}
-                    inputmode="numeric"
-                    title={labels.cacheTtlTitle}
-                    class="input input-bordered w-full"
-                  />
-                </Field>
-                <Field label={labels.noCache}>
-                  <div class="flex h-10 items-center gap-2 text-sm text-base-content/75" title={labels.noCacheHint}>
-                    <input type="checkbox" name="noCache" value="on" class="checkbox" checked={v?.noCache ?? false} />
-                    <span>{labels.noCacheShort}</span>
-                  </div>
-                </Field>
               </div>
 
-              <div class="mt-4 rounded-box border border-base-300 p-3">
-                <div class="mb-2 text-xs font-medium uppercase tracking-wide text-base-content/75">{labels.checks}</div>
-                <div class="space-y-3">
-                  <Check name="ipCheck" label={labels.ipCheck} hint={labels.ipCheckHint} checked={v?.ipCheck ?? true} />
-                  <Check name="dnsCheck" label={labels.dnsCheck} hint={labels.dnsCheckHint} checked={v?.dnsCheck ?? true} />
+              {/* A failed save re-opens the panel with every section expanded,
+                  so the field the server complained about is reachable without
+                  a click. */}
+              <details class="mt-4 rounded-box border border-base-300" open={props.error != null}>
+                <summary class="cursor-pointer select-none px-3 py-2 text-xs font-medium uppercase tracking-wide text-base-content/75">
+                  {labels.advanced}
+                </summary>
+                <div class="grid gap-x-4 gap-y-3 p-3 pt-1 sm:grid-cols-2">
+                  <Field label={labels.allowedHosts} class="sm:col-span-2">
+                    <input
+                      name="allowedHosts"
+                      value={v?.allowedHosts ?? ""}
+                      placeholder={labels.allowedHostsPh}
+                      class="input input-bordered w-full font-mono text-xs"
+                    />
+                  </Field>
+                  <Field label={labels.cacheTtl}>
+                    <input
+                      name="cacheTtl"
+                      value={v?.cacheTtl ?? ""}
+                      placeholder={labels.ttlPh}
+                      inputmode="numeric"
+                      title={labels.cacheTtlTitle}
+                      class="input input-bordered w-full"
+                    />
+                  </Field>
+                  <Field label={labels.noCache}>
+                    <div class="flex h-10 items-center gap-2 text-sm text-base-content/75" title={labels.noCacheHint}>
+                      <input type="checkbox" name="noCache" value="on" class="checkbox" checked={v?.noCache ?? false} />
+                      <span>{labels.noCacheShort}</span>
+                    </div>
+                  </Field>
+                  {/* Public tier: the shared key of a hosted instance. It ships with
+                      extra restrictions and daily quotas — see app/proxy/quota.ts. */}
+                  <div class="sm:col-span-2 rounded-box border border-base-300 p-3">
+                    <Check
+                      name="tier"
+                      label={labels.publicTier}
+                      hint={labels.publicTierHint}
+                      checked={v?.tier ?? false}
+                    />
+                    <div class="mt-3 grid gap-x-4 gap-y-3 sm:grid-cols-3">
+                      <Field label={labels.dailyLimitPerOrigin}>
+                        <input
+                          name="dailyLimitPerOrigin"
+                          value={v?.dailyLimitPerOrigin ?? ""}
+                          placeholder={labels.dailyLimitPh}
+                          inputmode="numeric"
+                          class="input input-bordered w-full"
+                        />
+                      </Field>
+                      <Field label={labels.dailyLimitPerHost}>
+                        <input
+                          name="dailyLimitPerHost"
+                          value={v?.dailyLimitPerHost ?? ""}
+                          placeholder={labels.dailyLimitPh}
+                          inputmode="numeric"
+                          class="input input-bordered w-full"
+                        />
+                      </Field>
+                      <Field label={labels.dailyLimitTotal}>
+                        <input
+                          name="dailyLimitTotal"
+                          value={v?.dailyLimitTotal ?? ""}
+                          placeholder={labels.dailyLimitPh}
+                          inputmode="numeric"
+                          class="input input-bordered w-full"
+                        />
+                      </Field>
+                    </div>
+                    <p class="mt-2 text-xs text-base-content/75">{labels.dailyLimits}</p>
+                  </div>
                 </div>
-              </div>
+                <div class="px-3 pb-3">
+                  <div class="rounded-box border border-base-300 p-3">
+                    <div class="mb-2 text-xs font-medium uppercase tracking-wide text-base-content/75">
+                      {labels.checks}
+                    </div>
+                    <div class="space-y-3">
+                      <Check name="ipCheck" label={labels.ipCheck} hint={labels.ipCheckHint} checked={v?.ipCheck ?? true} />
+                      <Check name="dnsCheck" label={labels.dnsCheck} hint={labels.dnsCheckHint} checked={v?.dnsCheck ?? true} />
+                    </div>
+                  </div>
+                </div>
+              </details>
 
               {/* Upstream injection: variables are write-only — the editor shows
                   "NAME=" and a blank value keeps the stored secret. */}
