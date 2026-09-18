@@ -40,7 +40,7 @@ on the way out. The interesting properties, and where each is enforced:
 | A key that injects secrets can only reach hosts it declares (the confused-deputy guard) | `app/proxy/inject.ts` → `allowedHosts`, mandatory once anything is injected |
 | Injected credentials are not readable in D1, and are never logged | AES-256-GCM with an HKDF-derived key (`app/lib/crypto.ts`); `request_logs.target_url` is the pre-injection URL |
 | A secret is not leaked on a cross-origin redirect | Manual redirect handling with per-hop re-application when a key injects or bounds hosts |
-| CORX's own credentials (`X-Api-Key`, `X-Admin-Token`) never reach a target | `STRIP_REQUEST` in `app/proxy/handler.ts` |
+| CORX's own credentials (`X-Api-Key`, `X-Admin-Token`, or a key presented as `Authorization: Bearer corx_…`) never reach a target | `STRIP_REQUEST` plus the key-source check in `app/proxy/handler.ts`; a caller's own `Authorization` still passes through when the CORX key came from `X-Api-Key`/`?corx-key=` |
 | Cached responses never leak across callers | Requests carrying `Authorization`/`Cookie` never read or write the R2 cache; `no-store`/`private`/`Vary` responses are not stored; a key's resolved **response header rules** are part of the cache key |
 | A key cannot forge the proxy's own response headers (or re-attach upstream cookies) | `RESPONSE_HEADER_BLOCKLIST` in `app/proxy/inject.ts` rejects `Content-Length`, `Set-Cookie`, `Access-Control-*`, `X-Robots-Tag`, `X-Corx-*` and the rate-limit headers at save time; corx writes its markers after the rules run |
 | A public-tier caller cannot authenticate upstream as themselves | `Cookie`/`Authorization` stripped from public-key requests |

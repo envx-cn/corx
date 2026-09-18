@@ -143,6 +143,9 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
   const ip = clientIp(c.req.raw);
   const country = c.req.header("cf-ipcountry") ?? "";
   const authVia = c.get("authVia") ?? "";
+  // Where the presented key came from: `authorization` means that header is
+  // CORX's own credential, not something to forward (see buildOutHeaders).
+  const keySource = c.get("keySource") ?? null;
   const origin = c.req.header("origin") ?? "";
   // Keyless callers may be identified by Referer alone (same-origin GETs, no-cors
   // embeds), so quota and logs use whatever the auth layer matched on — one
@@ -353,6 +356,13 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         c.req.raw.headers.forEach((value, key) => {
           const k = key.toLowerCase();
           if (STRIP_REQUEST.has(k)) return;
+          // A key presented as `Authorization: Bearer corx_…` authenticated
+          // *this proxy*, so it must not become the target's credential — the
+          // same rule as `x-api-key` above, which the caller may simply have
+          // expressed in bearer form. A caller's own Authorization still
+          // passes through: they presented the CORX key with `X-Api-Key`
+          // (a bearer header outranks `?corx-key=`, so that is the form to use).
+          if (k === "authorization" && keySource === "authorization") return;
           if (dropClientAuth && DROP_ON_CROSS_ORIGIN.has(k)) return;
           // The public key is shared with the world, so it never forwards the
           // caller's credentials — "no secrets through the public instance" is

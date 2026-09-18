@@ -163,10 +163,11 @@ describe("docs page contract", () => {
 
   it("covers the auth, caching, limits, security and self-hosting facts", async () => {
     const en = await (await call("/en/docs")).text();
-    // Auth tiers + where the key must not go.
+    // Auth tiers + where the key must not go + the credential-forwarding rule.
     expect(en).toContain("Keyless origin grants");
     expect(en).toContain("Public tier");
     expect(en).toContain("Where the key goes");
+    expect(en).toContain("never forwarded upstream");
     // Upstream credentials: the ways, the worked example and when to split keys.
     expect(en).toContain("Upstream credentials");
     expect(en).toContain("How a credential is attached");
@@ -194,6 +195,7 @@ describe("docs page contract", () => {
     expect(zh).toContain("使用文档");
     expect(zh).toContain("调用代理");
     expect(zh).toContain("上游凭证");
+    expect(zh).toContain("绝不会被转发到上游");
     expect(zh).toContain("一个 key 还是多个");
     expect(zh).toContain("哪些请求绕过缓存");
     expect(zh).not.toContain("What bypasses the cache");
