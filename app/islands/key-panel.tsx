@@ -23,6 +23,8 @@ export interface KeyFormValues {
   allowedHosts: string;
   /** Editor text; variable values stay blank ("blank = keep existing"). */
   vars: string;
+  /** Variables callers may reference, with optional `@hosts` scopes. */
+  clientVars: string;
   headerRules: string;
   paramRules: string;
   /** Response header rules (what the caller receives back). */
@@ -63,6 +65,9 @@ export interface KeyPanelI18n {
   injectionHint: string;
   vars: string;
   varsPh: string;
+  clientVars: string;
+  clientVarsPh: string;
+  clientVarsHint: string;
   headerRules: string;
   headerRulesPh: string;
   paramRules: string;
@@ -308,6 +313,19 @@ export default function KeyPanel(props: {
                     {v?.vars ?? ""}
                   </textarea>
                 </Field>
+                {/* Which variables a caller may reference, and where they may
+                    go. Same `@hosts` section grammar as the rule fields. */}
+                <Field label={labels.clientVars}>
+                  <textarea
+                    name="clientVars"
+                    rows={2}
+                    placeholder={labels.clientVarsPh}
+                    class="textarea textarea-bordered w-full font-mono text-xs leading-5"
+                  >
+                    {v?.clientVars ?? ""}
+                  </textarea>
+                </Field>
+                <p class="-mt-2 text-xs text-base-content/75">{labels.clientVarsHint}</p>
                 <Field label={labels.headerRules}>
                   <textarea
                     name="headerRules"

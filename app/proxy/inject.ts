@@ -35,6 +35,17 @@ import { CONTROL_PARAMS } from "../lib/control.js";
 export interface InjectionVar {
   name: string;
   value: string;
+  /**
+   * The caller may reference this variable as `${NAME}` in its own headers or
+   * query params (resolved server-side, only toward the hosts `hosts` allows).
+   * Absent/false = private: rules may use it, callers cannot.
+   */
+  client?: boolean;
+  /**
+   * Host patterns this variable may ever resolve toward — rules and client
+   * references alike. Absent/empty = any host the key's allowlist permits.
+   */
+  hosts?: string[];
 }
 
 export type RuleAction = "set" | "remove";
@@ -220,27 +231,47 @@ export function substitute(template: string, vars: Map<string, string>): string 
  * "leave it as-is"). Throws ProxyError(400) with a line number on bad input.
  */
 export function parseVarsInput(input: unknown, previous: InjectionVar[] = []): InjectionVar[] {
-  const prev = new Map(previous.map((v) => [v.name, v.value]));
+  const prev = new Map(previous.map((v) => [v.name, v]));
   const seen = new Set<string>();
   const out: InjectionVar[] = [];
 
-  const push = (rawName: string, rawValue: string, where: string): void => {
+  /**
+   * Exposure fields for one variable. The text form says nothing about them, so
+   * it inherits; the array form (Admin API, console) may set them explicitly —
+   * `client: false` / `hosts: []` clear, an absent key keeps what was stored.
+   */
+  const exposure = (name: string, explicit?: Record<string, unknown>): Pick<InjectionVar, "client" | "hosts"> => {
+    const before = prev.get(name);
+    let client = before?.client;
+    let hosts = before?.hosts;
+    if (explicit) {
+      if ("client" in explicit) client = explicit["client"] === true || explicit["client"] === "true";
+      if ("hosts" in explicit) hosts = parseHostsInput(explicit["hosts"]);
+    }
+    return {
+      ...(client ? { client: true } : {}),
+      ...(hosts && hosts.length ? { hosts } : {}),
+    };
+  };
+
+  const push = (rawName: string, rawValue: string, where: string, explicit?: Record<string, unknown>): void => {
     const name = rawName.trim();
     if (!VAR_NAME_RE.test(name) || name.length > MAX_NAME) {
       throw new ProxyError(400, `${where}: invalid variable name "${name}"`);
     }
     if (seen.has(name)) throw new ProxyError(400, `${where}: duplicate variable "${name}"`);
+    const flags = exposure(name, explicit);
     const value = rawValue.trim();
     if (!value) {
-      const kept = prev.get(name);
+      const kept = prev.get(name)?.value;
       if (kept === undefined) throw new ProxyError(400, `${where}: value is required for "${name}"`);
       seen.add(name);
-      out.push({ name, value: kept });
+      out.push({ name, value: kept, ...flags });
       return;
     }
     assertNoBreaks(value, `${where} (${name})`);
     seen.add(name);
-    out.push({ name, value });
+    out.push({ name, value, ...flags });
   };
 
   if (typeof input === "string") {
@@ -255,7 +286,7 @@ export function parseVarsInput(input: unknown, previous: InjectionVar[] = []): I
     input.forEach((entry, i) => {
       if (!entry || typeof entry !== "object") throw new ProxyError(400, `vars[${i}]: expected an object`);
       const obj = entry as Record<string, unknown>;
-      push(String(obj["name"] ?? ""), String(obj["value"] ?? ""), `vars[${i}]`);
+      push(String(obj["name"] ?? ""), String(obj["value"] ?? ""), `vars[${i}]`, obj);
     });
   } else if (input != null) {
     throw new ProxyError(400, "vars: expected text or an array");
@@ -263,6 +294,75 @@ export function parseVarsInput(input: unknown, previous: InjectionVar[] = []): I
 
   if (out.length > MAX_VARS) throw new ProxyError(400, `Too many variables (max ${MAX_VARS})`);
   return out;
+}
+
+/**
+ * Parse the console's "client-referencable variables" field into name → host
+ * patterns. Same section grammar as the rule textareas: an `@hosts` line scopes
+ * the names below it, a bare `@` goes back to unscoped, `#` comments. The array
+ * form takes `{ name, hosts? }` entries. An empty host list = any allowed host.
+ */
+export function parseClientVarsInput(input: unknown): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  const add = (rawName: string, hosts: string[] | null, where: string): void => {
+    const name = rawName.trim();
+    if (!VAR_NAME_RE.test(name) || name.length > MAX_NAME) {
+      throw new ProxyError(400, `${where}: invalid variable name "${name}"`);
+    }
+    if (out.has(name)) throw new ProxyError(400, `${where}: duplicate variable "${name}"`);
+    out.set(name, hosts ?? []);
+  };
+
+  if (input == null) return out;
+  if (typeof input === "string") {
+    let current: string[] | null = null;
+    input.split(/\r?\n/).forEach((line, i) => {
+      const t = line.trim();
+      if (!t || t.startsWith("#")) return;
+      const where = `Client-referencable variables line ${i + 1}`;
+      if (t.startsWith("@")) {
+        const rest = t.slice(1).trim();
+        current = rest ? parseHostsInput(rest) : null;
+        return;
+      }
+      add(t, current, where);
+    });
+  } else if (Array.isArray(input)) {
+    input.forEach((entry, i) => {
+      if (!entry || typeof entry !== "object") throw new ProxyError(400, `clientVars[${i}]: expected an object`);
+      const obj = entry as Record<string, unknown>;
+      const hosts = obj["hosts"] === undefined ? [] : parseHostsInput(obj["hosts"]);
+      add(String(obj["name"] ?? ""), hosts, `clientVars[${i}]`);
+    });
+  } else {
+    throw new ProxyError(400, "clientVars: expected text or an array");
+  }
+
+  if (out.size > MAX_VARS) {
+    throw new ProxyError(400, `Too many client-referencable variables (max ${MAX_VARS})`);
+  }
+  return out;
+}
+
+/**
+ * Apply the console's exposure field to a parsed variable list: the list is the
+ * full description, so a variable it does not name becomes private and unscoped,
+ * and one it names without hosts is exposed to every allowed host.
+ */
+export function withClientVars(vars: InjectionVar[], input: unknown): InjectionVar[] {
+  const scopes = parseClientVarsInput(input);
+  for (const name of scopes.keys()) {
+    if (!vars.some((v) => v.name === name)) {
+      throw new ProxyError(400, `Client-referencable variables: "${name}" is not defined in Variables`);
+    }
+  }
+  return vars.map((v) => {
+    const hosts = scopes.get(v.name);
+    if (hosts === undefined) return { name: v.name, value: v.value };
+    return hosts.length
+      ? { name: v.name, value: v.value, client: true, hosts }
+      : { name: v.name, value: v.value, client: true };
+  });
 }
 
 /** Normalize one host pattern: exact host, `*.suffix`, or a bare `*`. */
@@ -456,6 +556,60 @@ export function assertInjectionParts(parts: InjectionParts): void {
   }
 }
 
+/** Does `varPatterns` cover every host `rulePatterns` can match? */
+function hostPatternCovers(rulePat: string, varPat: string): boolean {
+  const r = rulePat.toLowerCase().replace(/\.+$/, "");
+  const v = varPat.toLowerCase().replace(/\.+$/, "");
+  if (v === "*") return true;
+  if (r === "*") return false; // v !== "*" here
+  const rs = r.startsWith("*.") ? r.slice(2) : null;
+  const vs = v.startsWith("*.") ? v.slice(2) : null;
+  // A wildcard rule scope needs a wildcard variable scope that contains it.
+  if (rs !== null) return vs !== null && (rs === vs || rs.endsWith(`.${vs}`));
+  return hostAllowed(r, [v]);
+}
+
+/**
+ * A variable scoped with `hosts` is a bound on the variable itself: every host a
+ * rule can reach must lie inside that scope, or the rule could resolve the value
+ * toward a host the operator excluded. Checked at save time — a runtime
+ * "out of scope" would silently forward the literal `${VAR}` instead.
+ *
+ * A key-level rule (no `@hosts`) is always a 400: it can reach every allowed
+ * host, so nothing bounds it.
+ */
+export function assertVarHostScopes(
+  parts: Pick<InjectionParts, "vars" | "headers" | "params" | "responseHeaders">,
+): void {
+  const scoped = new Map(
+    parts.vars.filter((v) => v.hosts?.length).map((v) => [v.name, v.hosts as string[]]),
+  );
+  if (scoped.size === 0) return;
+  const kinds: Array<[string, InjectionRule[]]> = [
+    ["Header", parts.headers],
+    ["Query", parts.params],
+    ["Response header", parts.responseHeaders],
+  ];
+  for (const [kind, rules] of kinds) {
+    for (const rule of rules) {
+      if (rule.action !== "set" || !rule.value) continue;
+      for (const ref of collectVarRefs(rule.value)) {
+        const allowed = scoped.get(ref);
+        if (!allowed) continue;
+        const ruleHosts = rule.hosts ?? [];
+        if (ruleHosts.length > 0 && ruleHosts.every((p) => allowed.some((v) => hostPatternCovers(p, v)))) {
+          continue;
+        }
+        const where = ruleHosts.length ? ruleHosts.join(", ") : "every allowed host";
+        throw new ProxyError(
+          400,
+          `${kind} rule "${rule.name}" references ${ref}, which is scoped to ${allowed.join(", ")} — it cannot apply to ${where}`,
+        );
+      }
+    }
+  }
+}
+
 export function serializeInjection(parts: InjectionParts): StoredInjectionFields {
   return {
     vars: JSON.stringify(parts.vars),
@@ -469,6 +623,29 @@ export function serializeInjection(parts: InjectionParts): StoredInjectionFields
 /** Editor text for variables — values stay blank ("blank = keep existing"). */
 export function varsToText(vars: InjectionVar[]): string {
   return vars.map((v) => `${v.name}=`).join("\n");
+}
+
+/**
+ * Editor text for the client-exposure field: the exposed names, with `@hosts`
+ * sections wherever the scope changes — the same shape `rulesToText` emits, so
+ * the two textareas read alike. A variable that is not `client` is omitted.
+ */
+export function clientVarsToText(vars: InjectionVar[]): string {
+  const lines: string[] = [];
+  let current: string | null = null;
+  let first = true;
+  for (const v of vars) {
+    if (!v.client) continue;
+    const hosts = v.hosts?.length ? v.hosts.join(" ") : null;
+    if (hosts !== current) {
+      if (hosts) lines.push(`@${hosts}`);
+      else if (!first) lines.push("@");
+      current = hosts;
+    }
+    first = false;
+    lines.push(v.name);
+  }
+  return lines.join("\n");
 }
 
 /** Editor text for rules, re-emitting `@hosts` sections where they change. */
@@ -593,6 +770,60 @@ export function assertHostAllowed(host: string, patterns: string[]): void {
   if (!hostAllowed(host, patterns)) {
     throw new ProxyError(403, `Target host not allowed for this key: ${host}`);
   }
+}
+
+/**
+ * Variables a caller may reference on this host, name → value: `client: true`
+ * variables whose `hosts` (when set) allow the host. Everything else stays
+ * invisible to callers.
+ */
+export function clientVarMap(vars: InjectionVar[], host: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const v of vars) {
+    if (!v.client) continue;
+    if (v.hosts?.length && !hostAllowed(host, v.hosts)) continue;
+    out.set(v.name, v.value);
+  }
+  return out;
+}
+
+/**
+ * Substitute `${NAME}` in a caller-supplied value, but only for names in
+ * `allowed`. Anything else — an unknown name, a private variable, a variable
+ * scoped away from this host — is left exactly as written: the feature is
+ * strictly additive, and a caller cannot probe which names exist because
+ * unresolved and nonexistent look identical. `\${` unescapes, as in the rules.
+ */
+export function resolveClientRefs(
+  value: string,
+  allowed: Map<string, string>,
+): { value: string; resolved: boolean } {
+  if (allowed.size === 0 || !value.includes("$")) return { value, resolved: false };
+  let out = "";
+  let resolved = false;
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i] as string;
+    if (ch === "\\" && value[i + 1] === "$" && value[i + 2] === "{") {
+      out += "${";
+      i += 2;
+      continue;
+    }
+    if (ch === "$" && value[i + 1] === "{") {
+      const end = value.indexOf("}", i + 2);
+      if (end !== -1) {
+        const name = value.slice(i + 2, end);
+        const v = allowed.get(name);
+        if (v !== undefined) {
+          out += v;
+          resolved = true;
+          i = end;
+          continue;
+        }
+      }
+    }
+    out += ch;
+  }
+  return { value: out, resolved };
 }
 
 function rulesForHost(rules: InjectionRule[], host: string): InjectionRule[] {

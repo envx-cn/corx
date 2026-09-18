@@ -171,6 +171,7 @@ describe("docs page contract", () => {
     // Upstream credentials: the ways, the worked example and when to split keys.
     expect(en).toContain("Upstream credentials");
     expect(en).toContain("How a credential is attached");
+    expect(en).toContain("Letting the caller reference a variable");
     expect(en).toContain("One key or several");
     expect(en).toContain("Cache and safety");
     // Caching, with the marker header a caller can check.
@@ -195,6 +196,7 @@ describe("docs page contract", () => {
     expect(zh).toContain("使用文档");
     expect(zh).toContain("调用代理");
     expect(zh).toContain("上游凭证");
+    expect(zh).toContain("允许调用方引用变量");
     expect(zh).toContain("绝不会被转发到上游");
     expect(zh).toContain("一个 key 还是多个");
     expect(zh).toContain("哪些请求绕过缓存");

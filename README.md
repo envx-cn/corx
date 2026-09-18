@@ -198,6 +198,19 @@ forwarding — the browser never holds the upstream secret:
   **Upstream credentials** section has a worked three-upstream example (also
   emitted in `llms-full.txt` for agents); `app/lib/docs.ts` holds those exact
   field values so `test/docs.test.ts` parses them the way the save path does.
+- **Caller references (`${VAR}`), opt-in per variable:** mark a variable
+  *client-referencable* (console → **Client-referencable variables**, or
+  `client: true` in the `vars` array) and a caller may write `${VENDOR_KEY}` in
+  its own header or query param; the proxy fills it in before forwarding. That
+  field takes the same `@hosts` sections as the rule fields, and a variable's
+  hosts bound **every** reference — a rule that could resolve it on another host
+  is a 400 at save time, and a client reference is filtered per redirect hop.
+  Anything the proxy does not allow (unknown name, private variable,
+  out-of-scope host) is left exactly as written, so the feature is additive and
+  a caller cannot probe which names exist. Rules still win over what the caller
+  sent, a key with client-referencable variables never reads or writes the
+  shared R2 cache, and the public tier cannot use the feature at all. Treat an
+  exposed variable as public to anyone who can call the key.
 - **Cache:** keys with header rules never read or write the shared R2 cache
   (personalized/credentialed requests, same rule as client-sent
   `Authorization`); param-only keys cache under the injected URL, so different

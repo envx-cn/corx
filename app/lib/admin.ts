@@ -8,12 +8,14 @@ import { normalizeCacheTtlInput } from "../proxy/cache.js";
 import { utcDay } from "../proxy/quota.js";
 import {
   assertInjectionParts,
+  assertVarHostScopes,
   collectVarRefs,
   parseHostsInput,
   parseRulesInput,
   parseVarsInput,
   readStoredInjection,
   serializeInjection,
+  withClientVars,
 } from "../proxy/inject.js";
 import type { InjectionParts } from "../proxy/inject.js";
 
@@ -475,7 +477,18 @@ export async function queryKeyById(db: D1Database, id: string, kek?: string): Pr
 
 /** Variable values never leave the server — mask them on every read path. */
 export function redactKeyRow(k: KeyRow): KeyRow {
-  return { ...k, vars: JSON.stringify(readStoredInjection(k).vars.map((v) => ({ name: v.name }))) };
+  return {
+    ...k,
+    // Names, the client flag and host scopes are not secrets: the console needs
+    // them to render the exposure field. Only the values are dropped.
+    vars: JSON.stringify(
+      readStoredInjection(k).vars.map((v) => ({
+        name: v.name,
+        ...(v.client ? { client: true } : {}),
+        ...(v.hosts?.length ? { hosts: v.hosts } : {}),
+      })),
+    ),
+  };
 }
 
 /** Fields shared by key creation and updates (raw form/JSON values). */
@@ -501,6 +514,12 @@ export interface KeyInput {
   dailyLimitTotal?: unknown;
   /** Injection fields — raw textarea text or the array forms (see inject.ts). */
   vars?: unknown;
+  /**
+   * Console exposure field: the variables callers may reference, with optional
+   * `@hosts` scopes (`withClientVars`, inject.ts). Omit it to set exposure per
+   * variable through the `vars` array instead.
+   */
+  clientVars?: unknown;
   headerRules?: unknown;
   paramRules?: unknown;
   /** Response header rules: what the caller receives back (embed recipe…). */
@@ -573,10 +592,13 @@ function assertPublicPolicy(
  * variable that no longer exists.
  */
 function buildInjection(
-  input: Pick<KeyInput, "vars" | "headerRules" | "paramRules" | "responseRules" | "allowedHosts">,
+  input: Pick<KeyInput, "vars" | "clientVars" | "headerRules" | "paramRules" | "responseRules" | "allowedHosts">,
   previous: InjectionParts,
 ): InjectionParts {
-  const vars = input.vars === undefined ? previous.vars : parseVarsInput(input.vars, previous.vars);
+  const parsed = input.vars === undefined ? previous.vars : parseVarsInput(input.vars, previous.vars);
+  // The console's exposure field is the full description when present: a
+  // variable it does not name becomes private again.
+  const vars = input.clientVars === undefined ? parsed : withClientVars(parsed, input.clientVars);
   const names = new Set(vars.map((v) => v.name));
   const headers =
     input.headerRules === undefined ? previous.headers : parseRulesInput(input.headerRules, "header", names);
@@ -598,6 +620,9 @@ function buildInjection(
 
   const parts = { vars, headers, params, responseHeaders, hosts };
   assertInjectionParts(parts);
+  // A host-scoped variable bounds every rule that references it (and every
+  // client reference); reject a config that could resolve it elsewhere.
+  assertVarHostScopes(parts);
   return parts;
 }
 
@@ -723,6 +748,8 @@ export interface KeyUpdate {
   dailyLimitTotal?: unknown;
   /** Injection fields — see KeyInput. */
   vars?: unknown;
+  /** Console exposure field — see KeyInput. */
+  clientVars?: unknown;
   headerRules?: unknown;
   paramRules?: unknown;
   /** Response header rules (`Name: value`, `!Name`, `@hosts`). */
@@ -750,6 +777,7 @@ interface CurrentKey {
 export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate, kek?: string): Promise<void> {
   const touchesInjection =
     update.vars !== undefined ||
+    update.clientVars !== undefined ||
     update.headerRules !== undefined ||
     update.paramRules !== undefined ||
     update.responseRules !== undefined ||

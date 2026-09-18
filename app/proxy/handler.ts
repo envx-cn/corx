@@ -19,9 +19,11 @@ import {
   applyHeaderRules,
   applyParamRules,
   assertHostAllowed,
+  clientVarMap,
   effectiveInjection,
   hasInjection,
   hostAllowed,
+  resolveClientRefs,
   responseRulesFingerprint,
   varMap,
 } from "./inject.js";
@@ -156,6 +158,9 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
   let apiKeyId: string | null = null;
   let cached = false;
   let injected = false;
+  // Set when a caller-supplied reference resolved to a real value (feeds the
+  // same `injected` log flag the rules set).
+  let clientResolved = false;
   let reqBytes = c.req.method === "GET" || c.req.method === "HEAD" ? reqUrl.toString().length : 0;
   let resBytes: number | null = null;
   // Set once `?corx-callback=` parses. Declared outside the try so even an error
@@ -253,6 +258,8 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     // treated as having no injection at all — fail closed on secrets.
     const injection = effectiveInjection(row);
     const vars = varMap(injection.vars);
+    // Variables a caller may reference as `${NAME}` (never the private ones).
+    const clientVars = injection.vars.filter((v) => v.client);
     const hasRules = hasInjection(injection);
     const manualRedirects = hasRules || injection.hosts.length > 0;
     assertHostAllowed(host, injection.hosts);
@@ -284,16 +291,41 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       throw new ProxyError(401, "Valid API key required (X-Api-Key, Authorization: Bearer, or ?corx-key=)");
     }
 
+    // Caller references resolve first, so a param rule still wins over them.
+    // The resolved URL is what the cache key is built from, and a key with
+    // client-referencable variables never uses the shared cache anyway.
+    let effectiveUrl = url;
+    if (clientVars.length > 0) {
+      const allowed = clientVarMap(clientVars, host);
+      if (allowed.size > 0) {
+        const next = new URL(url.toString());
+        // Collect first: mutating searchParams while iterating is not defined.
+        const pairs: Array<[string, string]> = [];
+        next.searchParams.forEach((v, k) => pairs.push([k, v]));
+        for (const [name, value] of pairs) {
+          const ref = resolveClientRefs(value, allowed);
+          if (!ref.resolved) continue;
+          next.searchParams.set(name, ref.value);
+          clientResolved = true;
+        }
+        effectiveUrl = next;
+        if (effectiveUrl.toString().length > 8192) {
+          throw new ProxyError(414, "Target URL too long after resolving references");
+        }
+      }
+    }
+
     // Param rules go into the effective upstream URL *before* the cache key:
     // two keys injecting different values must not share cached responses.
-    let fetchUrl = url;
+    let fetchUrl = effectiveUrl;
     if (injection.params.length > 0) {
-      fetchUrl = applyParamRules(url, injection.params, vars, host);
+      fetchUrl = applyParamRules(effectiveUrl, injection.params, vars, host);
       if (fetchUrl.toString() !== url.toString()) injected = true;
       if (fetchUrl.toString().length > 8192) {
         throw new ProxyError(414, "Target URL too long after injecting params");
       }
     }
+    if (clientResolved) injected = true;
 
     // R2 cache for GET. Runs BEFORE the rate limit so cheap cache hits don't
     // burn D1 writes/reads (and don't consume the caller's quota). Keys with
@@ -308,7 +340,10 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     ]
       .filter(Boolean)
       .join("\n");
-    const bypass = shouldBypassCache(c.req.raw, reqUrl, row);
+    // A key with client-referencable variables can attach a secret to any
+    // request a caller makes (on any hop), so its responses never enter the
+    // shared cache — the same rule as a key with header rules.
+    const bypass = clientVars.length > 0 || shouldBypassCache(c.req.raw, reqUrl, row);
     let cacheKey: string | null = null;
     if (!bypass) {
       try {
@@ -353,6 +388,9 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       // rule scoped to api.vendor.com is never attached to a different host.
       const buildOutHeaders = (forUrl: URL, dropClientAuth: boolean): Headers => {
         const outHeaders = new Headers();
+        // Caller-supplied references are resolved per hop, against this hop's
+        // host, and before the rules below run so a rule still wins.
+        const allowedRefs = clientVars.length > 0 ? clientVarMap(clientVars, forUrl.hostname) : null;
         c.req.raw.headers.forEach((value, key) => {
           const k = key.toLowerCase();
           if (STRIP_REQUEST.has(k)) return;
@@ -368,6 +406,14 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
           // caller's credentials — "no secrets through the public instance" is
           // a promise the code keeps, not just a line in the terms.
           if (isPublic && (k === "cookie" || k === "authorization")) return;
+          if (allowedRefs && allowedRefs.size > 0) {
+            const ref = resolveClientRefs(value, allowedRefs);
+            if (ref.resolved) {
+              clientResolved = true;
+              outHeaders.set(key, ref.value);
+              return;
+            }
+          }
           outHeaders.set(key, value);
         });
         if (injection.headers.length > 0) {

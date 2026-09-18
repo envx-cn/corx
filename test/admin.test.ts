@@ -485,3 +485,120 @@ describe("secret encryption at rest", () => {
     expect(update?.sql).not.toContain("vars = ?");
   });
 });
+
+describe("host-scoped variables", () => {
+  const exposed = [
+    { name: "K", value: "v", client: true, hosts: ["api.vendor.com"] },
+    { name: "PLAIN", value: "p" },
+  ];
+
+  it("applies the console exposure field on top of the parsed variables", async () => {
+    const { db, calls } = recordingDb();
+    await createApiKey(db, {
+      name: "k",
+      vars: "K=1\nPLAIN=2",
+      clientVars: "@api.vendor.com\nK",
+      allowedHosts: "api.vendor.com",
+    });
+    const insert = calls.find((c) => c.sql.includes("INSERT INTO api_keys"));
+    expect(JSON.parse(String(insert?.values[9]))).toEqual([
+      { name: "K", value: "1", client: true, hosts: ["api.vendor.com"] },
+      { name: "PLAIN", value: "2" },
+    ]);
+  });
+
+  it("rejects an exposure entry with no matching variable", async () => {
+    const { db } = recordingDb();
+    await expect(
+      createApiKey(db, { name: "k", vars: "K=1", clientVars: "NOPE", allowedHosts: "api.vendor.com" }),
+    ).rejects.toThrowError(/not defined in Variables/);
+  });
+
+  it("rejects a rule that could resolve a scoped variable elsewhere", async () => {
+    const { db, calls } = recordingDb();
+    await expect(
+      createApiKey(db, {
+        name: "k",
+        vars: exposed,
+        headerRules: "@api.other.com\nX-K: ${K}",
+        allowedHosts: "api.vendor.com, api.other.com",
+      }),
+    ).rejects.toThrowError(/scoped to api\.vendor\.com/);
+    expect(calls.some((c) => c.sql.includes("INSERT INTO api_keys"))).toBe(false);
+  });
+
+  it("accepts a rule inside the variable's scope", async () => {
+    const { db, calls } = recordingDb();
+    await createApiKey(db, {
+      name: "k",
+      vars: exposed,
+      headerRules: "@api.vendor.com\nX-K: ${K}\nX-P: ${PLAIN}",
+      allowedHosts: "api.vendor.com",
+    });
+    const insert = calls.find((c) => c.sql.includes("INSERT INTO api_keys"));
+    expect(insert).toBeDefined();
+  });
+});
+
+describe("client-scoped variables survive unrelated updates", () => {
+  const stored = {
+    vars: JSON.stringify([{ name: "K", value: "v", client: true, hosts: ["api.vendor.com"] }]),
+    header_rules: "[]",
+    param_rules: "[]",
+    response_rules: "[]",
+    allowed_hosts: "api.vendor.com",
+    keyless: 0,
+    allowed_origins: null,
+    ip_check: 1,
+    dns_check: 1,
+  };
+
+  it("keeps the client flag and host scope when only the rules change", async () => {
+    const { db, calls } = recordingDb(stored);
+    await updateApiKey(db, "key-1", { headerRules: "@api.vendor.com\nX-K: ${K}" });
+    const update = calls.find((c) => c.sql.includes("UPDATE api_keys"));
+    expect(JSON.parse(String(update?.values[0]))).toEqual([
+      { name: "K", value: "v", client: true, hosts: ["api.vendor.com"] },
+    ]);
+  });
+
+  it("clears the flag when the console sends an empty exposure field", async () => {
+    const { db, calls } = recordingDb(stored);
+    await updateApiKey(db, "key-1", { headerRules: "@api.vendor.com\nX-K: ${K}", clientVars: "" });
+    const update = calls.find((c) => c.sql.includes("UPDATE api_keys"));
+    // The rule now references a variable that is no longer exposed — still legal,
+    // and the variable itself keeps its value.
+    expect(JSON.parse(String(update?.values[0]))).toEqual([{ name: "K", value: "v" }]);
+  });
+});
+
+describe("clientVars-only updates", () => {
+  const stored = {
+    vars: JSON.stringify([{ name: "K", value: "v" }]),
+    header_rules: "[]",
+    param_rules: "[]",
+    response_rules: "[]",
+    allowed_hosts: "api.vendor.com",
+    keyless: 0,
+    allowed_origins: null,
+    ip_check: 1,
+    dns_check: 1,
+  };
+
+  it("is a change in its own right (it must not be silently dropped)", async () => {
+    const { db, calls } = recordingDb(stored);
+    await updateApiKey(db, "key-1", { clientVars: "@api.vendor.com\nK" });
+    const update = calls.find((c) => c.sql.includes("UPDATE api_keys"));
+    expect(update).toBeDefined();
+    expect(JSON.parse(String(update?.values[0]))).toEqual([
+      { name: "K", value: "v", client: true, hosts: ["api.vendor.com"] },
+    ]);
+  });
+
+  it("rejects exposure for a variable the key does not have", async () => {
+    const { db } = recordingDb(stored);
+    await expect(updateApiKey(db, "key-1", { clientVars: "NOPE" })).rejects.toThrowError(
+      /not defined in Variables/,
+    );
+  });
+});
