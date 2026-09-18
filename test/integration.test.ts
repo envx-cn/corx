@@ -427,6 +427,42 @@ describe("upstream injection + keyless access (integration)", () => {
     expect(calls[0]?.headers.get("authorization")).toBe("Bearer sk-live-1");
   });
 
+  it("gives the same header a different value per target host", async () => {
+    // The multi-upstream case: one key, two APIs that both authenticate with
+    // `Authorization`, each getting its own credential — and never the other's.
+    const row = {
+      ...injectingRow,
+      id: "k-multi",
+      name: "multi-target",
+      vars: JSON.stringify([
+        { name: "OPENAI_KEY", value: "sk-openai" },
+        { name: "VENDOR_KEY", value: "sk-vendor" },
+      ]),
+      header_rules: JSON.stringify([
+        { action: "set", name: "Authorization", value: "Bearer ${OPENAI_KEY}", hosts: ["api.openai.com"] },
+        { action: "set", name: "Authorization", value: "Bearer ${VENDOR_KEY}", hosts: ["api.vendor.com"] },
+      ]),
+      param_rules: "[]",
+      response_rules: "[]",
+      allowed_hosts: "api.openai.com, api.vendor.com",
+    };
+    const calls = stubFetch(() => new Response("ok", { status: 200 }));
+    const { env: keyed } = envForKey(row);
+
+    const openai = await call("/fetch?url=https://api.openai.com/v1/models", { headers: { "x-api-key": "corx_k" } }, keyed);
+    const vendor = await call("/fetch?url=https://api.vendor.com/data", { headers: { "x-api-key": "corx_k" } }, keyed);
+
+    expect(openai.status).toBe(200);
+    expect(vendor.status).toBe(200);
+    const byHost = new Map(calls.map((c) => [new URL(c.url).hostname, c.headers.get("authorization")]));
+    expect(byHost.get("api.openai.com")).toBe("Bearer sk-openai");
+    expect(byHost.get("api.vendor.com")).toBe("Bearer sk-vendor");
+    // And a host outside the key's allowlist is still refused before any fetch.
+    const blocked = await call("/fetch?url=https://evil.test/steal", { headers: { "x-api-key": "corx_k" } }, keyed);
+    expect(blocked.status).toBe(403);
+    expect(calls).toHaveLength(2);
+  });
+
   it("refuses a target outside the key's allowed hosts before any fetch", async () => {
     const calls = stubFetch(() => new Response("should not happen", { status: 200 }));
     const { env: keyed } = envForKey(injectingRow);

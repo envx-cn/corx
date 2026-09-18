@@ -9,7 +9,7 @@
  *   Header rules   Name: value        (value supports ${VAR}, \${VAR} escapes)
  *                  !Name              (remove a client-supplied header)
  *                  @api.vendor.com *.vendor.com   (scope the rules below)
- *                  @@                 (@ alone: back to key-level scope)
+ *                  @                  (@ alone: back to key-level scope)
  *   Query rules    name = value
  *                  !name
  *   Response       Name: value        (same grammar as header rules, but
@@ -338,8 +338,19 @@ function pushRule(out: InjectionRule[], rule: InjectionRule, kind: RuleKind, whe
       throw new ProxyError(400, `${where}: invalid query param name "${name}"`);
     }
   }
-  if (out.some((r) => r.name.toLowerCase() === name.toLowerCase() && r.action === rule.action)) {
-    throw new ProxyError(400, `${where}: duplicate rule for "${name}"`);
+  // Two rules may only share a name+action when no host can match both: the
+  // same header (or query param) legitimately carries a different value per
+  // target (`Authorization` on api.openai.com vs api.vendor.com), and rejecting
+  // that outright would make one key per upstream impossible. Overlapping
+  // scopes stay a 400 — "last rule wins" is not a contract we want to define.
+  const overlaps = out.some(
+    (r) =>
+      r.name.toLowerCase() === name.toLowerCase() &&
+      r.action === rule.action &&
+      hostScopesOverlap(r.hosts ?? [], rule.hosts ?? []),
+  );
+  if (overlaps) {
+    throw new ProxyError(400, `${where}: duplicate rule for "${name}" on an overlapping host scope`);
   }
   out.push({ ...rule, name });
 }
@@ -546,6 +557,35 @@ export function hostAllowed(host: string, patterns: string[]): boolean {
     }
   }
   return false;
+}
+
+/** Do two host patterns ever match the same host? Mirrors `hostAllowed`. */
+function hostPatternsOverlap(a: string, b: string): boolean {
+  const pa = a.toLowerCase().replace(/\.+$/, "");
+  const pb = b.toLowerCase().replace(/\.+$/, "");
+  if (pa === "*" || pb === "*" || pa === pb) return true;
+  const sa = pa.startsWith("*.") ? pa.slice(2) : null;
+  const sb = pb.startsWith("*.") ? pb.slice(2) : null;
+  if (sa !== null && sb !== null) {
+    // `*.a.com` and `*.b.a.com` both cover `x.b.a.com`.
+    return sa === sb || sa.endsWith(`.${sb}`) || sb.endsWith(`.${sa}`);
+  }
+  // One exact host, one wildcard: the wildcard covers it unless it is the apex
+  // (`*.vendor.com` does not match `vendor.com` — label boundary, not suffix).
+  if (sa !== null) return hostAllowed(pb, [pa]);
+  if (sb !== null) return hostAllowed(pa, [pb]);
+  return false;
+}
+
+/**
+ * Do two per-rule host scopes overlap? An empty scope is key-level, i.e. it
+ * applies wherever the key's allowlist does — so it overlaps every explicit
+ * scope (the allowlist is not known at parse time; assuming the hosts are in it
+ * is the conservative, fail-closed choice).
+ */
+export function hostScopesOverlap(a: string[], b: string[]): boolean {
+  if (a.length === 0 || b.length === 0) return true;
+  return a.some((pa) => b.some((pb) => hostPatternsOverlap(pa, pb)));
 }
 
 export function assertHostAllowed(host: string, patterns: string[]): void {

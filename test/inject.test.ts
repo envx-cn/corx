@@ -125,6 +125,77 @@ describe("parseRulesInput (headers)", () => {
   });
 });
 
+describe("rule scoping: a name may repeat across disjoint hosts", () => {
+  it("accepts the same header for two different hosts", () => {
+    const rules = parseRulesInput(
+      "@api.openai.com\nAuthorization: Bearer ${TOKEN}\n@api.vendor.com\nAuthorization: Bearer ${TOKEN}",
+      "header",
+      NAMES,
+    );
+    expect(rules).toEqual([
+      { action: "set", name: "Authorization", value: "Bearer ${TOKEN}", hosts: ["api.openai.com"] },
+      { action: "set", name: "Authorization", value: "Bearer ${TOKEN}", hosts: ["api.vendor.com"] },
+    ]);
+  });
+
+  it("resolves each host's own value when applying", () => {
+    const vars = varMap([
+      { name: "A", value: "sk-a" },
+      { name: "B", value: "sk-b" },
+    ]);
+    const rules = parseRulesInput(
+      "@api.a.example\nAuthorization: Bearer ${A}\n@api.b.example\nAuthorization: Bearer ${B}",
+      "header",
+      new Set(["A", "B"]),
+    );
+    const a = new Headers();
+    applyHeaderRules(a, rules, vars, "api.a.example");
+    const b = new Headers();
+    applyHeaderRules(b, rules, vars, "api.b.example");
+    expect(a.get("authorization")).toBe("Bearer sk-a");
+    expect(b.get("authorization")).toBe("Bearer sk-b");
+  });
+
+  it("accepts the array form the Admin API uses", () => {
+    const rules = parseRulesInput(
+      [
+        { action: "set", name: "Authorization", value: "Bearer ${A}", hosts: ["a.example"] },
+        { action: "set", name: "Authorization", value: "Bearer ${B}", hosts: ["b.example"] },
+      ],
+      "header",
+      new Set(["A", "B"]),
+    );
+    expect(rules).toHaveLength(2);
+  });
+
+  it("allows an apex and its wildcard (label boundary, not suffix)", () => {
+    expect(() => parseRulesInput("@vendor.com\nX-K: 1\n@*.vendor.com\nX-K: 2", "header", NAMES)).not.toThrow();
+    expect(() => parseRulesInput("@a.example\nX-K: 1\n@b.example\nX-K: 2", "header", NAMES)).not.toThrow();
+  });
+
+  it("keeps set and remove independent for the same host", () => {
+    expect(() => parseRulesInput("@a.example\nX-K: 1\n!X-K", "header", NAMES)).not.toThrow();
+  });
+
+  it("still rejects every overlapping scope", () => {
+    const dup = /duplicate rule for "X-K" on an overlapping host scope/;
+    const cases = [
+      "X-K: 1\n@a.example\nX-K: 2", // key-level covers any scoped rule
+      "@a.example\nX-K: 1\n@a.example\nX-K: 2", // same exact host
+      "@*.vendor.com\nX-K: 1\n@api.vendor.com\nX-K: 2", // wildcard covers the exact host
+      "@*.vendor.com\nX-K: 1\n@*.sub.vendor.com\nX-K: 2", // nested wildcards
+      "@*\nX-K: 1\n@a.example\nX-K: 2", // explicit *
+    ];
+    for (const text of cases) expect(() => parseRulesInput(text, "header", NAMES), text).toThrowError(dup);
+  });
+
+  it("applies to query params and response rules as well", () => {
+    expect(() => parseRulesInput("@a.example\nkey = 1\n@b.example\nkey = 2", "param", NAMES)).not.toThrow();
+    expect(() => parseRulesInput("@a.example\nkey = 1\n@a.example\nkey = 2", "param", NAMES)).toThrowError(/duplicate/);
+    expect(() => parseRulesInput("@a.example\nX-F: 1\n@b.example\nX-F: 2", "response", NAMES)).not.toThrow();
+  });
+});
+
 describe("parseRulesInput (query params)", () => {
   it("parses set/remove and rejects reserved corx params", () => {
     expect(parseRulesInput("ttl = 60\napi_key = ${TOKEN}\n!debug", "param", NAMES)).toEqual([
