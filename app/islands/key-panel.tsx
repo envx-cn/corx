@@ -64,6 +64,12 @@ export interface KeyPanelI18n {
   deleteConfirm: string;
   cancel: string;
   close: string;
+  /** "blank = …" lines under the fields, filled with the deployment's values. */
+  rateDefault: string;
+  originsDefault: string;
+  cacheDefault: string;
+  /** Confirm before closing a panel with unsaved changes. */
+  discardConfirm: string;
   /** Submit-button label while its POST is in flight. */
   saving: string;
   /** Informational banner in a revoked key's (read-only) panel. */
@@ -194,6 +200,8 @@ export default function KeyPanel(props: {
   presets?: boolean;
   /** Open the advanced <details> on first render (a preset touched it). */
   expandAdvanced?: boolean;
+  /** The deployment's effective defaults, shown as "blank = …". */
+  defaults: { rate: string; origins: string; ttl: string; publicTtl: string };
   /** Server message for a failed save — shown inside the dialog, not behind it. */
   error?: string | null;
   /** Delete endpoint — set on the edit panel to render the danger zone. */
@@ -210,6 +218,8 @@ export default function KeyPanel(props: {
   const ref = useRef<HTMLDialogElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const submitRef = useRef<HTMLButtonElement>(null);
+  /** Field values as first rendered: what "unsaved changes" is measured against. */
+  const initialRef = useRef<Map<string, { value: string; checked: boolean }> | null>(null);
   const deleteRef = useRef<HTMLDialogElement>(null);
   const revokeRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -219,11 +229,44 @@ export default function KeyPanel(props: {
   const v = props.values;
 
   useEffect(() => {
+    const form = formRef.current;
+    if (form) {
+      const snapshot = new Map<string, { value: string; checked: boolean }>();
+      form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input[name], textarea[name]").forEach((el) => {
+        snapshot.set(el.name, { value: el.value, checked: "checked" in el ? el.checked : false });
+      });
+      initialRef.current = snapshot;
+    }
     if (props.open && ref.current && !ref.current.open) ref.current.showModal();
   }, []);
 
   const show = () => ref.current?.showModal();
-  const hide = () => ref.current?.close();
+
+  /** Anything typed since the panel opened? Measured against the first render. */
+  const dirty = () => {
+    const form = formRef.current;
+    const initial = initialRef.current;
+    if (!form || !initial) return false;
+    let changed = false;
+    form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input[name], textarea[name]").forEach((el) => {
+      const before = initial.get(el.name);
+      if (!before) return;
+      if (el.value !== before.value) changed = true;
+      else if ("checked" in el && el.checked !== before.checked) changed = true;
+    });
+    return changed;
+  };
+
+  /** Closing by hand discards the draft: ask first once anything changed. */
+  const requestClose = () => {
+    if (dirty() && !confirm(labels.discardConfirm)) return;
+    ref.current?.close();
+  };
+
+  /** The dialog's own cancel event (Esc); field values decide whether it closes. */
+  const onCancel = (e: Event) => {
+    if (dirty() && !confirm(labels.discardConfirm)) e.preventDefault();
+  };
 
   /**
    * One POST per form. The browser navigates away on submit, but a slow round
@@ -244,13 +287,13 @@ export default function KeyPanel(props: {
       <button type="button" class={props.triggerClass} onClick={show}>
         {props.trigger}
       </button>
-      <dialog ref={ref} class="modal" aria-labelledby={titleId}>
+      <dialog ref={ref} class="modal" aria-labelledby={titleId} onCancel={onCancel}>
         <div class="modal-box">
           <button
             type="button"
             class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
             aria-label={labels.close}
-            onClick={hide}
+            onClick={requestClose}
           >
             ✕
           </button>
@@ -316,6 +359,7 @@ export default function KeyPanel(props: {
                     inputmode="numeric"
                     class="input input-bordered w-full"
                   />
+                  <p class="mt-1 text-xs text-base-content/75">{labels.rateDefault}</p>
                 </Field>
                 <Field label={labels.allowedOrigins} class="sm:col-span-2">
                   <input
@@ -324,6 +368,7 @@ export default function KeyPanel(props: {
                     placeholder={labels.originsPh}
                     class="input input-bordered w-full"
                   />
+                  <p class="mt-1 text-xs text-base-content/75">{labels.originsDefault}</p>
                 </Field>
                 <div class="sm:col-span-2 rounded-box border border-base-300 p-3">
                   <Check name="keyless" label={labels.keyless} hint={labels.keylessHint} checked={v?.keyless ?? false} />
@@ -347,6 +392,7 @@ export default function KeyPanel(props: {
                       title={labels.cacheTtlTitle}
                       class="input input-bordered w-full"
                     />
+                    <p class="mt-1 text-xs text-base-content/75">{labels.cacheDefault}</p>
                   </Field>
                   <Field label={labels.noCache}>
                     <div class="flex h-10 items-center gap-2 text-sm text-base-content/75" title={labels.noCacheHint}>
@@ -440,7 +486,7 @@ export default function KeyPanel(props: {
             ) : null}
 
             <div class="modal-action">
-              <button type="button" class="btn btn-ghost" onClick={hide}>
+              <button type="button" class="btn btn-ghost" onClick={requestClose}>
                 {labels.cancel}
               </button>
               {props.revoked ? null : (
@@ -451,8 +497,15 @@ export default function KeyPanel(props: {
             </div>
           </form>
         </div>
-        {/* Backdrop: a dialog form closes the <dialog> without any JS. */}
-        <form method="dialog" class="modal-backdrop">
+        {/* Backdrop: a dialog form closes the <dialog> without any JS. Intercept
+            the submit so a dirty form asks before the draft is discarded. */}
+        <form
+          method="dialog"
+          class="modal-backdrop"
+          onSubmit={(e: Event) => {
+            if (dirty() && !confirm(labels.discardConfirm)) e.preventDefault();
+          }}
+        >
           <button aria-label={labels.close}>{labels.close}</button>
         </form>
       </dialog>

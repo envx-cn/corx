@@ -1447,6 +1447,22 @@ describe("console key form (integration)", () => {
     expect(update?.values.some((v) => typeof v === "string" && v.includes("X-Frame-Options"))).toBe(true);
   });
 
+  it("shows the deployment's effective defaults next to the fields", async () => {
+    const defaultsEnv = {
+      ...env,
+      RATE_LIMIT_PER_MIN: "77",
+      ALLOWED_ORIGINS: "https://a.example",
+      CACHE_TTL_SECONDS: "1200",
+      PUBLIC_CACHE_TTL_SECONDS: "60",
+    } as unknown as Env;
+    const res = await call("/console/keys", { headers: { cookie: `corx_session=${sessionCookie}` } }, defaultsEnv);
+    const html = await res.text();
+    // The panel's "blank = …" lines read the proxy's own env, not a copy.
+    expect(html).toContain("blank = 77/min");
+    expect(html).toContain("blank = global (https://a.example)");
+    expect(html).toContain("blank = global 1200s (public tier 60s)");
+  });
+
   it("carries the save form's double-submit guard", async () => {
     // The double click itself has no DOM harness here (the issue says so), and
     // an island's onSubmit never reaches the SSR markup — so this pins the
@@ -1461,6 +1477,14 @@ describe("console key form (integration)", () => {
     const html = await res.text();
     expect(html).toContain('action="/console/keys"');
     expect(html).toContain('type="submit"');
+  });
+
+  it("closes the panel only after confirming unsaved changes", () => {
+    // window.confirm has no DOM harness: pin the wiring at the source.
+    expect(keyPanelSrc).toContain("const dirty = () =>");
+    expect(keyPanelSrc).toContain("discardConfirm");
+    expect(keyPanelSrc).toContain("onClick={requestClose}");
+    expect(keyPanelSrc).toContain("onCancel={onCancel}");
   });
 
   it("renders a failed injection save inline, next to the rule field", async () => {

@@ -8,6 +8,8 @@ import { RelTime } from "../../components/time.js";
 import CopyButton from "../../islands/copy-button.js";
 import KeyPanel, { type KeyFormValues, type KeyPanelI18n } from "../../islands/key-panel.js";
 import { readStoredInjection } from "../../proxy/inject.js";
+import { effectiveOrigins } from "../../proxy/cors.js";
+import { num } from "../../lib/utils.js";
 import { consoleT } from "../../lib/i18n/hono.js";
 import type { TFunc } from "../../lib/i18n/locale.js";
 
@@ -18,6 +20,7 @@ app.get("/", async (c) => {
   return c.render(
     <KeysContent
       keys={await queryKeys(c.env.DB)}
+      defaults={panelDefaults(c.env)}
       newKey={null}
       createDraft={presetValues(c.req.query("preset"))}
       showRevoked={c.req.query("revoked") === "1"}
@@ -52,6 +55,7 @@ app.post("/", async (c) => {
     return c.render(
       <KeysContent
         keys={await queryKeys(c.env.DB)}
+        defaults={panelDefaults(c.env)}
         newKey={{ id, key, name: values.name }}
         csrf={c.get("csrfToken") ?? ""}
         t={t}
@@ -65,6 +69,7 @@ app.post("/", async (c) => {
     return c.render(
       <KeysContent
         keys={await queryKeys(c.env.DB)}
+        defaults={panelDefaults(c.env)}
         newKey={null}
         error={error}
         createDraft={values}
@@ -101,6 +106,7 @@ app.post("/:id", async (c) => {
     return c.render(
       <KeysContent
         keys={await queryKeys(c.env.DB)}
+        defaults={panelDefaults(c.env)}
         newKey={null}
         error={error}
         editDraft={{ id, values }}
@@ -124,6 +130,7 @@ app.post("/:id/delete", async (c) => {
     c.render(
       <KeysContent
         keys={keys}
+        defaults={panelDefaults(c.env)}
         newKey={null}
         error={error}
         editDraft={key ? { id, values: rowValues(key) } : undefined}
@@ -154,6 +161,7 @@ app.post("/:id/revoke", async (c) => {
     c.render(
       <KeysContent
         keys={keys}
+        defaults={panelDefaults(c.env)}
         newKey={null}
         error={error}
         editDraft={key ? { id, values: rowValues(key) } : undefined}
@@ -279,7 +287,24 @@ function cacheText(k: KeyRow, t: TFunc): string {
   return t("console.keys.global");
 }
 
-function panelLabels(t: TFunc): KeyPanelI18n {
+/**
+ * The deployment defaults the panel's "blank = …" lines report. Sourced from
+ * the same env vars and helpers the proxy uses, so the two cannot drift.
+ */
+function panelDefaults(env: Env): { rate: string; origins: string; ttl: string; publicTtl: string } {
+  const origins = effectiveOrigins(env, null);
+  return {
+    rate: String(num(env.RATE_LIMIT_PER_MIN, 60)),
+    origins: origins === "*" ? "*" : origins.join(", "),
+    ttl: String(num(env.CACHE_TTL_SECONDS, 3600)),
+    publicTtl: String(num(env.PUBLIC_CACHE_TTL_SECONDS, 300)),
+  };
+}
+
+function panelLabels(
+  t: TFunc,
+  defaults: { rate: string; origins: string; ttl: string; publicTtl: string },
+): KeyPanelI18n {
   return {
     name: t("console.keys.name"),
     namePh: t("console.keys.namePh"),
@@ -319,6 +344,10 @@ function panelLabels(t: TFunc): KeyPanelI18n {
     deleteConfirm: t("console.keys.deleteConfirm"),
     cancel: t("ui.cancel"),
     close: t("ui.close"),
+    rateDefault: t("console.keys.rateDefault", { value: defaults.rate }),
+    originsDefault: t("console.keys.originsDefault", { value: defaults.origins }),
+    cacheDefault: t("console.keys.cacheDefault", { ttl: defaults.ttl, publicTtl: defaults.publicTtl }),
+    discardConfirm: t("console.keys.discardConfirm"),
     saving: t("console.keys.saving"),
     revokedHint: t("console.keys.revokedHint"),
     revoke: t("console.keys.revoke"),
@@ -337,12 +366,14 @@ function KeysContent(props: {
   editDraft?: { id: string; values: KeyFormValues };
   /** "Show revoked" view state (?revoked=1): dead keys stay inspectable. */
   showRevoked?: boolean;
+  /** The deployment's effective defaults (the panel's "blank = …" lines). */
+  defaults: { rate: string; origins: string; ttl: string; publicTtl: string };
   /** Session-bound CSRF token for every POST form on the page. */
   csrf: string;
   t: TFunc;
 }) {
   const { t } = props;
-  const labels = panelLabels(t);
+  const labels = panelLabels(t, props.defaults);
   // Revoked keys are dead at the edge, but they are not gone: the row keeps
   // its policy and its traffic attributable until someone cleans it up. Hidden
   // by default so the working list stays a working list.
@@ -376,6 +407,7 @@ function KeysContent(props: {
             expandAdvanced={props.createDraft?.tier === true}
             error={props.createDraft ? props.error : null}
             csrf={props.csrf}
+            defaults={props.defaults}
             labels={labels}
           />
         </div>
@@ -470,6 +502,7 @@ function KeysContent(props: {
                       revoked={!!k.revoked_at}
                       keyName={k.name}
                       csrf={props.csrf}
+                      defaults={props.defaults}
                       labels={labels}
                     />
                   </div>
