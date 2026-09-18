@@ -265,6 +265,7 @@ const en = {
       call: "Call shapes",
       params: "Control parameters",
       auth: "Authentication",
+      upstream: "Upstream credentials",
       caching: "Caching",
       limits: "Limits and errors",
       security: "Security",
@@ -346,6 +347,41 @@ const en = {
         title: "Where the key goes — and where it must not",
         body:
           "Server-side only. A key in a browser bundle, a public repository or a page source is a key you have given away; a site that needs to call the proxy from a browser should use a keyless origin grant (or the public key, if the data really is public). Never send credentials or personal data through a shared instance at all.",
+      },
+    },
+    upstream: {
+      title: "Upstream credentials",
+      lead:
+        "A key can hold the upstream API credentials your app needs and attach them server-side: the browser never receives the value and never learns which credentials exist. Because one front end usually calls several APIs with a different key each, the rules that attach them are scoped per target host.",
+      ways: {
+        title: "How a credential is attached",
+        body:
+          "Variables (`NAME=value`) hold the values; header and query rules use them. An `@host` line scopes the rules below it, so one key can carry a different credential per upstream — including the usual shape, the same header name with a different value per host (`Authorization` for two vendors). Header rules set or remove request headers (`Authorization: Bearer ${VENDOR_KEY}`, `!X-Debug`); query rules do the same with URL parameters (`api_key = ${VENDOR_KEY}`) for APIs that authenticate that way. Rules always win over what the caller sent, so a browser cannot spoof an injected header, and which rule applies is decided by the target host, not by the caller.",
+      },
+      example: {
+        title: "One key, three upstreams",
+        body:
+          "The console's key editor has a Variables field, a Header rules field and an allowed-hosts field; the Admin API takes the same three as `vars`, `headerRules` and `allowedHosts`.",
+        varsLabel: "Variables",
+        rulesLabel: "Header rules",
+        hostsLabel: "Allowed target hosts (required with any injection)",
+        note:
+          "Every `@host` must fall inside the allowed-hosts list, and the list is mandatory once anything is injected — that is the guard that stops a caller from pointing your credential at a host of their choosing. A rule outside the list is never attached.",
+      },
+      uses: {
+        title: "What it is for",
+        body:
+          "The common case is one front end calling several providers — an LLM at one vendor, payments or maps at others — each with its own key and no secret in the page. It also covers an API that authenticates with a query parameter instead of a header, and the same upstream with different keys per environment (one key per environment, or a variable per deployment). Because the caller only sends the CORX key, the page code can be public: it names no provider credential, not even which ones exist.",
+      },
+      keys: {
+        title: "One key or several",
+        body:
+          "Everything above puts every upstream in a single key — one allowed-hosts union, one rate limit and one allowed-origins list shared by all of them, and one secret store to rotate. Split into one key per upstream when you want separate limits or origins, when a leak should reach only one vendor, or when the same host needs different credentials on different paths (rules are scoped by host, not by path). Keyless access grants an origin exactly one key, so a page that calls several upstreams without carrying a key gets all of them from that key's rules.",
+      },
+      rails: {
+        title: "Cache and safety",
+        body:
+          "Secrets are encrypted at rest when `INJECTION_KEK` is set, masked everywhere they are read (console, logs, playground preview), and the request log stores the pre-injection URL. A key with header rules never reads or writes the R2 cache, because its responses are key-specific; a key that injects only query parameters still caches, under the effective URL. The public tier cannot inject at all — it is GET/HEAD only — so upstream credentials mean a self-hosted instance and a standard key.",
       },
     },
     caching: {
@@ -1341,6 +1377,7 @@ const zh: Messages = {
       call: "调用方式",
       params: "控制参数",
       auth: "鉴权",
+      upstream: "上游凭证",
       caching: "缓存",
       limits: "限额与错误",
       security: "安全",
@@ -1417,6 +1454,41 @@ const zh: Messages = {
         title: "key 该放在哪，绝不能放在哪",
         body:
           "只能放在服务端。出现在浏览器打包产物、公开仓库或页面源码里的 key，就等于已经泄露；需要从浏览器调用代理的站点应该使用免密钥来源授权（如果数据确实是公开的，就用公共 key）。无论如何，都不要让凭证或个人数据经过共享实例。",
+      },
+    },
+    upstream: {
+      title: "上游凭证",
+      lead:
+        "一个 key 可以保管应用需要的上游 API 凭证并在服务端注入：浏览器拿不到凭证值，也不知道存在哪些凭证。由于一个前端通常要对接多个 API、各自用不同的 key，附加凭证的规则按目标 host 限定作用域。",
+      ways: {
+        title: "凭证是怎么附上去的",
+        body:
+          "变量（`NAME=value`）保存值，header 规则与 query 规则引用它们。`@host` 行给它下面的规则限定作用域，因此一个 key 可以为每个上游携带不同的凭证——包括最常见的形态：同一个 header 名在不同 host 上用不同的值（两个厂商都用 `Authorization`）。header 规则用于设置或删除请求头（`Authorization: Bearer ${VENDOR_KEY}`、`!X-Debug`）；query 规则对应 URL 参数（`api_key = ${VENDOR_KEY}`），适用于用参数鉴权的 API。规则始终覆盖调用方发来的内容，浏览器无法伪造注入的 header；用哪条规则由目标 host 决定，而不是由调用方决定。",
+      },
+      example: {
+        title: "一个 key，对接三个上游",
+        body:
+          "控制台的 key 编辑器有三个字段：变量、header 规则、允许主机；Admin API 对应 `vars`、`headerRules`、`allowedHosts`。",
+        varsLabel: "变量（Variables）",
+        rulesLabel: "Header 规则（Header rules）",
+        hostsLabel: "允许目标主机（配置注入时必填）",
+        note:
+          "每条 `@host` 都必须落在允许主机列表内，而只要配置了注入，该列表就是必填的——这道守卫防止调用方把你的凭证指向它自己选的 host。不在列表内的规则永远不会被附加。",
+      },
+      uses: {
+        title: "用途",
+        body:
+          "最常见的是同一个前端调用多个服务——一家厂商的 LLM、另外几家的支付或地图 API——各自一个 key，页面里没有任何密钥。它同样适用于用查询参数而非 header 鉴权的 API，以及同一上游在不同环境用不同 key 的情况（每个环境一个 key，或用变量保存该部署的值）。因为调用方只发送 CORX key，页面代码可以公开：它不包含任何厂商凭证，甚至不知道存在哪些凭证。",
+      },
+      keys: {
+        title: "一个 key 还是多个",
+        body:
+          "以上做法把所有上游放进同一个 key，也就意味着它们共享一份允许主机并集、一份频率限制和一份允许来源列表，以及一个需要轮换的密钥库。当你需要各自独立的限额或来源、希望泄漏时只波及一家厂商、或同一个 host 的不同路径需要不同凭证（规则按 host 而不是按路径限定作用域）时，就拆成每个上游一个 key。免密钥访问只给一个来源授权一个 key，所以不带 key 调用多个上游的页面，拿到的就是那一个 key 的规则。",
+      },
+      rails: {
+        title: "缓存与安全",
+        body:
+          "设置 `INJECTION_KEK` 后密钥静态加密，在所有读取路径（控制台、日志、playground 预览）都以掩码显示，请求日志记录的是注入前的 URL。带 header 规则的 key 完全不读写 R2 缓存，因为它的响应与 key 相关；只用 query 参数注入的 key 仍然缓存，按生效后的 URL 作为缓存键。公共档位完全不能注入——它只支持 GET/HEAD——所以上游凭证意味着自托管实例加 standard key。",
       },
     },
     caching: {

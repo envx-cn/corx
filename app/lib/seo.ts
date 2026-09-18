@@ -649,6 +649,12 @@ Every \`corx-*\` parameter is namespaced, so it can never collide with the targe
   (the documented embed recipe: strip \`X-Frame-Options\`/CSP \`frame-ancestors\` for a host you
   control, then sandbox the iframe yourself). The headers corx owns are rejected at save time, and a
   key's resolved response rules are part of the cache key.
+- **Upstream credentials per target** — variables plus header/query rules are injected server-side, and
+  the rules' \`@host\` sections scope them, so one key can hold a different credential per upstream —
+  including the same header name (\`Authorization\`) with a different value on two hosts. An injecting
+  key must declare its allowed hosts and every \`@host\` must fall inside that list; two rules for the
+  same header may not overlap in host scope. Keys with header rules bypass the R2 cache, query-only
+  injection still caches, and the public tier cannot inject at all.
 - **Keyless browser access** — grant an origin to a key and its visitors call the proxy without
   shipping one. The grant matches on \`Origin\` (or \`Referer\` for same-origin GETs) and is metered
   per visitor IP, so one site cannot drain the whole key.

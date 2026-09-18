@@ -190,7 +190,10 @@ forwarding — the browser never holds the upstream secret:
   are a 400 at save time, so "which rule wins" is never decided by line order.
   The allowlist is still the union of every target, and the key's rate limit and
   allowed origins apply to all of them — split into one key per upstream when
-  you want separate limits or a smaller blast radius.
+  you want separate limits or a smaller blast radius. The `/docs` page's
+  **Upstream credentials** section has a worked three-upstream example (also
+  emitted in `llms-full.txt` for agents); `app/lib/docs.ts` holds those exact
+  field values so `test/docs.test.ts` parses them the way the save path does.
 - **Cache:** keys with header rules never read or write the shared R2 cache
   (personalized/credentialed requests, same rule as client-sent
   `Authorization`); param-only keys cache under the injected URL, so different

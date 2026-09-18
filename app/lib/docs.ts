@@ -67,3 +67,27 @@ export const DOCS_KEY_FORMS: readonly string[] = [
   "Authorization: Bearer corx_…",
   "?corx-key=corx_…",
 ];
+
+/**
+ * The multi-upstream injection example `/docs` renders and `test/docs.test.ts`
+ * feeds to the real parser. Keeping it here rather than in the prose means the
+ * documented shape is one the parser accepts — including the case the section
+ * exists for: the same header name on two hosts, each with its own credential.
+ */
+export const DOCS_INJECTION_VARS: readonly string[] = [
+  "OPENAI_KEY=sk-…",
+  "ANTHROPIC_KEY=sk-ant-…",
+  "VENDOR_KEY=vendor-…",
+];
+
+/** The allowed-hosts list that makes the rules below valid — mandatory once anything is injected. */
+export const DOCS_INJECTION_HOSTS = "api.openai.com, api.anthropic.com, api.vendor.com";
+
+export const DOCS_INJECTION_RULES: readonly string[] = [
+  "@api.openai.com",
+  "Authorization: Bearer ${OPENAI_KEY}",
+  "@api.anthropic.com",
+  "x-api-key: ${ANTHROPIC_KEY}",
+  "@api.vendor.com",
+  "Authorization: Bearer ${VENDOR_KEY}",
+];
