@@ -88,6 +88,7 @@ const en = {
     row: {
       auth: "Auth model",
       secrets: "Upstream secrets",
+      scoping: "Credential scoping",
       hosting: "Self-hosting",
       caching: "Caching",
       logging: "Request logging",
@@ -101,6 +102,8 @@ const en = {
       auth: "Per-key (`X-Api-Key` or Bearer), keyless access for granted origins, or a hosted instance's shared public key. Keys are stored as hashes in your own D1.",
       secrets:
         "Header and query rules live in D1 — AES-256-GCM ciphertext when `INJECTION_KEK` is set — and are applied server-side, only on the hosts the key allows. The browser never receives the value.",
+      scoping:
+        "Rules are scoped by target host on the key (`@api.a.com` then `@api.b.com`), so the proxy picks each upstream's credential and the caller cannot name one. Two rules may share a header name only on disjoint host scopes — an overlap is a 400 at save time — and every host must be on the key's allowlist.",
       hosting:
         "MIT, one Cloudflare Worker with D1 and R2, deployed to your own account; the free plan covers small deployments.",
       caching:
@@ -130,6 +133,8 @@ const en = {
         auth: "The homepage's own fetch sample carries `?key=YOUR_API_KEY`, and its FAQ answers \"How do I get an API key?\" with creating a free account.",
         secrets:
           "Header overrides are query parameters (`reqHeaders=authorization:Bearer%20TOKEN`), so the value comes from the caller; the homepage FAQ advises against exposing upstream secrets in browser code.",
+        scoping:
+          "Header overrides travel as request parameters, so what is attached to a target is chosen by the caller on each request — the service holds no rule that binds a credential to a host.",
         hosting: "No repository, source download or self-host path is linked anywhere on the site or in the docs.",
         caching:
           "Default 1-hour TTL for GET/HEAD, `ttl=` overrides require the Production plan, and the cache is per data centre rather than global.",
@@ -147,6 +152,8 @@ const en = {
         auth: "Account and API key on every call (`?key=…`), the free tier included; domain authorization on paid plans.",
         secrets:
           "No server-side secret store. Header overrides are query parameters (`reqHeaders=authorization:Bearer TOKEN`), so the value comes from the caller — their own FAQ says to keep upstream secrets out of browser code.",
+        scoping:
+          "Whatever the caller sends, to whichever target it names: there is no server-side credential to scope and no per-target binding to configure.",
         hosting: "Closed source, hosted only: there is no self-host path.",
         caching:
           "Edge cache with a 1-hour default TTL; `ttl=` overrides need the Production plan, and the cache is per data centre rather than global.",
@@ -173,6 +180,8 @@ const en = {
         auth: "Production traffic is authorised by adding your website's domain in the dashboard; `x-corsfix-key` is documented as a fallback, and localhost needs no registration.",
         secrets:
           "`{{SECRET_NAME}}` variables can be used in query parameters and request headers; secrets are encrypted at rest and decrypted in memory only when a request uses them.",
+        scoping:
+          "Two settings per application: Origin Domains (which sites may use the proxy) and Target Domains (which domains may be fetched), the latter defaulting to *All domains*; both use exact matching, and \"Corsfix validates requests based on the Origin header and target domain.\"",
         hosting:
           "`git clone github.com/corsfix/corsfix`, Docker Compose with MongoDB and Redis, your own VPS — the docs cover logs, updates and domain configuration.",
         caching:
@@ -194,6 +203,8 @@ const en = {
         auth: "Dashboard domain whitelist — no key in the browser — with `x-corsfix-key` as a documented fallback; localhost needs no registration at all.",
         secrets:
           "`{{SECRET_NAME}}` variables in query parameters or request headers, encrypted at rest and decrypted in memory per request. Managed from their dashboard, not from your own database.",
+        scoping:
+          "Origin Domains and Target Domains are set per application — Target Domains defaults to *All domains* and is exact-matched — so the target list, not the secret, bounds where a credential can go.",
         hosting: "Open source too (`github.com/corsfix/corsfix`): Docker Compose with MongoDB and Redis on your own VPS.",
         caching:
           "`x-corsfix-cache` header with a duration (`10m`, `2h`, `1d`; invalid values default to one hour, capped at a day); GET only, and cached responses do not count against the plan's throughput.",
@@ -221,6 +232,8 @@ const en = {
         auth: "The README documents `url`, `charset` and `callback` and nothing about keys or accounts; neither does the site.",
         secrets:
           "`/get` and `/raw` forward the request as it arrives — there is no credential store in the hosted service or in the code.",
+        scoping:
+          "The README and the code document no credential handling at all — the request is forwarded as it arrives, so there is nothing on the server to bind to a target.",
         hosting:
           "MIT-licensed Node/Express: `git clone`, `npm install`, `npm start`. The repository's last push is 2023-02-26 (checked via the GitHub API).",
         caching: "The site and the README describe `charset`, `raw` and `callback` only — no cache controls and no TTL are documented.",
@@ -237,6 +250,8 @@ const en = {
         auth: "None documented: no key, no account, no quota page. `/get` and `/raw` are open.",
         secrets:
           "Nothing to inject with: the proxy forwards the request as it receives it, so any credential would have to come from the caller. Neither the service nor the code has a secret store.",
+        scoping:
+          "No credential model to scope: the proxied request carries whatever the caller set, and nothing is bound to a target server-side.",
         hosting:
           "Open source (MIT) Node/Express: `git clone && npm install && npm start`. No Cloudflare account needed, any Node host works. The repository's last push was 2023-02-26.",
         caching: "Not documented: the README and the site cover `charset`, `raw` and `callback`, with no cache controls.",
@@ -1191,6 +1206,7 @@ const zh: Messages = {
     row: {
       auth: "鉴权模型",
       secrets: "上游密钥",
+      scoping: "凭证作用域",
       hosting: "自托管",
       caching: "缓存",
       logging: "请求日志",
@@ -1204,6 +1220,8 @@ const zh: Messages = {
       auth: "支持按 key 鉴权（`X-Api-Key` 或 Bearer）、为已授权来源免密钥访问，或使用托管实例的公共 key；密钥以哈希形式存放在你自己的 D1 中。",
       secrets:
         "上游 header / query 规则存放在 D1（设置 `INJECTION_KEK` 后为 AES-256-GCM 密文），在服务端按白名单主机注入。浏览器始终拿不到密钥值。",
+      scoping:
+        "规则挂在 key 上、按目标 host 限定作用域（先 `@api.a.com` 再 `@api.b.com`），由代理决定每个上游用哪套凭证，调用方无法指定。同一个 header 名只能出现在互不重叠的 host 作用域上——重叠会在保存时被 400 拒绝——且每个 host 都必须在 key 的白名单内。",
       hosting: "MIT 许可，单个 Cloudflare Worker 配 D1 与 R2，部署到你自己的账号；小规模使用免费套餐即可。",
       caching:
         "R2 GET 缓存，可用 `corx-ttl` / `corx-no-cache` 按请求调整、按 key 封顶；注入请求头的 key 不与他人共享缓存，解析后的响应头规则也是缓存键的一部分。",
@@ -1228,6 +1246,8 @@ const zh: Messages = {
         auth: "官网自己的 fetch 示例就带 `?key=YOUR_API_KEY`，FAQ 里「如何获取 API key」的答案是注册一个免费账号。",
         secrets:
           "Header 覆盖走查询参数（`reqHeaders=authorization:Bearer%20TOKEN`），值由调用方提供；官网 FAQ 也建议不要把上游密钥写进浏览器代码。",
+        scoping:
+          "Header 覆盖以请求参数形式发送，因此给某个目标附带什么由调用方在每次请求时决定——服务端没有任何把凭证绑定到 host 的规则。",
         hosting: "官网与文档没有链接任何仓库、源码下载或自托管入口。",
         caching: "GET/HEAD 默认 TTL 一小时；`ttl=` 覆盖需要 Production 档；缓存按数据中心而非全局。",
         logging: "记录请求 URL、User-Agent、IP、时间戳与请求计数，以及账号邮箱；声明不记录请求体与 header。",
@@ -1242,6 +1262,8 @@ const zh: Messages = {
         auth: "每次调用都要账号 + API key（`?key=…`），免费档也一样；付费档支持域名授权。",
         secrets:
           "没有服务端密钥存储。Header 覆盖是查询参数（`reqHeaders=authorization:Bearer TOKEN`），值由调用方提供——他们自己的 FAQ 也建议不要把上游密钥写进浏览器代码。",
+        scoping:
+          "调用方发什么、就发往它指定的哪个目标：服务端没有可限定作用域的凭证，也没有按目标绑定的配置。",
         hosting: "闭源，仅托管，没有自托管路径。",
         caching: "边缘缓存，默认 TTL 一小时；`ttl=` 覆盖需要 Production 档；缓存按数据中心而非全局，新地区首次请求仍需回源。",
         logging: "隐私政策列出的记录项：请求 URL、User-Agent、IP、时间戳与请求计数，以及账号邮箱；不记录请求体与 header。",
@@ -1264,6 +1286,8 @@ const zh: Messages = {
       src: {
         auth: "生产环境靠在面板添加网站域名来授权；文档把 `x-corsfix-key` 作为备用方案；localhost 无需注册。",
         secrets: "`{{SECRET_NAME}}` 变量可用于查询参数与请求头；密钥静态加密，仅在请求用到时在内存中解密。",
+        scoping:
+          "每个 application 两个设置：Origin Domains（哪些站点可以用代理）与 Target Domains（可以抓取哪些域名），后者默认 *All domains*；两者都精确匹配，「Corsfix validates requests based on the Origin header and target domain」。",
         hosting:
           "`git clone github.com/corsfix/corsfix`，用 Docker Compose 带起 MongoDB 与 Redis，跑在自己的 VPS 上；文档覆盖日志、升级与域名配置。",
         caching:
@@ -1281,6 +1305,8 @@ const zh: Messages = {
         auth: "面板里的域名白名单——浏览器里不放 key；文档给出 `x-corsfix-key` 作为备用；localhost 连注册都不需要。",
         secrets:
           "`{{SECRET_NAME}}` 变量可用于查询参数或请求头，静态加密、按请求在内存中解密。密钥存在他们的面板里，而不是你自己的数据库里。",
+        scoping:
+          "Origin Domains 与 Target Domains 按 application 设置——Target Domains 默认为 *All domains* 且精确匹配——所以限定凭证去向的是目标列表，而不是 secret 本身。",
         hosting: "同样开源（`github.com/corsfix/corsfix`）：用 Docker Compose 在自己的 VPS 上带起 MongoDB 与 Redis。",
         caching:
           "请求头 `x-corsfix-cache` 指定时长（`10m`、`2h`、`1d`；非法值默认一小时，最长一天）；仅 GET，且命中缓存的响应不计入套餐吞吐。",
@@ -1305,6 +1331,7 @@ const zh: Messages = {
       src: {
         auth: "README 只记录 `url`、`charset`、`callback` 三个参数，没有任何 key 或账号相关内容；官网也一样。",
         secrets: "`/get` 与 `/raw` 原样转发收到的请求——托管服务与代码里都没有凭证存储。",
+        scoping: "README 与代码完全没有描述凭证处理——请求原样转发，服务端没有可绑定到目标的东西。",
         hosting: "MIT 许可的 Node/Express：`git clone`、`npm install`、`npm start`。仓库最后一次推送为 2023-02-26（经 GitHub API 核查）。",
         caching: "官网与 README 只描述 `charset`、`raw` 与 `callback`——没有缓存控制，也没有 TTL 说明。",
         logging: "仓库依赖 `@logdna/logger`，自托管版本可以把日志写入 LogDNA（Mezmo）。托管实例的保留策略没有任何公开说明。",
@@ -1317,6 +1344,7 @@ const zh: Messages = {
       row: {
         auth: "未记录任何鉴权：没有 key、没有账号、没有配额页面，`/get` 与 `/raw` 直接开放。",
         secrets: "无从注入：代理原样转发收到的请求，凭证只能由调用方携带；托管服务与代码里都没有密钥存储。",
+        scoping: "没有可限定作用域的凭证模型：转发的请求里带什么由调用方决定，服务端不会把任何东西绑定到目标。",
         hosting: "开源（MIT）Node/Express：`git clone && npm install && npm start`，不需要 Cloudflare 账号，任何 Node 主机都能跑。仓库最后一次推送停在 2023-02-26。",
         caching: "未见说明：README 与官网只描述 `charset`、`raw`、`callback`，没有缓存控制。",
         logging: "托管实例没有日志说明；仓库依赖 `@logdna/logger`，自托管版本配置后可以写入 LogDNA（Mezmo）。",

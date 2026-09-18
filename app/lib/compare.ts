@@ -22,7 +22,9 @@
  *  - Never paraphrase a limit the competitor does not have; link their docs and
  *    say what they say. A claim without a source does not go on the page.
  *
- * Sources below were read on 2026-09-17.
+ * Sources below were read on 2026-09-17. A row re-read later than that carries
+ * its own date, and a comparison's `checked` is the latest date among its rows —
+ * touching one claim must not re-date the ones nobody looked at again.
  */
 import type { MessageKey } from "./i18n/messages.js";
 
@@ -31,6 +33,7 @@ import type { MessageKey } from "./i18n/messages.js";
 export type CompareRowId =
   | "auth"
   | "secrets"
+  | "scoping"
   | "hosting"
   | "caching"
   | "logging"
@@ -83,8 +86,10 @@ export interface Comparison {
   rows: CompareRow[];
 }
 
-/** All rows were read on this date; a single constant keeps them consistent. */
+/** Last full pass over every competitor's sources. */
 const CHECKED = "2026-09-17";
+/** A later pass: only the rows actually re-read then carry this date. */
+const RECHECKED = "2026-09-18";
 
 export const COMPARISONS: Comparison[] = [
   {
@@ -103,6 +108,13 @@ export const COMPARISONS: Comparison[] = [
         // server-side secret store, so a caller's key can only travel with the
         // caller. Read the header-rewrites page before rewording this row.
         id: "secrets",
+        source: { url: "https://corsproxy.io/docs/header-rewrites/", checked: CHECKED },
+      },
+      {
+        // A different axis from `secrets`: not where a credential lives, but
+        // what decides which one reaches which target. Same source page, its
+        // own claim note.
+        id: "scoping",
         source: { url: "https://corsproxy.io/docs/header-rewrites/", checked: CHECKED },
       },
       {
@@ -154,7 +166,8 @@ export const COMPARISONS: Comparison[] = [
     name: "Corsfix",
     site: "https://corsfix.com/",
     docs: "https://corsfix.com/docs",
-    checked: CHECKED,
+    // The latest date among this page's rows, not a re-read of all of them.
+    checked: RECHECKED,
     rows: [
       {
         id: "auth",
@@ -163,6 +176,13 @@ export const COMPARISONS: Comparison[] = [
       {
         id: "secrets",
         source: { url: "https://corsfix.com/docs/cors-proxy/secrets-variable", checked: CHECKED },
+      },
+      {
+        // Where a stored secret may go. Read 2026-09-18, after the pass above,
+        // so it carries its own date: the application's Target Domains list is
+        // the only per-request bound, and a secret is not bound to a host.
+        id: "scoping",
+        source: { url: "https://corsfix.com/docs/dashboard/application", checked: RECHECKED },
       },
       {
         id: "hosting",
@@ -219,6 +239,12 @@ export const COMPARISONS: Comparison[] = [
       },
       {
         id: "secrets",
+        source: { url: "https://github.com/gnuns/allorigins", checked: CHECKED },
+      },
+      {
+        // Same source page as `secrets`, different axis: with no credential
+        // model at all, there is nothing to bind to a target either.
+        id: "scoping",
         source: { url: "https://github.com/gnuns/allorigins", checked: CHECKED },
       },
       {
