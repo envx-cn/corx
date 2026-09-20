@@ -222,7 +222,9 @@ export function ConsoleLayout(props: {
             csrf={props.csrf ?? ""}
           />
           <main class="flex-1 w-full max-w-6xl mx-auto p-4 lg:p-6">{props.children}</main>
-          <footer class="text-center py-4 text-xs text-base-content/75">CORX</footer>
+          <footer class="text-center py-4 text-xs text-base-content/75">
+            CORX · v{__CORX_VERSION__}
+          </footer>
         </div>
         <div class="drawer-side z-40">
           <label for="console-drawer" aria-label="Close sidebar" class="drawer-overlay"></label>
