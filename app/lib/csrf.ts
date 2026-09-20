@@ -76,7 +76,8 @@ export function issueCsrfToken(c: Context<{ Bindings: Env }>): Promise<string | 
   return csrfToken(secret, binding);
 }
 
-function tokensEqual(a: string, b: string): boolean {
+/** Timing-safe string equality (equal-length fast path; length may leak). */
+export function tokensEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);

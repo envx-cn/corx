@@ -604,14 +604,38 @@ describe("upstream injection + keyless access (integration)", () => {
     expect(new TextDecoder().decode(calls[1]?.body as ArrayBuffer)).toBe("payload");
   });
 
-  it("rewrites an absolute subdomain Location even on the streamed path", async () => {
-    const calls = stubFetch(() => new Response(null, { status: 302, headers: { location: "https://example.com/new" } }));
+  it("follows a subdomain-mode redirect to the target's own origin (streamed path)", async () => {
+    let hop = 0;
+    const calls = stubFetch(() => {
+      hop++;
+      if (hop === 1) return new Response(null, { status: 302, headers: { location: "https://example.com/new" } });
+      return new Response("done", { status: 200, headers: { "content-type": "text/plain" } });
+    });
     const subEnv = { ...env, PROXY_ZONE: "corx.test" } as Env;
     const res = await worker.fetch(new Request("https://example.corx.test/old"), subEnv, ctx);
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("done");
     expect(calls[0]?.url).toBe("https://example.com/old");
-    // Relative, so the browser stays on the proxy instead of leaving for the target.
-    expect(res.headers.get("location")).toBe("/new");
+    // The absolute Location is followed through the proxy (never handed to the
+    // browser), so the browser never resolves it against the proxy host.
+    expect(calls[1]?.url).toBe("https://example.com/new");
+  });
+
+  it("hands a cross-origin subdomain redirect back with its absolute Location", async () => {
+    const calls = stubFetch(() => new Response(null, { status: 302, headers: { location: "https://other.example/away" } }));
+    // A key whose allowlist stops the redirect: the 3xx goes back to the caller.
+    const keyed = envForKey({ ...plainKeyRow, allowed_hosts: "example.com" }).env;
+    const subEnv = { ...keyed, PROXY_ZONE: "corx.test" } as Env;
+    const res = await worker.fetch(
+      new Request("https://example.corx.test/old", { headers: { "x-api-key": "corx_k" } }),
+      subEnv,
+      ctx,
+    );
+    expect(res.status).toBe(302);
+    expect(calls).toHaveLength(1); // the redirect target was never fetched
+    // Not rewritten: the Location points away from the target origin, so the
+    // browser leaving for it is what the upstream asked for.
+    expect(res.headers.get("location")).toBe("https://other.example/away");
   });
 
   it("header rules keep the key out of the shared cache", async () => {
@@ -1291,7 +1315,7 @@ describe("control params (integration)", () => {
 
   it("never forwards the corx key when it is a request param", async () => {
     const calls = recordUpstream(() => new Response('{"ok":true}', { status: 200 }));
-    const res = await call(`/fetch?url=https://api.example.com/x&corx-key=corx_abc`, {}, envWithKey(plainRow));
+    const res = await call(`/fetch?url=https://api.example.com/x&corx-key=corx_abc`, {}, envWithKey(plainKeyRow));
     expect(res.status).toBe(200);
     expect(calls[0]).toBe("https://api.example.com/x");
   });
@@ -1794,3 +1818,235 @@ describe("console key form (integration)", () => {
   });
 });
 
+
+/** A standard key with no injection — the "plain" case for redirect/sandbox tests. */
+const plainKeyRow = {
+  id: "k2",
+  key_hash: "h",
+  name: "plain",
+  rate_limit_per_min: null,
+  allowed_origins: null,
+  cache_ttl: null,
+  no_cache: 0,
+  ip_check: 1,
+  dns_check: 1,
+  vars: "[]",
+  header_rules: "[]",
+  param_rules: "[]",
+  response_rules: "[]",
+  allowed_hosts: null,
+  keyless: 0,
+  created_at: "2026-01-01T00:00:00.000Z",
+  revoked_at: null,
+};
+
+describe("redirect guards (integration)", () => {
+  /** D1 whose blocked_hosts query matches the given hostname. */
+  function dbWithBlocked(blocked: string) {
+    const stmt = () => {
+      const s = {
+        bind: (...args: unknown[]) => ({
+          first: async () => (args.map(String).includes(blocked) ? { hostname: blocked } : null),
+        }),
+        run: async () => ({ meta: { changes: 0 } }),
+        all: async () => ({ results: [] }),
+      };
+      return s;
+    };
+    return { ...env, DB: { prepare: stmt } } as unknown as Env;
+  }
+
+  /** fetch stub answering DoH and recording every upstream call. */
+  function recordUpstream(handler: (hop: number, call: { url: string; headers: Headers }) => Response): Array<{
+    url: string;
+    headers: Headers;
+  }> {
+    const calls: Array<{ url: string; headers: Headers }> = [];
+    let hop = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("cloudflare-dns.com")) {
+          return new Response(JSON.stringify({ Answer: [{ type: 1, data: "1.2.3.4" }] }), { status: 200 });
+        }
+        const call = { url, headers: new Headers(init?.headers) };
+        calls.push(call);
+        return handler(++hop, call);
+      }),
+    );
+    return calls;
+  }
+
+  it("a redirect into a blocked host is refused, not followed (plain key)", async () => {
+    const db = dbWithBlocked("blocked-site.com");
+    const calls = recordUpstream(() => new Response(null, { status: 302, headers: { location: "https://blocked-site.com/steal" } }));
+    const res = await call("/fetch?url=https://start-site.com/ok", {}, db);
+    expect(res.status).toBe(403);
+    expect(calls).toHaveLength(1); // blocked-site.com was never fetched
+  });
+
+  it("a cross-origin redirect drops the caller's Authorization and cookies", async () => {
+    const calls = recordUpstream((hopN) =>
+      hopN === 1
+        ? new Response(null, { status: 302, headers: { location: "https://other.example/next" } })
+        : new Response("done", { status: 200 }),
+    );
+    // The CORX key rides X-Api-Key; the Authorization header is the caller's
+    // own credential for the target — fetch would keep it on a cross-origin
+    // redirect (custom headers are not dropped by the spec), corx does not.
+    const res = await call(
+      "/fetch?url=https://api.example.com/data",
+      { headers: { "x-api-key": "corx_k", authorization: "Bearer user-credential", cookie: "sid=1" } },
+      envWithKey(plainKeyRow),
+    );
+    expect(res.status).toBe(200);
+    expect(calls[0]?.headers.get("authorization")).toBe("Bearer user-credential");
+    expect(calls[1]?.headers.get("authorization")).toBeNull();
+    expect(calls[1]?.headers.get("cookie")).toBeNull();
+    expect(calls[1]?.url).toBe("https://other.example/next");
+  });
+
+  it("a same-origin redirect keeps the caller's credentials", async () => {
+    const calls = recordUpstream((hopN) =>
+      hopN === 1
+        ? new Response(null, { status: 302, headers: { location: "/next" } })
+        : new Response("done", { status: 200 }),
+    );
+    const res = await call(
+      "/fetch?url=https://api.example.com/data",
+      { headers: { "x-api-key": "corx_k", authorization: "Bearer target-credential" } },
+      envWithKey(plainKeyRow),
+    );
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("done");
+    expect(calls[0]?.headers.get("authorization")).toBe("Bearer target-credential");
+    expect(calls[1]?.headers.get("authorization")).toBe("Bearer target-credential");
+  });
+
+  it("a redirect chain still resolves end-to-end for a plain key", async () => {
+    const calls = recordUpstream((hopN) =>
+      hopN === 1
+        ? new Response(null, { status: 302, headers: { location: "/hop2" } })
+        : hopN === 2
+          ? new Response(null, { status: 301, headers: { location: "https://api.example.com/final" } })
+          : new Response("done", { status: 200 }),
+    );
+    const res = await call("/fetch?url=https://api.example.com/start");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("done");
+    expect(calls.map((c) => c.url)).toEqual([
+      "https://api.example.com/start",
+      "https://api.example.com/hop2",
+      "https://api.example.com/final",
+    ]);
+  });
+});
+
+describe("sandboxed documents (integration)", () => {
+  /** fetch stub answering DoH + one upstream response. */
+  function upstream(res: () => Response): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        if (String(input).includes("cloudflare-dns.com")) {
+          return new Response(JSON.stringify({ Answer: [{ type: 1, data: "1.2.3.4" }] }), { status: 200 });
+        }
+        return res();
+      }),
+    );
+  }
+
+  it("a proxied HTML document is served with a sandboxing CSP", async () => {
+    upstream(
+      () =>
+        new Response("<h1>hi</h1>", {
+          status: 200,
+          headers: { "content-type": "text/html", "content-security-policy": "script-src 'self'" },
+        }),
+    );
+    const res = await call("/fetch?url=https://example.com/page");
+    expect(res.status).toBe(200);
+    // The upstream's CSP was authored for its origin and is meaningless under
+    // ours — replaced by the sandbox stamp.
+    expect(res.headers.get("content-security-policy")).toBe("sandbox");
+  });
+
+  it("non-HTML responses are not stamped", async () => {
+    upstream(() => new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
+    const res = await call("/fetch?url=https://example.com/api");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-security-policy")).toBeNull();
+  });
+
+  it("a key's response header rule overrides the sandbox stamp (operator opt-out)", async () => {
+    upstream(() => new Response("<h1>embed</h1>", { status: 200, headers: { "content-type": "text/html" } }));
+    const row = {
+      ...plainKeyRow,
+      id: "k3",
+      response_rules: JSON.stringify([{ action: "set", name: "Content-Security-Policy", value: "frame-ancestors 'self'" }]),
+      allowed_hosts: "example.com",
+    };
+    const res = await call("/fetch?url=https://example.com/page", { headers: { "x-api-key": "corx_k" } }, envWithKey(row));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-security-policy")).toBe("frame-ancestors 'self'");
+  });
+
+  it("path mode forwards the target's query, minus corx-* control params", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes("cloudflare-dns.com")) {
+          return new Response(JSON.stringify({ Answer: [{ type: 1, data: "1.2.3.4" }] }), { status: 200 });
+        }
+        calls.push(url);
+        return new Response("ok", { status: 200 });
+      }),
+    );
+    const res = await call("/proxy/https://api.example.com/search?k=1&corx-ttl=60&corx-key=corx_abc&n=2");
+    expect(res.status).toBe(200);
+    expect(calls[0]).toBe("https://api.example.com/search?k=1&n=2");
+  });
+});
+
+describe("blocklist entry validation (integration)", () => {
+  it("POST /api/block-host rejects a non-hostname entry", async () => {
+    const res = await call("/api/block-host", {
+      method: "POST",
+      headers: { authorization: "Bearer test-token", "content-type": "application/json" },
+      body: JSON.stringify({ hostname: "not a host!" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /api/block-host accepts and normalizes a hostname", async () => {
+    const stmts: Array<{ sql: string; values: unknown[] }> = [];
+    const db = {
+      prepare: (sql: string) => {
+        const record = { sql, values: [] as unknown[] };
+        stmts.push(record);
+        const stmt = {
+          bind: (...values: unknown[]) => {
+            record.values = values;
+            return stmt;
+          },
+          run: async () => ({ meta: { changes: 1 } }),
+          first: async () => null,
+          all: async () => ({ results: [] }),
+        };
+        return stmt;
+      },
+    };
+    const envDb = { ...env, DB: db } as unknown as Env;
+    const res = await call("/api/block-host", {
+      method: "POST",
+      headers: { authorization: "Bearer test-token", "content-type": "application/json" },
+      body: JSON.stringify({ hostname: "  EvIL-Site.Com.  ", reason: "scraping" }),
+    }, envDb);
+    expect(res.status).toBe(200);
+    const insert = stmts.find((s) => s.sql.includes("INSERT OR IGNORE INTO blocked_hosts"));
+    expect(insert?.values[0]).toBe("evil-site.com");
+  });
+});

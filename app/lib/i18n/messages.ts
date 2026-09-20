@@ -322,7 +322,7 @@ const en = {
         "`corx-*` is CORX's namespace: these parameters are consumed by the proxy and never reach the target. Everything else belongs to the target and is forwarded untouched. A `corx-*` name that is not in this table is a 400, never a param quietly forwarded upstream.",
       col: { param: "Parameter", effect: "Effect" },
       note:
-        "Subdomain mode is the one place where the proxy request's query is also the target's, so the control names are stripped back off there. A target that genuinely needs a `corx-*` parameter is best addressed with `?url=` or path mode.",
+        "Subdomain and path modes are the two places where the proxy request's query is also the target's, so the `corx-*` names are stripped back off there. A target that genuinely needs a `corx-*` parameter is best addressed with `?url=`.",
     },
     param: {
       ttl:
@@ -1531,7 +1531,7 @@ const zh: Messages = {
         "`corx-*` 是 CORX 的命名空间：这些参数由代理消费，绝不会转发给目标。其余参数都归目标所有，原样转发。表中没有的 `corx-*` 名字会直接 400，而不会被悄悄转发。",
       col: { param: "参数", effect: "作用" },
       note:
-        "子域名模式是唯一一种「代理请求的查询串就是目标的查询串」的场景，因此在那里会把控制参数剔除。如果目标确实需要一个叫 `corx-*` 的参数，请改用 `?url=` 或路径式调用。",
+        "子域名和路径式调用里，代理请求的查询串同时也是目标的查询串，因此 `corx-*` 名字会被剔除。如果目标确实需要一个叫 `corx-*` 的参数，请改用 `?url=`。",
     },
     param: {
       ttl:

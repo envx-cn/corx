@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import { getCookie } from "hono/cookie";
 import type { Env } from "./types.js";
 import { sessionSecret, verifySession } from "./session.js";
+import { tokensEqual } from "./csrf.js";
 
 /**
  * Cloudflare Access (Zero Trust) auth.
@@ -194,7 +195,7 @@ export async function getAdminUser(c: Ctx | Context<{ Bindings: Env }>): Promise
     }
     const token =
       c.req.header("authorization")?.replace(/^Bearer\s+/i, "") || c.req.header("x-admin-token") || "";
-    if (token && token === env.ADMIN_TOKEN) return { email: "api-token", via: "token" };
+    if (token && tokensEqual(token, env.ADMIN_TOKEN ?? "")) return { email: "api-token", via: "token" };
   }
   return null;
 }

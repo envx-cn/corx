@@ -165,6 +165,29 @@ describe("createApiKey", () => {
     await expect(createApiKey(db, { name: "   ", rateLimitPerMin: null })).rejects.toBeInstanceOf(ProxyError);
     expect(calls.every((c) => c.values.length === 0)).toBe(true); // never bound, so never run
   });
+
+  it("rejects a junk or negative rate limit (it must not disable the limit)", async () => {
+    const { db } = recordingDb();
+    for (const bad of ["abc", -1, 1.5, 0, Number.NaN]) {
+      await expect(createApiKey(db, { name: "x", rateLimitPerMin: bad as unknown as number })).rejects.toThrowError(
+        /Rate limit must be a positive integer/,
+      );
+    }
+  });
+
+  it("accepts a numeric-string rate limit (lenient for JSON clients)", async () => {
+    const { db, calls } = recordingDb();
+    await createApiKey(db, { name: "x", rateLimitPerMin: "60" as unknown as number });
+    const insert = calls.find((c) => c.sql.includes("INSERT INTO api_keys"));
+    expect(insert?.values).toContain(60);
+  });
+
+  it("accepts a positive integer rate limit", async () => {
+    const { db, calls } = recordingDb();
+    await createApiKey(db, { name: "x", rateLimitPerMin: 60 });
+    const insert = calls.find((c) => c.sql.includes("INSERT INTO api_keys"));
+    expect(insert?.values).toContain(60);
+  });
 });
 
 describe("updateApiKey", () => {

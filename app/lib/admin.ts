@@ -573,6 +573,21 @@ function normalizeTier(raw: unknown): string {
   throw new ProxyError(400, 'Tier must be "standard" or "public"');
 }
 
+/**
+ * Per-minute rate limit: null (inherit the global RATE_LIMIT_PER_MIN) or a
+ * positive integer. Everything else is a 400 — a junk value written raw used
+ * to land in an integer column as text and silently disable the limit (NaN
+ * comparisons), a negative one locked the key out entirely.
+ */
+function parseRateLimit(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 1_000_000) {
+    throw new ProxyError(400, "Rate limit must be a positive integer (blank = global default)");
+  }
+  return n;
+}
+
 /** Daily quota input: blank/null → null (no cap), a positive integer otherwise. */
 function parseDailyLimit(raw: unknown, label: string): number | null {
   if (raw === null || raw === undefined) return null;
@@ -737,7 +752,7 @@ export async function createApiKey(db: D1Database, input: KeyInput, kek?: string
       id,
       await hashKey(raw),
       normalizeName(input.name),
-      input.rateLimitPerMin ?? null,
+      parseRateLimit(input.rateLimitPerMin),
       allowedOrigins,
       normalizeCacheTtlInput(input.cacheTtl ?? ""),
       input.noCache ? 1 : 0,
@@ -853,7 +868,7 @@ export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate
   }
   if (update.rateLimitPerMin !== undefined) {
     sets.push("rate_limit_per_min = ?");
-    values.push(update.rateLimitPerMin);
+    values.push(parseRateLimit(update.rateLimitPerMin));
   }
   if (update.allowedOrigins !== undefined) {
     sets.push("allowed_origins = ?");

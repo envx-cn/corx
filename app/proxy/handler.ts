@@ -21,7 +21,6 @@ import {
   assertHostAllowed,
   clientVarMap,
   effectiveInjection,
-  hasInjection,
   hostAllowed,
   resolveClientRefs,
   responseRulesFingerprint,
@@ -95,7 +94,7 @@ const STREAM_STRIP_RESPONSE = new Set([
   "set-cookie", // don't leak upstream cookies cross-origin
 ]);
 
-const MAX_REDIRECTS = 5;
+const MAX_REDIRECTS = 20;
 
 /**
  * Wrap a stream and count the bytes actually delivered, then call onDone.
@@ -260,8 +259,10 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     const vars = varMap(injection.vars);
     // Variables a caller may reference as `${NAME}` (never the private ones).
     const clientVars = injection.vars.filter((v) => v.client);
-    const hasRules = hasInjection(injection);
-    const manualRedirects = hasRules || injection.hosts.length > 0;
+    // Redirects are ALWAYS followed manually, not just for injecting keys:
+    // fetch's auto-follow would hop to a redirect target without re-running
+    // the blocklist/DNS checks or dropping the caller's Authorization/cookie
+    // on a cross-origin hop — a blocked (or private) host is one 302 away.
     assertHostAllowed(host, injection.hosts);
 
     // SSRF: literal checks (above, per-key ip_check) + DNS-resolved IP check
@@ -458,10 +459,12 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       let dropClientAuth = false;
       let hops = 0;
 
-      // When the key injects anything (or bounds its hosts), redirects are
-      // followed manually: the fetch spec drops `Authorization` on a
-      // cross-origin redirect but keeps custom headers (X-Api-Key, …), which
-      // would leak injected secrets to the redirect target.
+      // Redirects are followed manually, always: the fetch spec drops
+      // `Authorization` on a cross-origin redirect but keeps custom headers
+      // (X-Api-Key, …) and — crucially — follows every hop without corx
+      // re-checking the blocklist/DNS guards. The manual loop re-runs the
+      // guards on every hop (below) and drops the caller's credentials on a
+      // cross-origin one, which auto-follow would never do.
       for (;;) {
         const outHeaders = buildOutHeaders(currentUrl, dropClientAuth);
         const attempt = (): Promise<Response> =>
@@ -470,7 +473,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
             headers: outHeaders,
             body: hopBody,
             signal: controller.signal,
-            redirect: manualRedirects ? "manual" : "follow",
+            redirect: "manual",
           });
         try {
           // One retry on transient network errors (fetch failed), for
@@ -490,7 +493,8 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
           throw new ProxyError(502, `Upstream fetch failed: ${(err as Error)?.message ?? "unknown"}`);
         }
 
-        if (!manualRedirects) break;
+        // Every response is a real 3xx we can inspect (Workers fetch is not
+        // opaque under manual redirects): follow it hop by hop.
         const location =
           upstream.status >= 300 && upstream.status < 400 ? upstream.headers.get("location") : null;
         if (!location) break;
@@ -505,7 +509,9 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
 
         // Outside the key's host allowlist: stop and hand the 3xx to the
         // caller (absolute Location) — no injected header ever reaches it.
-        if (!hostAllowed(next.hostname, injection.hosts)) {
+        // An empty allowlist is unrestricted (assertHostAllowed semantics):
+        // the hop is followed, still subject to the guards below.
+        if (injection.hosts.length > 0 && !hostAllowed(next.hostname, injection.hosts)) {
           stoppedRedirect = next.toString();
           break;
         }
@@ -572,6 +578,24 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         }
       };
 
+      /**
+       * Sandboxed frame for proxied documents. Proxied HTML is served from the
+       * PROXY's origin, so without it a top-level visit to a proxied
+       * attacker-controlled page would run its scripts with our origin's
+       * powers — including same-origin fetches that carry the console session
+       * cookie. `sandbox` (no allow-same-origin) makes the document opaque: it
+       * renders and runs, but cannot read cookies or touch /console or /api.
+       * The upstream's own CSP is replaced (it was authored for its origin and
+       * is meaningless here); a key's response header rules can still override
+       * it (applied after this stamp) — that is the operator's opt-out.
+       */
+      const sandboxDocument = (headers: Headers): void => {
+        const type = (headers.get("content-type") ?? "").toLowerCase();
+        if (type.startsWith("text/html") || type.startsWith("application/xhtml+xml")) {
+          headers.set("content-security-policy", "sandbox");
+        }
+      };
+
       // Stream helper: minimal header stripping so Range/206 + media metadata survive.
       // res_bytes/latency are recorded by countStream when the body finishes
       // (or the client disconnects), not at header time.
@@ -582,6 +606,9 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         });
         if (stoppedRedirect) streamHeaders.set("location", stoppedRedirect);
         rewriteSubdomainLocation(streamHeaders);
+        // Sandboxed document before the rules: a key's response rules can
+        // override the stamp (the operator's opt-out), never the reverse.
+        sandboxDocument(streamHeaders);
         // Streamed responses get the same rules as buffered ones — before
         // corx's own markers, so a rule can never clobber them.
         applyResponseRules(streamHeaders);
@@ -671,6 +698,9 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       });
       if (stoppedRedirect) resHeaders.set("location", stoppedRedirect);
       rewriteSubdomainLocation(resHeaders);
+      // Sandboxed document before the rules: a key's response rules can
+      // override the stamp (the operator's opt-out), never the reverse.
+      sandboxDocument(resHeaders);
       applyResponseRules(resHeaders);
       // Transform after the response rules, so an explicit charset/wrap request
       // always wins over a key's header rules on content-type.
