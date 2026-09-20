@@ -1,5 +1,10 @@
 import type { AdminIdentity } from "../lib/access.js";
 
+declare global {
+  /** Injected at build time from package.json (vite.config.ts → define). */
+  const __CORX_VERSION__: string;
+}
+
 declare module "hono" {
   interface ContextVariableMap {
     /** Set by app/routes/console/_middleware.ts after verifying identity. */

@@ -2186,3 +2186,15 @@ describe("X-Api-Key BYOK semantics (integration)", () => {
     expect(out[0]!.get("x-api-key")).toBeNull();
   });
 });
+
+describe("console version display (integration)", () => {
+  it("the console footer shows the app version from package.json", async () => {
+    const pkg = (await import("../package.json")).default as { version: string };
+    const res = await call("/console", { headers: { cookie: `corx_session=${sessionCookie}` } });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain(`CORX · v${pkg.version}`);
+    // And the injected value is a real semver string, not a broken define.
+    expect(html).toMatch(/CORX · v\d+\.\d+\.\d+/);
+  });
+});
