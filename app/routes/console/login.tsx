@@ -3,6 +3,7 @@ import { setCookie } from "hono/cookie";
 import type { Env } from "../../lib/types.js";
 import { accessDetected, getAdminUser } from "../../lib/access.js";
 import { sessionSecret, signSession } from "../../lib/session.js";
+import { tokensEqual } from "../../lib/csrf.js";
 import { LoginShell } from "./_layout.js";
 import { CorxLogo } from "../../components/logo.js";
 import { consoleLocale, consoleT } from "../../lib/i18n/hono.js";
@@ -62,7 +63,7 @@ app.post("/", async (c) => {
   }
 
   const token = String(form["token"] ?? "");
-  if (!c.env.ADMIN_TOKEN || token !== c.env.ADMIN_TOKEN) return fail(t("console.login.errToken"));
+  if (!c.env.ADMIN_TOKEN || !tokensEqual(token, c.env.ADMIN_TOKEN)) return fail(t("console.login.errToken"));
   const secret = sessionSecret(c.env);
   if (!secret) return fail(t("console.login.errMisconfig"));
   setCookie(c, COOKIE, await signSession("local-admin (token)", secret, undefined, "token"), cookieOptions(c));

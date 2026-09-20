@@ -1,5 +1,6 @@
 import type { Env } from "../lib/types.js";
 import { ProxyError } from "../lib/types.js";
+import { CONTROL_PARAMS } from "../lib/control.js";
 import { ipv4ToInt, isPublicIp } from "./ip.js";
 
 /** Hostnames / IP ranges that must never be fetched (SSRF protection). */
@@ -75,6 +76,17 @@ export function blocklistCandidates(hostname: string): string[] {
   return out;
 }
 
+/**
+ * A blocklist entry: a plain hostname (lowercased, no wildcard — the
+ * blocklist matches exact hostnames and covers their subdomains via
+ * `blocklistCandidates`). Null when the value is not a usable hostname.
+ */
+export function normalizeBlockedHostname(raw: string): string | null {
+  const host = raw.trim().toLowerCase().replace(/\.+$/, "");
+  if (!host || host.length > 255) return null;
+  return /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(host) ? host : null;
+}
+
 /** Extra blocklist from D1 (admin-managed). A parent-domain entry covers its
  * subdomains. Fail-open on DB errors. */
 export async function checkDbBlocklist(db: D1Database, hostname: string): Promise<void> {
@@ -99,6 +111,10 @@ export async function checkDbBlocklist(db: D1Database, hostname: string): Promis
  *   GET /?url=https://example.com/...
  *   GET /proxy/https://example.com/...
  *   GET /https://example.com/...  (or /http://...)
+ *
+ * In path modes the request's query is the proxy's namespace: the `corx-*`
+ * control params are consumed by corx and stripped, everything else rides
+ * along to the target — the same contract as subdomain mode.
  */
 export function extractTargetUrl(reqUrl: URL, pathname: string): string | null {
   const q = reqUrl.searchParams.get("url");
@@ -110,7 +126,19 @@ export function extractTargetUrl(reqUrl: URL, pathname: string): string | null {
   // path is now "/https://..." or "/http://..." (or "/" for docs)
   if (path === "/" || path === "") return null;
   const candidate = path.slice(1); // strip leading "/"
-  if (/^https?:\/\//i.test(candidate)) return candidate;
-  if (/^https?:\//i.test(candidate)) return candidate.replace(/^https?:\//i, (m) => `${m}/`);
-  return null;
+  let target: string | null;
+  if (/^https?:\/\//i.test(candidate)) target = candidate;
+  else if (/^https?:\//i.test(candidate)) target = candidate.replace(/^https?:\//i, (m) => `${m}/`);
+  else return null;
+  // In path modes the request's query is the proxy's namespace: the `corx-*`
+  // control params are consumed by corx and stripped, everything else rides
+  // along to the target — the same contract as subdomain mode (and what the
+  // /docs page has always promised: the target's own query string survives
+  // the first `?`). A target that genuinely needs a param named `corx-*`
+  // uses `?url=` instead.
+  const forwarded = new URLSearchParams(reqUrl.search);
+  for (const name of CONTROL_PARAMS) forwarded.delete(name);
+  const search = forwarded.toString();
+  if (search) target += `${target.includes("?") ? "&" : "?"}${search}`;
+  return target;
 }

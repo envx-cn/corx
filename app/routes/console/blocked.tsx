@@ -4,6 +4,7 @@ import { queryBlockedHosts } from "../../lib/admin.js";
 import { DataTable, EmptyRow } from "../../components/table.js";
 import { RelTime } from "../../components/time.js";
 import { ConfirmButton } from "./_confirm.js";
+import { normalizeBlockedHostname } from "../../proxy/guard.js";
 import { consoleT } from "../../lib/i18n/hono.js";
 import type { TFunc } from "../../lib/i18n/locale.js";
 
@@ -18,10 +19,10 @@ app.get("/", async (c) => {
 
 app.post("/", async (c) => {
   const form = await c.req.parseBody();
-  const hostname = String(form["hostname"] ?? "").trim().toLowerCase();
+  const hostname = normalizeBlockedHostname(String(form["hostname"] ?? ""));
   if (hostname) {
     await c.env.DB.prepare("INSERT OR IGNORE INTO blocked_hosts (hostname, reason) VALUES (?, ?)")
-      .bind(hostname, String(form["reason"] ?? ""))
+      .bind(hostname, String(form["reason"] ?? "").slice(0, 500))
       .run();
   }
   return c.redirect("/console/blocked", 302);

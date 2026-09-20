@@ -120,10 +120,10 @@ upstream. Everything else belongs to the target: a target's own `?key=`,
 `?ttl=` or `?callback=` is passed through untouched, and JSONP only happens
 when `corx-callback` is present.
 
-Subdomain mode is the one place where the two queries are the same one (the
-proxy request's query *is* the target's query), so the `corx-*` names are
-stripped back off the target there. A target that genuinely needs a param named
-`corx-*` is best addressed with `?url=` / path mode.
+Subdomain and path modes are the two places where the two queries are the same
+one (the proxy request's query *is* the target's query, so a pasted URL keeps
+its `?query=`), and the `corx-*` names are stripped back off there. A target
+that genuinely needs a param named `corx-*` is best addressed with `?url=`.
 
 Per-key cache policy (console → API keys, or `PATCH /api/keys/:id`): each key
 can set its own default TTL (`cacheTtl`, blank = global `CACHE_TTL_SECONDS`,
@@ -228,16 +228,19 @@ forwarding — the browser never holds the upstream secret:
   secrets never share entries. Response rules *do* cache — their resolved form
   is part of the cache key, so a key that strips `X-Frame-Options` can never be
   served another key's untouched copy.
-- **Redirects:** injection switches the upstream fetch to manual redirect
-  handling — a cross-origin redirect keeps custom headers (e.g. `X-Api-Key`)
-  per the fetch spec, which would leak secrets. In-scope redirects are followed
-  with the rules re-applied per hop; a redirect that leaves the allowed hosts
-  is returned to the caller with an absolute `Location` and never fetched.
-  Methods and bodies follow the fetch spec: 301/302 rewrite `POST` to `GET`,
-  303 rewrites every method but `GET`/`HEAD`, both dropping the body. In
-  subdomain mode a `Location` on the target origin is rewritten relative — on
-  buffered and streamed responses alike — so the caller's next hop stays inside
-  the proxy instead of resolving against the proxy host.
+- **Redirects:** the upstream fetch always follows redirects manually — the
+  fetch spec drops `Authorization` on a cross-origin redirect but keeps custom
+  headers (e.g. `X-Api-Key`), which would leak secrets; auto-follow would also
+  hop to the redirect target without re-running the SSRF/blocklist guards. The
+  manual loop re-validates every hop (blocklist + DNS, per-key guards
+  included) and drops the caller's `Authorization`/cookies on a cross-origin
+  hop; a redirect that leaves a key's allowed hosts is returned to the caller
+  with an absolute `Location` and never fetched. Methods and bodies follow the
+  fetch spec: 301/302 rewrite `POST` to `GET`, 303 rewrites every method but
+  `GET`/`HEAD`, both dropping the body (up to 20 hops). In subdomain mode a
+  `Location` on the target origin is followed through the proxy — buffered and
+  streamed responses alike — so the caller's next hop stays inside the proxy
+  instead of resolving against the proxy host.
 - Secrets stay out of logs and errors: `target_url` in `request_logs` is the
   pre-injection URL, `X-Corx-Target` carries only the host, and variable values
   are masked on every read path (`GET /api/keys` returns names only).
@@ -279,7 +282,11 @@ in a frame *you* control. Sandbox it — `sandbox=""` (no `allow-same-origin`, n
 `allow-scripts` unless you have read what the document does), which is exactly
 what the CORX landing preview does — and only do this for hosts you trust or
 own. The public tier cannot configure this at all (no injection, by policy), so
-this is a self-hosting feature.
+this is a self-hosting feature. As of 0.1.1 the proxy itself stamps every
+proxied HTML response with `Content-Security-Policy: sandbox`; a `set` rule for
+`Content-Security-Policy` (or a `!Content-Security-Policy` remove rule, as in
+the recipe above) is applied after the stamp and replaces it — that is the
+operator's explicit opt-out.
 
 **Keyless access (per key)**
 
@@ -489,12 +496,18 @@ cancels the stream, so a 10 MB page is never buffered), media bodies are never
 read at all (the element points at the proxy URL, which is why a repeated image
 request shows `X-Corx-Cache: HIT`).
 
-**Sandboxing:** proxied HTML only ever runs inside `<iframe sandbox="">` — no
-`allow-same-origin` (the document is served from CORX's origin, so that would
-hand upstream scripts our cookies, storage and admin API), no scripts, forms,
-popups or top-navigation — plus `referrerpolicy="no-referrer"`. Because the
-framed document's address *is* CORX, the target's own `X-Frame-Options:
-SAMEORIGIN` / `frame-ancestors 'self'` pass, while `DENY` and foreign
+**Sandboxing:** proxied HTML never runs with the proxy origin's powers. CORX's
+own surfaces (`/console`, the landing demo, the playground) render proxied HTML
+only inside `<iframe sandbox="">` — no `allow-same-origin` (the document is
+served from CORX's origin, so that would hand upstream scripts our cookies,
+storage and admin API), no scripts, forms, popups or top-navigation — plus
+`referrerpolicy="no-referrer"`. And the proxy itself stamps every proxied
+`text/html` response with `Content-Security-Policy: sandbox`, so even a
+top-level visit to a proxied URL renders and runs as an opaque origin: scripts
+cannot read the admin's cookies or fetch `/console` / `/api` same-origin.
+Because the framed document's address *is* CORX, the target's own
+`X-Frame-Options: SAMEORIGIN` / `frame-ancestors 'self'` pass, while `DENY` and
+foreign
 `frame-ancestors` lists still block; those are detected from the response
 headers up front (`frameBlock`) and replaced with an explanation card + *Open
 raw* instead of a blank box. Relative subresources inside a framed page resolve

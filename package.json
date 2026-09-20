@@ -1,6 +1,6 @@
 {
   "name": "corx",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "corx — a CORS proxy running on Cloudflare (Hono + D1 + R2)",
   "type": "module",
   "private": true,

@@ -42,7 +42,8 @@ on the way out. The interesting properties, and where each is enforced:
 | A variable scoped to hosts only ever resolves toward those hosts | `assertVarHostScopes` rejects at save time any rule that could resolve it elsewhere; client references are filtered per hop by `clientVarMap` |
 | A caller can reference only the variables the operator exposed | `client: true` marks them per variable; any other `${…}` is left literal, so unresolved and nonexistent names are indistinguishable (no probing oracle) |
 | A key that exposes a variable never serves from the shared cache | `handler.ts` bypasses R2 whenever the key has a client-referencable variable — a reference is caller-supplied and a redirect can resolve it on a later hop, so no response through that key is provably free of a secret |
-| A secret is not leaked on a cross-origin redirect | Manual redirect handling with per-hop re-application when a key injects or bounds hosts |
+| A secret is not leaked on a cross-origin redirect | Manual redirect handling for every request: every hop re-runs the blocklist/DNS guards, and the caller's `Authorization`/cookies are dropped on a cross-origin hop |
+| Proxied HTML does not run with the proxy origin's powers | Every proxied `text/html` response carries `Content-Security-Policy: sandbox` (no `allow-same-origin`), so a top-level visit to a proxied attacker page renders and runs but is an opaque origin — no cookies, no `/console` or `/api` access; a key's response rules can replace the stamp (the operator's opt-out) |
 | CORX's own credentials (`X-Api-Key`, `X-Admin-Token`, or a key presented as `Authorization: Bearer corx_…`) never reach a target | `STRIP_REQUEST` plus the key-source check in `app/proxy/handler.ts`; a caller's own `Authorization` still passes through when the CORX key came from `X-Api-Key`/`?corx-key=` |
 | Cached responses never leak across callers | Requests carrying `Authorization`/`Cookie` never read or write the R2 cache; `no-store`/`private`/`Vary` responses are not stored; a key's resolved **response header rules** are part of the cache key |
 | A key cannot forge the proxy's own response headers (or re-attach upstream cookies) | `RESPONSE_HEADER_BLOCKLIST` in `app/proxy/inject.ts` rejects `Content-Length`, `Set-Cookie`, `Access-Control-*`, `X-Robots-Tag`, `X-Corx-*` and the rate-limit headers at save time; corx writes its markers after the rules run |
@@ -92,7 +93,9 @@ interesting if it shows one of them being worse than described.
    support commitment ([terms](./README.md#terms-of-use)). Its availability is
    not a security boundary, and an outage is not a vulnerability.
 6. **Stripping framing headers is the operator's risk.** Response header rules
-   can remove `X-Frame-Options`/CSP `frame-ancestors` so a proxied document can
-   be embedded: the target loses its clickjacking protection and the caller owns
-   the sandbox. Only a self-hosted deployment can configure this (public-tier
-   keys reject injection entirely), and the docs say to sandbox the iframe.
+   can remove `X-Frame-Options`/CSP `frame-ancestors` — and can replace the
+   sandboxing CSP the proxy stamps on proxied HTML — so a proxied document can
+   be embedded or run unsandboxed: the target loses its clickjacking protection
+   and the caller owns the sandbox. Only a self-hosted deployment can configure
+   this (public-tier keys reject injection entirely), and the docs say to
+   sandbox the iframe.

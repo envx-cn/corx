@@ -92,11 +92,16 @@ export function readKeyForm(form: Record<string, unknown>): KeyFormValues {
   };
 }
 
-/** "120" → 120; blank or junk → null (inherit the deployment default). */
+/** "120" → 120; blank → null (inherit the deployment default); junk → NaN.
+ *
+ * Junk must NOT collapse to null ("inherit"): a typo would silently switch
+ * the key to the global default. NaN reaches the server-side validation
+ * (admin.ts → parseRateLimit), which answers with a 400 and the form's error
+ * box shows the reason.
+ */
 export function parseRate(raw: string): number | null {
   if (raw.trim() === "") return null;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : null;
+  return Number(raw);
 }
 
 /** A stored key row as form values. */

@@ -82,9 +82,17 @@ describe("resolveRawTarget precedence", () => {
       viaSubdomain: false,
     });
   });
-  it("path mode keeps the target's query in the path", () => {
-    const u = new URL("https://corx.test/proxy/https://other.com/x?key=abc");
-    // The proxy request's query is corx's; the target is the path, verbatim.
+  it("path mode forwards the target's query, minus corx-* control params", () => {
+    const u = new URL("https://corx.test/proxy/https://other.com/x?key=abc&corx-ttl=60&corx-key=corx_k&n=2");
+    // The query is the proxy's namespace: corx-* names are consumed, the rest
+    // rides along to the target (what the /docs page promises).
+    expect(resolveRawTarget(u, env)).toEqual({
+      target: "https://other.com/x?key=abc&n=2",
+      viaSubdomain: false,
+    });
+  });
+  it("path mode without a query keeps the target verbatim", () => {
+    const u = new URL("https://corx.test/proxy/https://other.com/x");
     expect(resolveRawTarget(u, env)).toEqual({ target: "https://other.com/x", viaSubdomain: false });
   });
 });
