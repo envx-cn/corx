@@ -531,8 +531,8 @@ every URL below is absolute and current for that instance.
   four call shapes, the \`corx-*\` parameter table, the three auth tiers, caching, limits and the
   security summary. Also at /en/docs and /zh/docs.
 - [Framework and platform snippets](${absUrl(origin, "/snippets")}): copy-paste \`fetch\`/axios/ky
-  examples, the key-hygiene rules for browser code, and how to call this instance from Cloudflare
-  Pages, Vercel and Netlify. Also at /en/snippets and /zh/snippets.
+  examples, a streamed SSE/LLM read, the key-hygiene rules for browser code, and how to call this
+  instance from Cloudflare Pages, Vercel and Netlify. Also at /en/snippets and /zh/snippets.
 - [CORS tester](${absUrl(origin, "/tools/cors-tester")}): paste a URL and see why a cross-origin
   request fails (the verdict is inferred from browser probes), then run it through this instance
   and copy the call that works. Also at /en/tools/cors-tester and /zh/tools/cors-tester.
@@ -623,8 +623,9 @@ create\`, \`npm run deploy\`. License: ${LICENSE.spdx}.
 | Subdomain (wildcard zone) | \`GET https://api-example-com.<zone>/data\` |
 
 GET and HEAD are forwarded and cacheable; other methods pass through but are never cached. Request
-bodies are capped (10 MiB by default) and streaming responses — media, Range requests — are piped
-through unbuffered.
+bodies are capped (10 MiB by default) and streaming responses — media, Range requests, SSE
+(\`text/event-stream\`, which is how the mainstream LLM chat APIs stream) — are piped through
+unbuffered.
 
 ### Query parameters
 
@@ -744,7 +745,8 @@ machine surface: JSON, \`no-store\`, \`noindex\`, excluded from robots.txt.
   limits, security and self-hosting.
 - ${absUrl(origin, "/snippets")} — framework and platform snippets (also
   ${absUrl(origin, "/en/snippets")} and ${absUrl(origin, "/zh/snippets")}): fetch, axios and ky
-  examples, browser key hygiene, and Cloudflare Pages / Vercel / Netlify notes.
+  examples, a streamed SSE/LLM read, browser key hygiene, and Cloudflare Pages / Vercel / Netlify
+  notes.
 - ${absUrl(origin, "/tools/cors-tester")} — the public CORS tester (also
   ${absUrl(origin, "/en/tools/cors-tester")} and ${absUrl(origin, "/zh/tools/cors-tester")}):
   browser-side probes, a diagnosis of what is missing, and the proxied call to paste.

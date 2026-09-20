@@ -14,7 +14,7 @@
 import type { MessageKey } from "./i18n/messages.js";
 
 /** One code block, keyed by `snippets.block.<id>`. */
-export type SnippetId = "fetch" | "axios" | "ky" | "keyless" | "viteEnv" | "serverRoute";
+export type SnippetId = "fetch" | "axios" | "ky" | "keyless" | "stream" | "viteEnv" | "serverRoute";
 
 /** The groups the page renders, and the order it renders them in. */
 export type SnippetGroupId = "libraries" | "browser" | "server";
@@ -95,6 +95,30 @@ const CORX = "${origin}";
 
 const res = await fetch(\`\${CORX}/fetch?url=\${encodeURIComponent(target)}\`);
 const data = await res.json();`,
+  },
+  {
+    id: "stream",
+    group: "browser",
+    lang: "js",
+    titleKey: "snippets.block.stream.title",
+    descKey: "snippets.block.stream.desc",
+    // No key either: an origin grant (or the public tier) covers the request,
+    // and the body is read as it arrives instead of being buffered whole.
+    code: (origin) => `const CORX = "${origin}";
+
+const res = await fetch(\`\${CORX}/fetch?url=\${encodeURIComponent(sseUrl)}\`, {
+  headers: { Accept: "text/event-stream" },
+});
+
+const reader = res.body.getReader();
+const decoder = new TextDecoder();
+for (;;) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  for (const line of decoder.decode(value, { stream: true }).split("\\n")) {
+    if (line.startsWith("data: ")) onEvent(line.slice(6));
+  }
+}`,
   },
   {
     id: "viteEnv",

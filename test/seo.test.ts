@@ -348,5 +348,8 @@ describe("terms page metadata", () => {
     const { "@graph": nodes } = await graph(await call("/terms"));
     expect(nodes[0]!["@type"]).toBe("WebPage");
     expect(nodes[0]!["dateModified"]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // The visible "Last updated" line and the JSON-LD dateModified are the same
+    // fact from two places; a mismatch makes the freshness signal a guess.
+    expect(html.match(/Last updated (\d{4}-\d{2}-\d{2})/)?.[1]).toBe(nodes[0]!["dateModified"]);
   });
 });

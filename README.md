@@ -643,11 +643,12 @@ emits a dated `TechArticle` in its JSON-LD.
 
 `/snippets` (plus `/en/snippets` and `/zh/snippets`) is the code-shaped half of
 the docs: `fetch`, axios and ky examples built from the request's own origin,
-the two browser-safe patterns (a keyless origin grant, or a server route that
-holds the key), the environment-variable rule that keeps a key out of a Vite /
-Next.js build, and platform notes for Cloudflare Pages, Vercel and Netlify. It
-ends with the honest half of the public tier — GET/HEAD, daily quotas, no
-injection, shared cache — so nobody pastes a snippet the shared key cannot run.
+the browser-safe patterns (a keyless origin grant, a streamed SSE/LLM read, or
+a server route that holds the key), the environment-variable rule that keeps a
+key out of a Vite / Next.js build, and platform notes for Cloudflare Pages,
+Vercel and Netlify. It ends with the honest half of the public tier — GET/HEAD,
+daily quotas, no injection, shared cache — so nobody pastes a snippet the shared
+key cannot run.
 
 Snippet code lives in `app/lib/snippets.ts`, and `test/snippets.test.ts` asserts
 every block is built from the deployment's own origin (never a hard-coded
