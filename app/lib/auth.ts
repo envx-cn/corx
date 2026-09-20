@@ -49,10 +49,30 @@ export interface PresentedKey {
   source: KeySource;
 }
 
-/** Pull a key from `x-api-key`, `Authorization: Bearer`, or `?corx-key=`. */
+/**
+ * Does a value have the shape CORX generates for its own keys (`corx_…`)?
+ *
+ * Shape decides credential-hood for `X-Api-Key` (and the never-forward rule):
+ * a corx-shaped value is CORX's credential (or a botched/revoked one) and is
+ * never sent upstream; anything else in `X-Api-Key` is the caller's own
+ * upstream credential (BYOK) and rides along. Keys minted by the Admin API,
+ * the console and the seed scripts all carry the prefix.
+ */
+export function isCorxKeyShape(raw: string): boolean {
+  return raw.startsWith("corx_");
+}
+
+/** Pull a key from `x-api-key`, `Authorization: Bearer`, or `?corx-key=`.
+ *
+ * `X-Api-Key` is only the CORX credential when the value is corx-shaped; any
+ * other value there is the caller's own upstream credential and is left alone
+ * (forwarded by the proxy, BYOK). A non-corx `X-Api-Key` therefore does not
+ * shadow an `Authorization: Bearer corx_…` credential either. */
 export function extractRawKey(req: Request, url: URL): PresentedKey | null {
   const header = req.headers.get("x-api-key");
-  if (header?.trim()) return { raw: header.trim(), source: "x-api-key" };
+  if (header?.trim() && isCorxKeyShape(header.trim())) {
+    return { raw: header.trim(), source: "x-api-key" };
+  }
   const auth = req.headers.get("authorization");
   if (auth?.toLowerCase().startsWith("bearer ")) {
     const raw = auth.slice(7).trim();

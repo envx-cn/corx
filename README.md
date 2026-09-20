@@ -100,11 +100,24 @@ Options:
 | `?corx-wrap=json` | Wrap the text body as `{"contents":"…"}` with `application/json`, so `r.json()` works for HTML too (binary responses are a 400) |
 
 Pass an API key with `X-Api-Key`, `Authorization: Bearer …`, or `?corx-key=…`
-(required when `REQUIRE_API_KEY=true`). The credential you authenticate with is
-never forwarded upstream: `X-Api-Key`/`X-Admin-Token` always, and an
-`Authorization: Bearer corx_…` header once it has authenticated the request. To
-send your own `Authorization` to the target, present the CORX key with
-`X-Api-Key` — a `Bearer` header takes precedence over `?corx-key=`.
+(required when `REQUIRE_API_KEY=true`). What CORX authenticated with never
+reaches the target: a corx-shaped `X-Api-Key` (values starting with `corx_` —
+what the Admin API and console mint) and an `Authorization: Bearer corx_…`
+header are consumed and stripped, even when the key is unknown or a D1 hiccup
+drops the lookup. Everything else rides through to the upstream:
+
+- **BYOK via `X-Api-Key`**: any other value (e.g. Anthropic's `x-api-key`, your
+  own `sk-…`) is forwarded untouched — it is your credential for the upstream,
+  not CORX's. Present the CORX key alongside it via `Authorization: Bearer
+  corx_…` or `?corx-key=` (a corx-shaped `X-Api-Key` outranks the bearer
+  header).
+- **Injection still wins**: a key's header rules (e.g. `x-api-key: ${VAR}`)
+  override whatever the caller sent, so a browser can never spoof an injected
+  upstream credential.
+- **Redirects drop credentials cross-origin**: `Authorization`, cookies and a
+  caller-supplied `X-Api-Key` are dropped when a redirect chain leaves the
+  origin, matching what the fetch spec does for `Authorization`.
+- `X-Admin-Token` is always stripped (it is only ever CORX's own).
 
 The same facts — the four call shapes, the `corx-*` table, the auth tiers,
 caching, limits and the security model — are rendered for humans at `/docs`
@@ -368,23 +381,26 @@ responses chunk-by-chunk. What works out of the box:
   `stream: true`), **Azure OpenAI** (`api-key`), **Ollama** and any
   OpenAI-compatible self-hosted runtime (vLLM, LM Studio, …).
 - **Google Gemini** (`POST …:streamGenerateContent?alt=sse`, with `?key=`).
-- **Anthropic** (`POST /v1/messages`) — with one caveat: CORX strips
-  `X-Api-Key` from client requests (it is CORX's own key header, and
-  forwarding it would leak the proxy key to the target). Anthropic's
-  `x-api-key` must therefore be **injected server-side from a key's config**,
-  not sent by the browser: create a key, add a variable for the Anthropic
-  secret, and a header rule `x-api-key: ${ANTHROPIC_KEY}`, then call
-  `/fetch?url=https://api.anthropic.com/v1/messages` with that key. The same
-  recipe covers `x-goog-api-key` and any other credential header.
+- **Anthropic** (`POST /v1/messages`) — two ways to carry Anthropic's
+  `x-api-key`, both keeping it out of the browser:
+  - **Inject it server-side** (the default recommendation): create a key, add a
+    variable for the Anthropic secret, and a header rule
+    `x-api-key: ${ANTHROPIC_KEY}` — a rule always wins over what the caller
+    sent, so a browser cannot spoof it.
+  - **BYOK from a trusted server-side caller**: a corx-shaped `X-Api-Key` is
+    CORX's credential, but any other value you put in `X-Api-Key` is forwarded
+    untouched — send the Anthropic key as `X-Api-Key` and the CORX key as
+    `Authorization: Bearer corx_…` (or `?corx-key=`). The same works for
+    `x-goog-api-key` and any other credential header.
 - **Choosing the credential from the page** — a key can *expose* a variable
   instead of (or as well as) using it in a rule, so the page writes the
   reference itself: `Authorization: Bearer ${OPENAI_KEY}` for OpenAI,
   `api-key: ${AZURE_KEY}` for Azure, `?key=${GEMINI_KEY}` for Gemini. The proxy
   substitutes it for the target host only, and the page still never holds the
-  value. Two exclusions: `X-Api-Key`/`X-Admin-Token` are CORX's own headers and
-  are dropped before any substitution — which is why Anthropic needs the rule
-  above — and a variable can be scoped to specific hosts, outside which the
-  reference is left literal.
+  value. One exclusion: a corx-shaped `X-Api-Key` (and `X-Admin-Token`) is
+  CORX's credential and is dropped before any substitution — a non-corx
+  `X-Api-Key` (including `${VAR}` references) is forwarded — and a variable can
+  be scoped to specific hosts, outside which the reference is left literal.
 - `Accept: text/event-stream`, `anthropic-version` and every other non-reserved
   request header pass through; the SSE body is forwarded as it arrives and is
   never buffered (`text/event-stream` is excluded from the R2 cache by content
@@ -708,10 +724,11 @@ a reduced product:
 - **SSRF guards cannot be switched off** — `ipCheck`/`dnsCheck` stay on.
 - **Credentials are never forwarded** — `Cookie` and `Authorization` are
   stripped from the outgoing request, so a public caller cannot use CORX to
-  authenticate as themselves upstream. `X-Api-Key` / `X-Admin-Token` are
-  always stripped too, and so is an `Authorization: Bearer corx_…` header once
-  it has authenticated the request: they belong to this proxy, never to the
-  target.
+  authenticate as themselves upstream. `X-Admin-Token` is always stripped,
+  and so is an `Authorization: Bearer corx_…` header (or a corx-shaped
+  `X-Api-Key`) even when the key is unknown: they belong to this proxy, never
+  to the target. A non-corx `X-Api-Key` is stripped on the public tier too —
+  the shared key is the only credential through it.
 - **Daily quotas** — per calling `Origin`, per target host, and for the key as
   a whole, counted in UTC days, plus the usual per-minute limit (metered per
   IP for a public key, since every caller shares it). Cache hits count as well.

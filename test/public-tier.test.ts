@@ -125,6 +125,17 @@ describe("public tier (integration)", () => {
     expect(calls[0]?.headers.get("x-api-key")).toBe(null);
   });
 
+  it("never forwards even a non-corx (BYOK-shaped) X-Api-Key on the public tier", async () => {
+    const calls = stubUpstream();
+    const res = await call(`/fetch?url=https://example.com/data&corx-key=${PUBLIC_KEY}`, {
+      headers: { "x-api-key": "sk-vendor-12345" },
+    });
+    expect(res.status).toBe(200);
+    // "No secrets through the public instance" — a standard-tier key forwards
+    // BYOK X-Api-Key values; the shared public key never does.
+    expect(calls[0]?.headers.get("x-api-key")).toBe(null);
+  });
+
   it("rejects POST and the control params that steer the cache", async () => {
     stubUpstream();
     const post = await call(`/fetch?url=https://example.com/x&corx-key=${PUBLIC_KEY}`, { method: "POST", body: "x" });

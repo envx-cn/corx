@@ -342,7 +342,7 @@ const en = {
     auth: {
       title: "Authentication",
       lead: "Three ways in — roughly the order a self-hosted deployment turns them on.",
-      formsNote: "All three are equivalent; use whichever survives your client or tooling. The credential itself is never forwarded upstream — if you need to send your own `Authorization` to the target, present the CORX key with `X-Api-Key` (a `Bearer` header takes precedence over `?corx-key=`).",
+      formsNote: "All three are equivalent; use whichever survives your client or tooling. The credential CORX authenticated with is never forwarded upstream: a corx-shaped `X-Api-Key` or `Authorization: Bearer corx_…` is always consumed, even when the key is unknown. Any other value in `X-Api-Key` is your own upstream credential (BYOK) and is forwarded untouched — present the CORX key via `Authorization: Bearer corx_…` or `?corx-key=` alongside it (a corx-shaped `X-Api-Key` takes precedence).",
       key: {
         title: "API key (per caller)",
         body:
@@ -386,7 +386,7 @@ const en = {
       order: {
         title: "Order, and what happens when nothing matches",
         body:
-          "On the way out, caller references resolve first and the key's rules run afterwards, removes before sets. A rule therefore always beats what the caller asked for — `!X-Debug` deletes it, a `set` replaces it — so a browser cannot spoof an injected header. Anything the proxy will not resolve (unknown name, private variable, host outside the scope) is forwarded exactly as written. That keeps the feature additive (a key with no exposed variable behaves exactly as before) and makes an unexposed name indistinguishable from a nonexistent one, so callers cannot probe what a key holds. Headers CORX owns — `X-Api-Key`, `X-Admin-Token` and the hop-by-hop set — are dropped before anything resolves, so a reference written there is neither substituted nor forwarded; that is why a vendor requiring one of those names (Anthropic's `x-api-key`) needs a rule rather than a caller reference.",
+          "On the way out, caller references resolve first and the key's rules run afterwards, removes before sets. A rule therefore always beats what the caller asked for — `!X-Debug` deletes it, a `set` replaces it — so a browser cannot spoof an injected header. Anything the proxy will not resolve (unknown name, private variable, host outside the scope) is forwarded exactly as written. That keeps the feature additive (a key with no exposed variable behaves exactly as before) and makes an unexposed name indistinguishable from a nonexistent one, so callers cannot probe what a key holds. Headers CORX owns — a corx-shaped `X-Api-Key`, `X-Admin-Token` and the hop-by-hop set — are dropped before anything resolves; a non-corx `X-Api-Key` (including a `${VAR}` reference) is the caller's own upstream credential and is forwarded. A vendor requiring one of these names (Anthropic's `x-api-key`) is therefore covered either way: BYOK from a trusted server, or a rule when the browser must never hold the secret.",
       },
       example: {
         title: "One key, three upstreams",
@@ -1551,7 +1551,7 @@ const zh: Messages = {
     auth: {
       title: "鉴权",
       lead: "三种进入方式，大致就是自托管部署逐步启用的顺序。",
-      formsNote: "三种形式完全等价，用你手头客户端支持的那种即可。凭证本身绝不会被转发到上游——如果你需要把自己的 `Authorization` 发给目标，请用 `X-Api-Key` 携带 CORX key（`Bearer` 形式优先于 `?corx-key=`）。",
+      formsNote: "三种形式完全等价，用你手头客户端支持的那种即可。CORX 认证所用的凭证绝不会转发到上游：`corx_` 形态的 `X-Api-Key` 或 `Authorization: Bearer corx_…` 一律被消费，即使 key 无效也不例外。`X-Api-Key` 里的其他值则是你自己的上游凭证（BYOK），原样转发——请同时用 `Authorization: Bearer corx_…` 或 `?corx-key=` 携带 CORX key（`corx_` 形态的 `X-Api-Key` 优先）。",
       key: {
         title: "API key（按调用方）",
         body:
@@ -1595,7 +1595,7 @@ const zh: Messages = {
       order: {
         title: "顺序，以及不匹配时会发生什么",
         body:
-          "转发时先解析调用方引用，再施加该 key 的规则（先 remove 后 set）。因此规则永远赢得过调用方——`!X-Debug` 会删掉它，`set` 会覆盖它——浏览器无法伪造注入的 header。代理不解析的内容（未知名字、私有变量、作用域外的 host）一律原样转发。这既保证功能是纯增量的（没有暴露任何变量的 key 行为与从前完全一致），也让「未暴露」和「不存在」表现一致，调用方无法探测 key 里有什么。代理自己拥有的 header——`X-Api-Key`、`X-Admin-Token` 以及 hop-by-hop 那一组——在处理任何引用之前就被丢弃，所以写在其中的引用既不会被替换也不会被转发；这也是为什么要求这两个名字的厂商（Anthropic 的 `x-api-key`）必须用规则而不是调用方引用。",
+          "转发时先解析调用方引用，再施加该 key 的规则（先 remove 后 set）。因此规则永远赢得过调用方——`!X-Debug` 会删掉它，`set` 会覆盖它——浏览器无法伪造注入的 header。代理不解析的内容（未知名字、私有变量、作用域外的 host）一律原样转发。这既保证功能是纯增量的（没有暴露任何变量的 key 行为与从前完全一致），也让「未暴露」和「不存在」表现一致，调用方无法探测 key 里有什么。代理自己拥有的 header——`corx_` 形态的 `X-Api-Key`、`X-Admin-Token` 以及 hop-by-hop 那一组——在处理任何引用之前就被丢弃；非 `corx_` 形态的 `X-Api-Key`（包括 `${VAR}` 引用）是调用方自己的上游凭证，会原样转发。所以需要这两个名字的厂商（如 Anthropic 的 `x-api-key`）两条路都通：可信服务端 BYOK 直通，或浏览器永不持有密钥时的规则注入。",
       },
       example: {
         title: "一个 key，对接三个上游",

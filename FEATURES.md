@@ -26,11 +26,11 @@ map, not the manual.
 | Body transforms | `corx-charset=<label>` re-decodes a `text/*` / JSON / XML body (any WHATWG `TextDecoder` label, unknown → 400) and re-emits it as UTF-8 with a corrected `content-type`; `corx-wrap=json` wraps the decoded text as `{"contents":"…"}` (`application/json`). Both are read up front, buffer the body (≤ `CACHE_MAX_BYTES`, else 413), refuse non-text content types (400), apply before JSONP wrapping, and are part of the cache key (`transformFingerprint`) so raw and transformed responses never share an entry. |
 | Request hygiene | Hop-by-hop + proxy-owned headers stripped (`Host`, `Connection`, `Upgrade`, `TE`, `X-Forwarded-For`, `CF-*`, `Origin`, `Referer`, …); `X-Forwarded-For` + `X-Proxied-By: corx` added; upstream asked for `accept-encoding: identity`. |
 | Upstream request | Buffered body (early `Content-Length` check, then a buffered cap; a body that fails to read is a 400 — never forwarded empty), shared `AbortController` bounded by `TIMEOUT_MS`; one 300 ms retry on transient `fetch` failure for GET/HEAD only (idempotent methods). |
-| Redirects | Always `manual`: every hop is re-validated (blocklist + DNS, per-key guards included) and the caller's `Authorization`/cookies are dropped on a cross-origin hop (custom headers like `X-Api-Key` would ride along under the fetch spec). A hop outside a key's allowed hosts is returned to the caller with an absolute `Location` and never fetched; max 20 hops. Method/body follow the fetch spec: 301/302 rewrite `POST`→`GET`, 303 rewrites every method but `GET`/`HEAD`, both dropping the body. In subdomain mode a `Location` on the target origin is followed through the proxy, so the browser never resolves it against the proxy host. |
+| Redirects | Always `manual`: every hop is re-validated (blocklist + DNS, per-key guards included) and the caller's `Authorization`, cookies and caller-supplied `X-Api-Key` are dropped on a cross-origin hop (custom headers would ride along under the fetch spec). A hop outside a key's allowed hosts is returned to the caller with an absolute `Location` and never fetched; max 20 hops. Method/body follow the fetch spec: 301/302 rewrite `POST`→`GET`, 303 rewrites every method but `GET`/`HEAD`, both dropping the body. In subdomain mode a `Location` on the target origin is followed through the proxy, so the browser never resolves it against the proxy host. |
 | Response hygiene | `content-encoding`, `content-length`, hop-by-hop and `set-cookie` stripped (lean set on streamed responses so Range/206 survives); per-key **response header rules** then set/remove headers for the caller (the embed recipe), before corx's own markers are written. |
 | Response markers | `X-Corx-Cache: HIT/MISS`, `X-Corx-Target`, `X-Corx-Latency-Ms` on every proxy response. |
 | Streaming | Responses > 5 MiB (`CACHE_MAX_BYTES`) or non-cacheable stream straight through; a stream can never OOM the Worker (`app/proxy/cache.ts#readBounded`). Unbounded streams (`text/event-stream`, `multipart/x-mixed-replace`) are never cacheable whatever their `Cache-Control`, so SSE reaches the caller chunk-by-chunk. |
-| LLM APIs | The mainstream chat APIs are `POST` + SSE and work as-is: OpenAI, Azure OpenAI (`api-key`), Anthropic (`POST /v1/messages`), Gemini (`…:streamGenerateContent?alt=sse`), Ollama, and OpenAI-compatible runtimes. `X-Api-Key`/`X-Admin-Token` are stripped from *client* requests (handler.ts `STRIP_REQUEST`), so an upstream credential header such as Anthropic's `x-api-key` or `x-goog-api-key` must come from a key's header rules (`HeaderRules` with a `${VAR}`, see §6) — the browser never holds it. No key means no injection, and the public tier is GET/HEAD-only, so LLM calls require a standard key on a self-hosted instance. WebSocket/realtime APIs (OpenAI Realtime, Gemini Live) are a non-goal: `Upgrade` is hop-by-hop, and WSS is not CORS-gated, so a browser can connect directly. |
+| LLM APIs | The mainstream chat APIs are `POST` + SSE and work as-is: OpenAI, Azure OpenAI (`api-key`), Anthropic (`POST /v1/messages`), Gemini (`…:streamGenerateContent?alt=sse`), Ollama, and OpenAI-compatible runtimes. Anthropic's `x-api-key` rides through as a BYOK header when the caller sends a non-corx value; a corx-shaped `X-Api-Key` is CORX's credential and never forwarded, so the server-side injection recipe (`HeaderRules` with a `${VAR}`, see §6) stays the browser-safe path — the browser never holds the secret. No key means no injection, and the public tier is GET/HEAD-only (and never forwards any `X-Api-Key`), so LLM calls require a standard key. WebSocket/realtime APIs (OpenAI Realtime, Gemini Live) are a non-goal: `Upgrade` is hop-by-hop, and WSS is not CORS-gated, so a browser can connect directly. |
 | Media | Range requests pass through, `206`/`Content-Range`/`Accept-Ranges` preserved, seeking works in `<video>`/`<audio>`; Range always bypasses the cache. |
 | Logging | Every request logged to D1 via `waitUntil` (method, pre-injection target, host, status, latency, client IP, country, key, cache flag, bytes both ways, auth via, origin, injected flag); streamed bodies are byte-counted by `countStream` when they finish or the client disconnects. Configurable per deployment: `LOG_REQUESTS=false` writes no rows at all (nothing else depends on them), `LOG_RETENTION_DAYS` sets the raw window (1–365). |
 
@@ -112,14 +112,19 @@ Files: `app/lib/auth.ts`, `app/lib/admin.ts`, `app/routes/api/keys*`,
   and per key, checked *before* the cache so hits consume budget too; over cap
   → `429` + `Retry-After` + `{ scope, limit, resetAt }`; announced via
   `X-Corx-Quota-*` (see §12).
-- Credentials never reach upstream: `X-Api-Key` / `X-Admin-Token` are always
-  stripped (they belong to this proxy), a key presented as
-  `Authorization: Bearer corx_…` is stripped once it has authenticated the
-  request (`keySource` in `app/lib/auth.ts`), and for public keys `Cookie` +
-  `Authorization` are stripped too. A caller's own `Authorization` still passes
-  through when the CORX key came from `X-Api-Key` / `?corx-key=` — the OAuth
-  pattern (a `Bearer` header takes precedence over `?corx-key=`, so use
-  `X-Api-Key` for the proxy key in that case).
+- CORX's own credentials never reach upstream, and BYOK rides through:
+  `X-Admin-Token` is always stripped; a **corx-shaped** `X-Api-Key` or
+  `Authorization: Bearer corx_…` is consumed and stripped even when the key is
+  unknown or the lookup hit a D1 hiccup (shape decides, `isCorxKeyShape` in
+  `app/lib/auth.ts`) — CORX's credential is never forwarded under any
+  condition. Any other `X-Api-Key` value is the caller's own upstream
+  credential and is forwarded untouched (BYOK), including `${VAR}` references
+  to exposed variables; a key's header rules still win over it, and it is
+  dropped on a cross-origin redirect hop like `Authorization`. For public keys
+  `Cookie` + `Authorization` + any `X-Api-Key` are stripped too. A caller's own
+  non-corx `Authorization` still passes through when the CORX key came from
+  `X-Api-Key` / `?corx-key=` — the OAuth pattern (a corx-shaped `X-Api-Key`
+  outranks the bearer header).
 - Body cap: `MAX_BODY_BYTES` (default 10 MiB) — enforced from `Content-Length`
   before buffering and again on the buffered bytes; an unreadable body is a 400
   rather than a silently-empty forward.
@@ -618,8 +623,9 @@ pointer instead of a debate.
   presets listed as five (there are six).
 - **`X-Api-Key` / `X-Admin-Token` no longer leak upstream.** The proxy used to
   copy every non-stripped client header to the target, so a CORX key ended up
-  on whatever host the caller named. Both are now stripped, and public-tier
-  requests additionally drop `Cookie` + `Authorization`.
+  on whatever host the caller named. Both are now stripped for corx-shaped
+  values (0.1.2 additionally forwards non-corx `X-Api-Key` values as BYOK),
+  and public-tier requests additionally drop `Cookie` + `Authorization`.
 - **`X-RateLimit-*` (and the new quota headers) actually reach the wire.**
   `c.header()` before a handler returns writes to Hono's prepared headers,
   which are discarded when the handler returns a raw `Response` — every proxy

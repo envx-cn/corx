@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import type { Env } from "../lib/types.js";
 import { ProxyError } from "../lib/types.js";
-import type { ProxyVariables } from "../lib/auth.js";
+import { isCorxKeyShape, type ProxyVariables } from "../lib/auth.js";
 import { normalizeOrigin } from "./cors.js";
 import { assertKnownControlParams, hasControl } from "../lib/control.js";
 import { validateTargetUrl, checkDbBlocklist } from "./guard.js";
@@ -62,7 +62,8 @@ const STRIP_REQUEST = new Set([
   "x-real-ip",
   // The caller's corx credentials belong to this proxy, never to the target:
   // forwarding them would leak the key to whatever host the caller names.
-  "x-api-key",
+  // (`x-api-key` is handled in buildOutHeaders: it forwards BYOK values but
+  // never a corx-shaped one — see auth.ts → isCorxKeyShape.)
   "x-admin-token",
   // Ask upstreams for identity (uncompressed) bodies: we strip content-encoding
   // on buffered responses, and streaming gzip through the dev server / workers
@@ -395,18 +396,28 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         c.req.raw.headers.forEach((value, key) => {
           const k = key.toLowerCase();
           if (STRIP_REQUEST.has(k)) return;
-          // A key presented as `Authorization: Bearer corx_…` authenticated
-          // *this proxy*, so it must not become the target's credential — the
-          // same rule as `x-api-key` above, which the caller may simply have
-          // expressed in bearer form. A caller's own Authorization still
-          // passes through: they presented the CORX key with `X-Api-Key`
-          // (a bearer header outranks `?corx-key=`, so that is the form to use).
-          if (k === "authorization" && keySource === "authorization") return;
+          // CORX's own credentials are never the target's, in either form:
+          // `X-Api-Key` only when the value is corx-shaped (anything else is
+          // the caller's own upstream credential — BYOK rides along), and
+          // `Authorization` when it authenticated this proxy (a bearer header
+          // outranks `?corx-key=`) OR whenever the value is corx-shaped — an
+          // unknown/revoked corx key, or one whose lookup hit a D1 hiccup, is
+          // still CORX's credential by shape and must never reach the target.
+          // A caller's own corx_-prefixed upstream token can use any other
+          // header name.
+          if (k === "x-api-key" && isCorxKeyShape(value)) return;
+          if (
+            k === "authorization" &&
+            (keySource === "authorization" ||
+              (value.toLowerCase().startsWith("bearer ") && isCorxKeyShape(value.slice(7).trim())))
+          ) {
+            return;
+          }
           if (dropClientAuth && DROP_ON_CROSS_ORIGIN.has(k)) return;
           // The public key is shared with the world, so it never forwards the
           // caller's credentials — "no secrets through the public instance" is
           // a promise the code keeps, not just a line in the terms.
-          if (isPublic && (k === "cookie" || k === "authorization")) return;
+          if (isPublic && (k === "cookie" || k === "authorization" || k === "x-api-key")) return;
           if (allowedRefs && allowedRefs.size > 0) {
             const ref = resolveClientRefs(value, allowedRefs);
             if (ref.resolved) {

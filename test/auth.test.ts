@@ -57,8 +57,8 @@ describe("extractRawKey precedence", () => {
   const url = new URL("https://corx.test/fetch?url=https://example.com/&corx-key=from-query");
 
   it("reports the key and which form presented it", () => {
-    expect(extractRawKey(req({ "x-api-key": "from-header" }), url)).toEqual({
-      raw: "from-header",
+    expect(extractRawKey(req({ "x-api-key": "corx_from-header" }), url)).toEqual({
+      raw: "corx_from-header",
       source: "x-api-key",
     });
     expect(extractRawKey(req({ authorization: "Bearer from-bearer" }), url)).toEqual({
@@ -69,10 +69,17 @@ describe("extractRawKey precedence", () => {
     expect(extractRawKey(req(), new URL("https://corx.test/fetch?url=x"))).toBeNull();
   });
 
-  it("prefers x-api-key, and only treats a bearer Authorization as a key", () => {
-    expect(extractRawKey(req({ "x-api-key": "from-header", authorization: "Bearer from-bearer" }), url)).toEqual({
-      raw: "from-header",
+  it("only a corx-shaped X-Api-Key is the credential; anything else is BYOK and never shadows a bearer credential", () => {
+    // A corx-shaped value wins over a bearer header (existing precedence).
+    expect(extractRawKey(req({ "x-api-key": "corx_from-header", authorization: "Bearer from-bearer" }), url)).toEqual({
+      raw: "corx_from-header",
       source: "x-api-key",
+    });
+    // A non-corx X-Api-Key is the caller's own upstream credential, not CORX's:
+    // it does not consume the request, and the bearer credential still applies.
+    expect(extractRawKey(req({ "x-api-key": "sk-upstream-own", authorization: "Bearer corx_valid" }), url)).toEqual({
+      raw: "corx_valid",
+      source: "authorization",
     });
     // Anything else in Authorization is the caller's own header, not a key.
     expect(extractRawKey(req({ authorization: "Basic dXNlcjpwdw==" }), url)).toEqual({ raw: "from-query", source: "query" });

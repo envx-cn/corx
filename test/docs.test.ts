@@ -236,7 +236,7 @@ describe("docs page contract", () => {
     expect(zh).toContain("允许调用方引用变量");
     expect(zh).toContain("两层作用域");
     expect(zh).toContain("调用方的引用最终变成什么");
-    expect(zh).toContain("绝不会被转发到上游");
+    expect(zh).toContain("绝不会转发到上游");
     expect(zh).toContain("一个 key 还是多个");
     expect(zh).toContain("哪些请求绕过缓存");
     expect(zh).not.toContain("What bypasses the cache");
