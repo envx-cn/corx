@@ -1907,6 +1907,23 @@ describe("redirect guards (integration)", () => {
     expect(calls[1]?.url).toBe("https://other.example/next");
   });
 
+  it("a cross-origin redirect also drops a BYOK X-Api-Key", async () => {
+    const calls = recordUpstream((hopN) =>
+      hopN === 1
+        ? new Response(null, { status: 302, headers: { location: "https://other.example/next" } })
+        : new Response("done", { status: 200 }),
+    );
+    const res = await call("/fetch?url=https://api.example.com/data", {
+      headers: { authorization: "Bearer corx_valid", "x-api-key": "sk-upstream-own" },
+    }, envWithKey(plainKeyRow));
+    expect(res.status).toBe(200);
+    // Hop 1: the BYOK credential rides to the target the caller named.
+    expect(calls[0]?.headers.get("x-api-key")).toBe("sk-upstream-own");
+    expect(calls[0]?.headers.get("authorization")).toBeNull(); // consumed (corx-shaped)
+    // Hop 2 leaves the origin: credentials dropped, like Authorization.
+    expect(calls[1]?.headers.get("x-api-key")).toBeNull();
+  });
+
   it("a same-origin redirect keeps the caller's credentials", async () => {
     const calls = recordUpstream((hopN) =>
       hopN === 1
@@ -2048,5 +2065,124 @@ describe("blocklist entry validation (integration)", () => {
     expect(res.status).toBe(200);
     const insert = stmts.find((s) => s.sql.includes("INSERT OR IGNORE INTO blocked_hosts"));
     expect(insert?.values[0]).toBe("evil-site.com");
+  });
+});
+
+describe("X-Api-Key BYOK semantics (integration)", () => {
+  /** fetch stub answering DoH and recording one upstream call's headers. */
+  function record(headers?: HeadersInit): Headers {
+    const seen: Headers[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("cloudflare-dns.com")) {
+          return new Response(JSON.stringify({ Answer: [{ type: 1, data: "1.2.3.4" }] }), { status: 200 });
+        }
+        seen.push(new Headers(init?.headers));
+        return new Response("ok", { status: 200 });
+      }),
+    );
+    return seen[0] ?? new Headers();
+  }
+
+  it("a non-corx X-Api-Key rides through to the upstream (BYOK)", async () => {
+    const h = await (async () => {
+      const out: Headers[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("cloudflare-dns.com")) {
+          return new Response(JSON.stringify({ Answer: [{ type: 1, data: "1.2.3.4" }] }), { status: 200 });
+        }
+        out.push(new Headers(init?.headers));
+        return new Response("ok", { status: 200 });
+      }));
+      const res = await call("/fetch?url=https://api.example.com/x", { headers: { "x-api-key": "sk-vendor-12345" } });
+      expect(res.status).toBe(200);
+      return out[0]!;
+    })();
+    expect(h.get("x-api-key")).toBe("sk-vendor-12345");
+  });
+
+  it("a corx-shaped X-Api-Key is consumed and never forwarded", async () => {
+    const out: Headers[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("cloudflare-dns.com")) {
+        return new Response(JSON.stringify({ Answer: [{ type: 1, data: "1.2.3.4" }] }), { status: 200 });
+      }
+      out.push(new Headers(init?.headers));
+      return new Response("ok", { status: 200 });
+    }));
+    const res = await call("/fetch?url=https://api.example.com/x", { headers: { "x-api-key": "corx_abc" } });
+    expect(res.status).toBe(200);
+    expect(out[0]!.get("x-api-key")).toBeNull();
+  });
+
+  it("an unknown corx-shaped X-Api-Key is never forwarded either (closed even when lookup fails)", async () => {
+    const out: Headers[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("cloudflare-dns.com")) {
+        return new Response(JSON.stringify({ Answer: [{ type: 1, data: "1.2.3.4" }] }), { status: 200 });
+      }
+      out.push(new Headers(init?.headers));
+      return new Response("ok", { status: 200 });
+    }));
+    const res = await call("/fetch?url=https://api.example.com/x", { headers: { "x-api-key": "corx_typo_or_revoked" } });
+    expect(res.status).toBe(200);
+    expect(out[0]!.get("x-api-key")).toBeNull();
+  });
+
+  it("a corx-shaped Bearer Authorization never reaches the upstream, even unauthenticated (D1-hiccup safe)", async () => {
+    const out: Headers[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("cloudflare-dns.com")) {
+        return new Response(JSON.stringify({ Answer: [{ type: 1, data: "1.2.3.4" }] }), { status: 200 });
+      }
+      out.push(new Headers(init?.headers));
+      return new Response("ok", { status: 200 });
+    }));
+    const res = await call("/fetch?url=https://api.example.com/x", {
+      headers: { authorization: "Bearer corx_valid_but_lookup_failed" },
+    });
+    expect(res.status).toBe(200);
+    expect(out[0]!.get("authorization")).toBeNull();
+  });
+
+  it("BYOK via X-Api-Key works alongside a corx credential and keyless access", async () => {
+    const out: Headers[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("cloudflare-dns.com")) {
+        return new Response(JSON.stringify({ Answer: [{ type: 1, data: "1.2.3.4" }] }), { status: 200 });
+      }
+      out.push(new Headers(init?.headers));
+      return new Response("ok", { status: 200 });
+    }));
+    const res = await call("/fetch?url=https://api.example.com/x", {
+      headers: { "x-api-key": "sk-vendor-12345", authorization: "Bearer corx_valid" },
+    }, envWithKey(plainKeyRow));
+    expect(res.status).toBe(200);
+    expect(out[0]!.get("x-api-key")).toBe("sk-vendor-12345");
+    expect(out[0]!.get("authorization")).toBeNull();
+  });
+
+  it("a corx-shaped X-Api-Key still authenticates (REQUIRE_API_KEY flow unaffected)", async () => {
+    const out: Headers[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("cloudflare-dns.com")) {
+        return new Response(JSON.stringify({ Answer: [{ type: 1, data: "1.2.3.4" }] }), { status: 200 });
+      }
+      out.push(new Headers(init?.headers));
+      return new Response("ok", { status: 200 });
+    }));
+    const res = await call("/fetch?url=https://api.example.com/x", {
+      headers: { "x-api-key": "corx_valid" },
+    }, envWithKey(plainKeyRow));
+    expect(res.status).toBe(200);
+    expect(out[0]!.get("x-api-key")).toBeNull();
   });
 });
