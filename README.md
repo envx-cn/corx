@@ -191,9 +191,8 @@ forwarding — the browser never holds the upstream secret:
   `remove` drops it — and removes run before sets, so results never depend on
   line order.
 - Hop-by-hop and proxy-owned headers (`Host`, `Content-Length`,
-  `X-Forwarded-For`, `Accept-Encoding`, `CF-*`, …) and the reserved
-  `corx-*` query params (plus their deprecated un-prefixed aliases) are rejected at
-  save time, as are unknown `${VAR}` references.
+  `X-Forwarded-For`, `Accept-Encoding`, `CF-*`, …) and the reserved `corx-*`
+  query params are rejected at save time, as are unknown `${VAR}` references.
 - **Allowed target hosts** is mandatory once anything is injected: the key can
   only reach those hosts (exact, `*.suffix`, or an explicit `*`). This is the
   confused-deputy guard — without it the proxy would attach the secret to any
@@ -431,9 +430,9 @@ a **live "Try it" demo** (a mockup-browser that rotates example URLs — every
 10 s in view, every 30 s as an off-screen ambient tick so the X keeps
 generating the odd spark, paused on a hidden tab or for reduced motion; type
 any URL to take over; it sends **no key** — the request works anonymously
-(`REQUIRE_API_KEY=false`) or through a keyless grant for the page's own origin,
-and simply reports the 401 otherwise), a **Highlights** band with real config
-snippets (upstream
+when `REQUIRE_API_KEY=false`, or through a keyless grant for the page's own
+origin, and simply reports the 401 otherwise), a **Highlights** band with real
+config snippets (upstream
 secret injection, keyless browser access, playground introspection), a compact
 nine-item feature list, a **FAQ** band (native `<details>`, so no island is
 needed and the answers are plain text in the initial HTML) and a dark footer.
@@ -593,9 +592,9 @@ one deployment's URL.
 
 | Surface | What it is |
 | --- | --- |
-| `robots.txt` | Public pages open, machine surfaces closed (`/console`, `/api`, `/fetch`, `/proxy`, `/health`), absolute `Sitemap:` line. The main answer engines (GPTBot, ClaudeBot, PerplexityBot, …) are named and allowed on purpose: CORX *wants* to be read and cited, and saying so in the file makes a future "block the bots" edit argue with the list. |
+| `robots.txt` | Public pages open, machine surfaces closed (`/console`, `/api`, `/fetch`, `/proxy`, `/health`, `/demo`), absolute `Sitemap:` line. The main answer engines (GPTBot, ClaudeBot, PerplexityBot, …) are named and allowed on purpose: CORX *wants* to be read and cited, and saying so in the file makes a future "block the bots" edit argue with the list. |
 | `sitemap.xml` | Every indexable URL with `lastmod`, and an `xhtml:link` hreflang cluster (`en`, `zh`, `x-default`) on each landing URL, each comparison URL, each docs URL, each snippets URL and the tool URL. |
-| `llms.txt` | The [llmstxt.org](https://llmstxt.org) index: title, blockquote summary, `## Docs` / `## Facts` link sections, `## Optional` tail. |
+| `llms.txt` | The [llmstxt.org](https://llmstxt.org) index: title, blockquote summary, link sections (`## Docs`, `## Calling the proxy`, `## Facts`), `## Optional` tail. |
 | `llms-full.txt` | The whole behaviour of the instance in one Markdown fetch — calling shapes, the `corx-*` namespace, auth tiers, caching, limits, security, console + admin API, self-hosting. |
 
 Those four are mounted in `app/server.ts` (before `createApp`, and they give way
@@ -715,7 +714,7 @@ cross-origin from their own site without deploying anything. It is deliberately
 a reduced product:
 
 - **`GET` / `HEAD` only** — no POST/PUT/… relaying.
-- **No `?corx-ttl=` / `?corx-no-cache=`** (or their legacy spellings) — the
+- **No `?corx-ttl=` / `?corx-no-cache=`** — the
   instance owns the cache policy (public keys default to
   `PUBLIC_CACHE_TTL_SECONDS`, 300 s).
 - **No subdomain mode** — `/fetch?url=` only, which also keeps arbitrary
@@ -929,7 +928,7 @@ vars are rewritten from the config file each time.
 | --- | --- | --- |
 | `PROXY_ZONE` (secret) | `""` | Suffix for subdomain mode (`example.corx.com` → `example.com`); empty = auto-detect from the request Host |
 | `ALLOWED_ORIGINS` | `*` | `*` or comma/whitespace-separated origins allowed to use the **proxy routes only** (console/API never get CORS headers); a loopback port wildcard (`http://localhost:*`) is allowed |
-| `REQUIRE_API_KEY` | `false` | `"true"` to require an API key |
+| `REQUIRE_API_KEY` | `true` | `"true"` to require an API key |
 | `CACHE_TTL_SECONDS` | `3600` | Default R2 TTL for GET 200s; also caps per-request `?corx-ttl=` |
 | `TIMEOUT_MS` | `30000` | Upstream timeout |
 | `RATE_LIMIT_PER_MIN` | `60` | Per key (or per IP) per minute — cache hits are free |
@@ -1053,7 +1052,7 @@ Shell: the sidebar collapses to an icon rail on desktop — hovering a nav item
 floats the real menu open without pushing the content, and the pin persists in
 localStorage; on mobile there is no rail, only the topbar hamburger, which
 opens the full menu as a floating drawer overlay. The topbar holds a language
-switch (中文 / EN) and a user menu (Profile / Billing / Log out).
+switch (中文 / EN) and a user menu (Profile / Log out).
 
 Every mutating form — keys, blocklist, logout — carries a signed,
 session-bound CSRF token, and the playground's run call sends it as
@@ -1231,7 +1230,7 @@ browser ──► CORX (Worker)
               │    auth'd requests & no-store/vary responses never cached)
               ├─ rate limit (misses only) ──► D1 rate_windows (fixed window)
               ├─ fetch upstream (timeout, size caps, header filtering,
-              │    manual redirects when the key injects/bounds hosts)
+              │    manual redirects — every hop re-validated)
               └─ log ──► D1 request_logs (waitUntil; skipped entirely when
                           LOG_REQUESTS=false; the cron rolls each day
                            into stats_daily before pruning raw rows)

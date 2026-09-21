@@ -19,7 +19,7 @@ map, not the manual.
 | Feature | Detail |
 | --- | --- |
 | Routing modes | `?url=` on any proxy route (canonical), `/proxy/<url>`, `/<url>` (bare path), path form of `/fetch/<url>`, and DNS subdomain mode `<encoded-host>.<zone>/…` (`PROXY_ZONE`, auto-detect when blank). Precedence: `?url=` → path → subdomain. |
-| Subdomain encoding | `.` → `-`, `-` → `--` (lossless), bare label gets `.com`, reserved labels (`www`, `admin`, `console`, `api`, `health`, `status`) never decode, 63-char DNS cap → 400. |
+| Subdomain encoding | `.` → `-`, `-` → `--` (lossless), bare label gets `.com`, reserved labels (`www`, `admin`, `console`, `api`, `health`, `status`, `terms`, `privacy`, `docs`, `blog`) never decode, 63-char DNS cap → 400. |
 | Methods | Any method (`/fetch`, `/proxy/*` and the `/*` fallback are `app.all`). `OPTIONS` is answered by the CORS preflight before the handler runs. |
 | Control params | `corx-ttl`, `corx-no-cache`, `corx-key`, `corx-callback`, `corx-charset`, `corx-wrap`, `corx-scheme`, `corx-port` are consumed by CORX and never forwarded to a target; an unknown `corx-*` name is a 400 (namespace, not a filter — `app/lib/control.ts`). Everything else belongs to the target: a caller-supplied `?url=` / path target keeps its own `key`/`ttl`/`callback`, and only subdomain mode strips the control names (there the proxy request's query *is* the target's). |
 | JSONP | `?corx-callback=fn` wraps an `application/json` response as `fn(<json>);` (`application/javascript`, `nosniff`, 2 MiB cap, body validated with `JSON.parse`). Errors are wrapped too, the name must be a JS identifier path, and the cache is always bypassed (the callback name lives in the body). |
@@ -522,10 +522,10 @@ Files: `app/lib/access.ts`, `app/lib/session.ts`, `app/lib/csrf.ts`,
   quotas, CORS origins, subdomain encoding, media/Range, playground, stats
   bucketing, i18n, the terms page and the assembled app (error pages, JSON
   wire format, body caps, `/fetch` CORS, credential stripping).
-- 11 numbered D1 migrations in `migrations/` (keys → per-key origins/cache →
+- 12 numbered D1 migrations in `migrations/` (keys → per-key origins/cache →
   log bytes → guard toggles → injection → keyless/audit → public tier +
   quota counters → daily stats rollup → response header rules → keyless
-  origin normalization).
+  origin normalization → request-log index).
 
 ---
 
