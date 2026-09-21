@@ -434,7 +434,7 @@ const en = {
         "GET responses are cached in R2 and served from the edge, so a repeated request usually never reaches upstream. `X-Corx-Cache: HIT|MISS` on every response says which path it took.",
       hitTitle: "Cache markers",
       hit:
-        "`X-Corx-Cache` is the header to watch while debugging: `MISS` means upstream answered (and the response was stored), `HIT` means R2 answered. `X-Corx-Target` names the upstream host, and `X-Corx-Latency-Ms` is the time the proxy spent.",
+        "`X-Corx-Cache` is the header to watch while debugging: `MISS` means upstream answered (the response is stored only when it is cacheable), `HIT` means R2 answered. `X-Corx-Target` names the upstream host, and `X-Corx-Latency-Ms` is the time the proxy spent.",
       ttlTitle: "TTL",
       ttl:
         "The deployment's default TTL applies unless `?corx-ttl=` lowers or raises it, up to the cap. A key can pin its own default TTL, or `0` to never store; the public tier cannot set a TTL at all.",
@@ -447,11 +447,11 @@ const en = {
       lead:
         "Two independent limits protect an instance: a per-minute rate limit per key (or per IP for anonymous calls), and the public tier's daily quotas.",
       rate:
-        "The per-minute limit is counted on the key, or on the caller IP without one. Cache hits count too, and the D1-backed checks fail open during a database incident rather than taking the proxy down.",
+        "The per-minute limit is counted on the key, or on the caller IP without one. Cache hits are free — only misses are metered — and the D1-backed checks fail open during a database incident rather than taking the proxy down.",
       quota:
         "A public key's daily counters run per calling site, per target host and for the instance as a whole, in UTC days. Cache hits count as well — the quota is about requests, not upstream load. `X-Corx-Quota-{Origin,Host,Day}-{Limit,Remaining}` reports where you stand.",
       response:
-        "Over either limit the proxy answers `429` with a JSON body (`{ error, scope, limit, resetAt }`) and `Retry-After` — seconds until the window or the UTC day resets. Ordinary responses carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`. Every machine-facing path (the proxy, `/api/*`, `/health`) answers errors as JSON `{ error }`; browser pages get a branded HTML document.",
+        "Over a public daily quota the proxy answers `429` with `Retry-After` (seconds to UTC midnight) and a `{ error, scope, limit, resetAt }` body; the per-minute rate limit answers a plain `429` `{ error }` with no retry hint. Ordinary responses carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`. Every machine-facing path (the proxy, `/api/*`, `/health`) answers errors as JSON `{ error }`; browser pages get a branded HTML document.",
     },
     security: {
       title: "Security",
@@ -802,7 +802,7 @@ const en = {
       q4: "Can I send cookies, tokens or personal data?",
       a4: "Not through the public key: it strips Cookie and Authorization before forwarding, responses may be served from a shared cache, and requests are logged for 30 days. Keep private or authenticated traffic on your own deployment.",
       q5: "What happens when I hit the limits?",
-      a5: "You get 429 with a Retry-After header. Requests are counted per calling site, per target host, per instance and per minute, and cached responses count too — the quota is about requests, not upstream load.",
+      a5: "You get 429 — the daily quota carries a Retry-After header, the per-minute rate limit is a plain 429. Requests are counted per calling site, per target host and per instance, plus a per-minute rate limit; cached responses count toward the daily quotas — the quota is about requests, not upstream load.",
       q6: "Can I self-host it?",
       a6: "Yes. CORX is MIT-licensed TypeScript for Cloudflare Workers, D1 and R2: deploy it to your own account and the quotas, limits and logs are yours. The repository README covers the whole deployment.",
       q7: "Can I trust the hosted instance with my traffic?",
@@ -1643,7 +1643,7 @@ const zh: Messages = {
         "GET 响应会缓存在 R2 并从边缘返回，重复请求通常根本到不了上游。每个响应上的 `X-Corx-Cache: HIT|MISS` 会告诉你走了哪条路。",
       hitTitle: "缓存标记",
       hit:
-        "调试时最该盯的就是 `X-Corx-Cache`：`MISS` 表示响应来自上游（并已写入缓存），`HIT` 表示由 R2 直接返回。`X-Corx-Target` 给出上游主机名，`X-Corx-Latency-Ms` 是代理消耗的时间。",
+        "调试时最该盯的就是 `X-Corx-Cache`：`MISS` 表示响应来自上游（可缓存时才会写入），`HIT` 表示由 R2 直接返回。`X-Corx-Target` 给出上游主机名，`X-Corx-Latency-Ms` 是代理消耗的时间。",
       ttlTitle: "TTL",
       ttl:
         "默认使用部署的 TTL，除非用 `?corx-ttl=` 调低或调高（不超过上限）。key 也可以设定自己的默认 TTL，或设成 `0` 表示永不写入；公共档位完全不能设置 TTL。",
@@ -1655,11 +1655,11 @@ const zh: Messages = {
       title: "限额与错误",
       lead: "有两层彼此独立的限制在保护实例：按 key（匿名时按 IP）的每分钟频率限制，以及公共档位的每日配额。",
       rate:
-        "每分钟限制按 key 计数，匿名调用按 IP 计数。命中缓存的请求同样计入；底层 D1 故障时这些检查会放行（fail open），以免代理整体不可用。",
+        "每分钟限制按 key 计数，匿名调用按 IP 计数；缓存命中不计入——只有未命中才计量。底层 D1 故障时这些检查会放行（fail open），以免代理整体不可用。",
       quota:
         "公共 key 的每日计数按调用站点、目标站点和整个实例三个维度，以 UTC 自然日为单位。命中缓存也计入——配额算的是请求数，不是上游压力。`X-Corx-Quota-{Origin,Host,Day}-{Limit,Remaining}` 会报告你的剩余额度。",
       response:
-        "触碰任一限制时，代理返回 `429`，JSON body 形如 `{ error, scope, limit, resetAt }`，并带 `Retry-After`——距离窗口或 UTC 零点重置的秒数。普通响应也会带 `X-RateLimit-Limit` 和 `X-RateLimit-Remaining`。所有面向机器的路径（代理、`/api/*`、`/health`）出错都是 JSON `{ error }`；浏览器页面则是带品牌的 HTML 错误文档。",
+        "触碰公共档位每日配额时，代理返回 `429`，带 `Retry-After`（距 UTC 零点重置的秒数）和 `{ error, scope, limit, resetAt }` 的 JSON body；每分钟限流的 429 则只是 `{ error }`，没有重试提示。普通响应也会带 `X-RateLimit-Limit` 和 `X-RateLimit-Remaining`。所有面向机器的路径（代理、`/api/*`、`/health`）出错都是 JSON `{ error }`；浏览器页面则是带品牌的 HTML 错误文档。",
     },
     security: {
       title: "安全",
@@ -1994,7 +1994,7 @@ const zh: Messages = {
       q4: "可以传递 Cookie、token 或个人信息吗？",
       a4: "公共 key 不行：它会在转发前剥掉 Cookie 和 Authorization，响应可能来自共享缓存，请求日志保留 30 天。私有或带鉴权的流量请放在你自己的部署上。",
       q5: "触发限额会怎样？",
-      a5: "会返回 429 和 Retry-After 头。限额按调用站点、目标站点、整个实例以及每分钟分别计算，命中缓存的请求也计入——配额算的是请求数，而不是上游压力。",
+      a5: "会返回 429——每日配额带 Retry-After 头，每分钟限流则是普通的 429。限额按调用站点、目标站点和整个实例计算，另有一个每分钟限流；命中缓存的请求计入每日配额——配额算的是请求数，而不是上游压力。",
       q6: "可以自托管吗？",
       a6: "可以。CORX 是 MIT 许可的 TypeScript 项目，运行在 Cloudflare Workers + D1 + R2 上：部署到你自己的账号，配额、限额和日志都归你所有。仓库 README 覆盖了完整部署流程。",
       q7: "可以把流量托付给托管实例吗？",
