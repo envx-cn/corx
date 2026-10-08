@@ -1247,7 +1247,10 @@ browser ──► CORX (Worker)
               ├─ rate limit (misses only) ──► D1 rate_windows (fixed window)
               ├─ fetch upstream (timeout, size caps, header filtering,
               │    manual redirects — every hop re-validated)
-              └─ log ──► D1 request_logs (waitUntil; skipped entirely when
+              └─ log ──► D1 request_logs (waitUntil — for a streamed
+                          response the lifetime is registered before
+                          the response is returned, so the row survives
+                          the stream; skipped entirely when
                           LOG_REQUESTS=false; the cron rolls each day
                            into stats_daily before pruning raw rows)
 ```

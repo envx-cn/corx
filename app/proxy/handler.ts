@@ -189,26 +189,31 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
   // response can be wrapped for a <script> caller (see the catch below).
   let jsonpName: string | null = null;
 
+  /**
+   * The row for one proxied request. Split out of `finish` so a streamed
+   * response can write it *inside* a lifetime it registered before returning
+   * (see `streamIt`) instead of from a `waitUntil` call that arrives too late.
+   */
+  const logRow = (status: number | null, error = "") => ({
+    method: c.req.method,
+    targetUrl: target,
+    targetHost: host,
+    status,
+    latencyMs: Date.now() - started,
+    clientIp: ip,
+    country,
+    apiKeyId,
+    cached,
+    error,
+    reqBytes,
+    resBytes,
+    authVia,
+    origin: caller ?? "",
+    injected,
+  });
+
   const finish = (status: number | null, error = "") => {
-    c.executionCtx.waitUntil(
-      logRequest(c.env, {
-        method: c.req.method,
-        targetUrl: target,
-        targetHost: host,
-        status,
-        latencyMs: Date.now() - started,
-        clientIp: ip,
-        country,
-        apiKeyId,
-        cached,
-        error,
-        reqBytes,
-        resBytes,
-        authVia,
-        origin: caller ?? "",
-        injected,
-      }),
-    );
+    c.executionCtx.waitUntil(logRequest(c.env, logRow(status, error)));
   };
 
   // Headers that must ride on the *response object*: c.header() before a
@@ -670,11 +675,29 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
           finish(upstream.status);
           return withPending(new Response(null, { status: upstream.status, headers: streamHeaders }));
         }
+        // The stream is written after this handler returns, so a `waitUntil`
+        // registered from `finish()` at that point cannot extend the request
+        // and the log row for the heaviest traffic (SSE, media) is the one
+        // most likely to be dropped. Register the lifetime NOW and settle it
+        // once the row is written; the runtime holds the Worker until then.
+        let settle!: () => void;
+        const streamDone = new Promise<void>((resolve) => {
+          settle = resolve;
+        });
+        c.executionCtx.waitUntil(streamDone);
+        // A client that is gone before the stream ends must not hold the
+        // Worker open indefinitely; the log for that request is written by
+        // countStream's own cancel/error path if the runtime reports it.
+        c.req.raw.signal?.addEventListener("abort", () => settle(), { once: true });
+        let logged = false;
+        const logStreamEnd = (bytes: number) => {
+          resBytes = bytes;
+          if (logged) return;
+          logged = true;
+          void logRequest(c.env, logRow(upstream.status)).finally(() => settle());
+        };
         return withPending(
-          new Response(countStream(body, (bytes) => {
-            resBytes = bytes;
-            finish(upstream.status);
-          }), { status: upstream.status, headers: streamHeaders }),
+          new Response(countStream(body, logStreamEnd), { status: upstream.status, headers: streamHeaders }),
         );
       };
 
