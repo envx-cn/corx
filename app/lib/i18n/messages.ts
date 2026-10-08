@@ -25,11 +25,24 @@ const en = {
     tagline: "CORS proxy, served from the edge",
     console: "Console",
     terms: "Terms",
+    blocked: "Blocked hosts",
     github: "GitHub",
     githubAria: "View the CORX source on GitHub",
     menu: "Menu",
     ogAlt: "The CORX wordmark — CORS proxy, served from the edge",
     copyright: "© {year} CORX",
+  },
+  blocked: {
+    title: "Blocked hosts",
+    lead:
+      "Hosts this instance will not proxy for anyone. A request to one of them answers 403 before any upstream call, from every key — including yours.",
+    headHost: "Host",
+    headSince: "Blocked since",
+    empty: "Nothing is blocked on this instance.",
+    more: "…and {n} more, not shown.",
+    why:
+      "Entries come from this instance's own moderation: complaints, abuse, or hosts the operator of a self-hosted deployment blocked on purpose. The reason for each one is kept private. If you run your own copy, the same list is one console click away.",
+    terms: "Terms of use",
   },
   terms: {
     title: "Terms of use",
@@ -459,6 +472,8 @@ const en = {
         "CORX is a CORS proxy, so it is a man in the middle by construction: whoever operates an instance can read, change and replay everything passing through it. The guards below reduce what an untrusted caller can reach; they do not make a shared instance safe for secrets.",
       ssrf:
         "SSRF guards: private, link-local, CGNAT, multicast and reserved IP literals are blocked, the host is resolved over DoH and re-checked so a name cannot rebind to a private address, and a D1 blocklist covers whole hosts and their subdomains. A trusted key can opt out of the IP/hostname and DNS checks; the blocklist and Cloudflare's own rules are never bypassed.",
+      blocklist:
+        "A 403 can also mean this instance refuses that host on purpose: the blocklist is published at <a href=\"/blocked\">/blocked</a> (hostname and date only — the reason is kept private). Self-hosted deployments keep the same list behind their own console.",
       headers:
         "Header hygiene: hop-by-hop and proxy-owned headers (`Host`, `Connection`, `X-Forwarded-For`, `CF-*`, …) are stripped on the way in and out, `Set-Cookie` is never forwarded, and the public tier strips `Cookie` and `Authorization` before forwarding.",
       visibility:
@@ -692,6 +707,9 @@ const en = {
       copyNoteA: "Using this key means you accept the",
       copyNoteB: "— no phishing, malware, spam, illegal or abusive traffic, and never send credentials through it.",
       termsLink: "terms of use",
+      blockNoteA: "A host this instance blocks outright answers 403 whatever the quotas say —",
+      blockLink: "the list is public",
+      blockNoteB: ".",
       limitsTitle: "Daily limits (UTC)",
       limitOrigin: "Per calling site",
       limitHost: "Per target host",
@@ -1316,11 +1334,23 @@ const zh: Messages = {
     tagline: "边缘 CORS 代理",
     console: "控制台",
     terms: "使用条款",
+    blocked: "已封禁主机",
     github: "GitHub",
     githubAria: "在 GitHub 上查看 CORX 源码",
     menu: "菜单",
     ogAlt: "CORX 标识——边缘 CORS 代理",
     copyright: "© {year} CORX",
+  },
+  blocked: {
+    title: "已封禁的主机",
+    lead: "本站实例不会为任何人代理以下主机。对它们的请求会在回源之前直接返回 403，对所有 key 一视同仁——包括你自己的 key。",
+    headHost: "主机",
+    headSince: "封禁时间",
+    empty: "本实例没有封禁任何主机。",
+    more: "另有 {n} 条未展示。",
+    why:
+      "这些条目来自本站实例自己的处置：投诉、滥用，或自托管部署的运营者主动封禁。逐条原因不予公开。如果你自己部署一份，同一份清单就在控制台里。",
+    terms: "使用条款",
   },
   terms: {
     title: "使用条款",
@@ -1714,6 +1744,8 @@ const zh: Messages = {
         "CORX 是 CORS 代理，因此本质上就是中间人：运行实例的人可以读取、修改并重放经过它的所有内容。下面的防护只能限制不可信调用方能碰到什么，并不能让共享实例变得适合承载机密。",
       ssrf:
         "SSRF 防护：私有、链路本地、CGNAT、组播和保留网段的 IP 字面量会被拦截；主机名会通过 DoH 解析并复核，防止重绑定到内网；D1 黑名单按域名及其子域生效。可信的 key 可以关掉 IP/主机名检查和 DNS 检查，但黑名单与 Cloudflare 自身的规则永远不会被绕过。",
+      blocklist:
+        "403 也可能意味着本站实例有意拒绝该主机：黑名单公开在 <a href=\"/blocked\">/blocked</a>（只列主机名与日期，原因不公开）。自托管部署的同一份清单在自己的控制台里。",
       headers:
         "请求头卫生：逐跳头和代理自有头（`Host`、`Connection`、`X-Forwarded-For`、`CF-*` 等）在进出两个方向都会被剥掉，`Set-Cookie` 不会转发，公共档位在转发前剥离 `Cookie` 和 `Authorization`。",
       visibility:
@@ -1932,6 +1964,9 @@ const zh: Messages = {
       copyNoteA: "使用该 key 即表示你接受",
       copyNoteB: "——禁止钓鱼、恶意软件、垃圾信息、违法或滥用流量，并且绝不要通过它传输凭证。",
       termsLink: "使用条款",
+      blockNoteA: "被本站实例直接封禁的主机，无论配额如何都会返回 403——",
+      blockLink: "清单是公开的",
+      blockNoteB: "。",
       limitsTitle: "每日配额（UTC）",
       limitOrigin: "每个调用站点",
       limitHost: "每个目标站点",

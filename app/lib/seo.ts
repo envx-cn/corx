@@ -349,7 +349,7 @@ export function corsTesterJsonLd(opts: {
  * content — and an open proxy indexed under our hostname is exactly the SEO
  * pollution this file exists to prevent), the admin console and its API.
  */
-const DISALLOW = ["/console", "/api", "/fetch", "/proxy", "/health", "/demo"] as const;
+const DISALLOW = ["/console", "/api", "/fetch", "/proxy", "/health", "/demo", "/blocked"] as const;
 
 /**
  * Answer engines allowed on purpose. `User-agent: *` already covers them, but

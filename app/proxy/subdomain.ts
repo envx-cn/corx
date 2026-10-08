@@ -33,6 +33,9 @@ import { extractTargetUrl } from "./guard.js";
 const RESERVED_LABELS = new Set([
   // Every top-level segment under app/routes (file router).
   "api",
+  // Public, operator-facing route (`/blocked`): without this, `blocked.<zone>`
+  // decodes to the hostname `blocked.com` and is proxied there.
+  "blocked",
   "compare",
   "console",
   "demo",

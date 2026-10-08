@@ -167,6 +167,23 @@ read that carried no new information. Blocking or unblocking through the console
 or the API clears the memo immediately; the window only applies to a row
 written straight into D1.
 
+**Published blocklist (`/blocked`).** A read-only public page listing the hosts
+this instance refuses to proxy for anyone, so a caller who gets a `403` can tell
+"this instance blocks it" from "the upstream did". It is deliberately
+**read-only**: there is no intake form and no unauthenticated write endpoint,
+because the blocklist is the operator's one-vote veto — an anonymous channel into
+it would let anyone who can get a human to click "approve" deny this deployment
+access to any domain. Only the hostname and the date are published; the
+operator's own `reason` note stays in the console. The page is `noindex` and
+absent from the sitemap (it is thin content, and for a proxy it would otherwise
+double as a "is X still reachable?" probe); it renders server-side with no
+islands and no public JSON endpoint, and never 500s — a database hiccup renders
+an empty list. It is linked from the footer of every public page, from the
+security section of `/docs`, and from the landing's public-key card right under
+the terms reminder — the two places a reader who just hit a `403` is actually
+looking. The landing page's own nav stays anchors-plus-`/docs` on purpose,
+because a moderation list is not a product destination.
+
 **JSONP (`?corx-callback=fn`)**
 
 When a strict CSP blocks `fetch`/XHR, or the page runs in a sandboxed

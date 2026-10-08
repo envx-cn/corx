@@ -7,6 +7,7 @@ import xSvg from "lucide-static/icons/x.svg?raw";
 import scaleSvg from "lucide-static/icons/scale.svg?raw";
 import fileTextIconSvg from "lucide-static/icons/file-text.svg?raw";
 import layoutDashboardSvg from "lucide-static/icons/layout-dashboard.svg?raw";
+import banSvg from "lucide-static/icons/ban.svg?raw";
 import { absUrl, jsonLd, OG_LOCALE } from "../lib/seo.js";
 import { GITHUB_URL } from "../lib/site-info.js";
 import type { Locale, TFunc } from "../lib/i18n/locale.js";
@@ -281,8 +282,15 @@ export function SiteNav(props: { links?: Child; locale?: Locale; t?: TFunc; lang
 /** Site footer: the dark band closing every public page. The brand column
     carries the wordmark, the tagline and the copyright + instance origin (one
     band, not a second divider line), and the links the page owes a reader —
-    terms, the machine-readable index, the source, the console — are iconised
-    so the row reads as four destinations rather than four similar words.
+    terms, the published blocklist, the machine-readable index, the source, the
+    console — are iconised so the row reads as destinations rather than a line
+    of similar words.
+ *
+ *   `/blocked` lives here rather than in any page's own nav: it is a page the
+ *   instance owes a reader who just got a 403, and this row is the one thing
+ *   every public page already carries. The landing's nav stays
+ *   anchors-plus-`/docs` on purpose (see _landing.tsx) — a moderation list is
+ *   not a product destination.
     `origin` (the public base URL) is appended to the copyright when known. */
 export function SiteFooter(props: { origin?: string; t?: TFunc }) {
   const t = props.t ?? ((k: string) => k);
@@ -304,6 +312,13 @@ export function SiteFooter(props: { origin?: string; t?: TFunc }) {
           <a href="/terms" class={linkClass}>
             <Lucide svg={scaleSvg} />
             {t("site.terms")}
+          </a>
+          {/* The instance's blocklist: hostname + date only, never the
+              operator's reason, and `noindex` — discoverability comes from here
+              rather than from an index. */}
+          <a href="/blocked" class={linkClass}>
+            <Lucide svg={banSvg} />
+            {t("site.blocked")}
           </a>
           {/* Left as the literal filename: it is a machine-facing entry (the
               landing page's agents band explains it), and "llms.txt" is what
