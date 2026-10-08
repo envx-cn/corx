@@ -185,7 +185,20 @@ Files: `app/proxy/ip.ts`, `app/proxy/guard.ts`, `app/proxy/dns-check.ts`,
 - Injected **param-only** keys share the cache under the effective URL, so
   different injected values never collide; injected-header keys bypass.
 
-Files: `app/proxy/cache.ts`, `app/proxy/handler.ts`.
+- **Addressable for purge**: every entry stores an index — a sha256 digest of
+  the effective upstream URL plus the proxied hostname. Never the URL itself:
+  the cache key is built from the *post-injection* URL, which can carry an
+  injected secret, and R2 custom metadata is readable by anyone with bucket
+  access.
+- **`POST /api/cache/purge`** (`{url}` | `{host}` | `{all}`) and
+  `/console/cache` (bounded sample of the bucket + the 24 h hit ratio + purge
+  buttons, en/zh). Every scope walks the prefix — the key mixes the URL with the
+  response-rule fingerprint, so there is no key to compute for "every entry of
+  this URL" — bounded by the nightly sweep's page budget, reporting
+  `truncated` when the bucket is larger than that.
+
+Files: `app/proxy/cache.ts`, `app/proxy/handler.ts`,
+`app/routes/api/cache/purge.ts`, `app/routes/console/cache.tsx`.
 
 ## 6. Upstream injection (per key)
 

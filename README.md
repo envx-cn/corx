@@ -361,6 +361,16 @@ the caller's `Origin` before forwarding, so upstream can never vary on it.
 Responses carry `X-Corx-Cache: HIT/MISS`, `X-Corx-Target`, `X-Corx-Latency-Ms`.
 Preflight `OPTIONS` is answered on every route. Upstream `set-cookie` is stripped.
 
+**Purging.** Entries are keyed by a sha256 of the URL mixed with the key's
+response-rule fingerprint, so nothing could remove one on demand until each
+entry also carries an index: a **digest** of the effective URL (never the URL —
+the key is built from the *post-injection* URL, which can carry an injected
+secret, and R2 metadata is readable by anyone with bucket access) and the
+proxied hostname. `POST /api/cache/purge` takes one of `{url}`, `{host}`,
+`{all}`; every scope walks the prefix, bounded by the nightly sweep's page
+budget, and reports `truncated` when the bucket is larger than that.
+`/console/cache` shows the same state with buttons.
+
 **A HIT is a proper cache response.** It carries corx's own `Age` (seconds since
 the entry was stored, capped at its TTL) and a fresh `Date` — the upstream's
 `Age`/`Date` are never stored or replayed, so a browser or CDN downstream
@@ -1075,6 +1085,10 @@ Logs (per-request size, plus the **Via** — presented key / keyless / anon — 
 **Caller** origin that authorized it, with a 1h–7d lookback **Window** slider
 that re-filters on release) · Host
 blocklist (add inline — blocking a domain also covers its subdomains — remove behind a confirm dialog; logout confirms too) ·
+Response cache (what the R2 cache holds right now — entries, bytes, the 24 h
+hit ratio and the busiest hosts, all from a bounded sample that says so — plus
+purge by URL, by host, or everything behind a confirm dialog; the numbers
+refresh after a purge) ·
 Profile.
 
 Timestamps are rendered relative ("5m ago") with the exact UTC value on hover,
@@ -1205,6 +1219,21 @@ curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" https://corx.<you>.workers.
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"hostname":"evil.example","reason":"abuse"}' \
   https://corx.<you>.workers.dev/api/block-host
+
+# cache purge: drop cached responses before their TTL does. One of url / host / all:
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"url":"https://api.vendor.com/data"}' \
+  https://corx.<you>.workers.dev/api/cache/purge
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"host":"api.vendor.com"}' \
+  https://corx.<you>.workers.dev/api/cache/purge
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"all":true}' \
+  https://corx.<you>.workers.dev/api/cache/purge
+# → { "scope": …, "scanned": N, "deleted": N, "truncated": false }
+# `truncated: true` means the bucket is larger than one run's page budget (10 ×
+# 1000 keys): what was scanned was purged exactly, the rest waits for the next
+# run. /console/cache shows the same thing with buttons.
 ```
 
 ## Non-goals

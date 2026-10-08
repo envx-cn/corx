@@ -232,9 +232,44 @@ export async function getCached(bucket: R2Bucket, key: string): Promise<CachedEn
   };
 }
 
+/**
+ * The addressable index stored with every cache entry.
+ *
+ * Without it an entry is only findable by its own sha256 key, so "purge this
+ * URL" / "purge this host" could not exist (the key also mixes in the response
+ * fingerprint, and the mapping is not invertible). Neither field is the URL:
+ *
+ *  - `urlHash` is a digest of the effective upstream URL. The cache key is
+ *    built from the *post-injection* URL, which can carry an injected secret,
+ *    and R2 custom metadata is readable by anyone with bucket access — a
+ *    digest gives purge-by-URL without storing the secret (or a reversible
+ *    form of it).
+ *  - `host` is the proxied hostname: no credentials in a hostname, and enough
+ *    for purge-by-host and the console's "what is cached" view.
+ */
+export interface CacheIndex {
+  urlHash: string;
+  host: string;
+}
+
+/** Digest of the effective upstream URL — the purge-by-URL index value. */
+export async function cacheUrlHash(target: string): Promise<string> {
+  return sha256Hex(`corx:purge:v1:${target}`);
+}
+
+/** Hostname of a target URL, for the index and for purge-by-host. */
+export function cacheHost(target: string): string {
+  try {
+    return new URL(target).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
 export async function putCached(
   bucket: R2Bucket,
   key: string,
+  index: CacheIndex,
   res: Response,
   body: ArrayBuffer | Uint8Array,
   ttlSecs: number,
@@ -251,6 +286,8 @@ export async function putCached(
       headers: JSON.stringify(pickCacheable(res.headers)),
       storedAt: String(now),
       expiresAt: String(now + ttlSecs * 1000),
+      urlHash: index.urlHash,
+      host: index.host,
     },
   });
 }
@@ -382,4 +419,154 @@ export async function pruneExpiredCache(
     cursor = listed.cursor;
   }
   return { scanned, deleted, pages };
+}
+
+/** What to delete: everything, every entry for one host, or one URL. */
+export type PurgeScope = { all: true } | { host: string } | { url: string };
+
+/** Normalize a purge scope from untrusted input; null when it names nothing. */
+export function parsePurgeScope(input: {
+  all?: unknown;
+  host?: unknown;
+  url?: unknown;
+}): Promise<PurgeScope | null> | PurgeScope | null {
+  if (input.all === true || input.all === "true" || input.all === "1") return { all: true };
+  const url = String(input.url ?? "").trim();
+  if (url) {
+    try {
+      // Purge the *effective* URL, so a caller passes what they asked the proxy
+      // for; a caller who knows about injection rules purges by host instead.
+      return { url: new URL(url).toString() };
+    } catch {
+      return null;
+    }
+  }
+  const host = String(input.host ?? "").trim().toLowerCase().replace(/\.+$/, "");
+  if (host) {
+    return /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(host) ? { host } : null;
+  }
+  return null;
+}
+
+/**
+ * Delete cache entries matching a scope.
+ *
+ * Every scope except `all` still has to walk the prefix: an entry's key is a
+ * sha256 over the URL *and* the key's response-rule fingerprint, so there is no
+ * key to compute for "every entry of this URL". The walk is bounded by the same
+ * page budget as the nightly sweep (a purge is an operator action, not a
+ * background job, so it gets one run's worth of pages and reports
+ * `truncated` when the bucket is larger than that).
+ */
+export async function purgeCache(
+  bucket: R2Bucket,
+  scope: PurgeScope,
+  opts: { pageSize?: number; pageBudget?: number } = {},
+): Promise<{ scanned: number; deleted: number; truncated: boolean }> {
+  const pageSize = opts.pageSize ?? PRUNE_PAGE_SIZE;
+  const pageBudget = opts.pageBudget ?? PRUNE_PAGE_BUDGET;
+  const urlHash = "url" in scope ? await cacheUrlHash(scope.url) : null;
+  const host = "host" in scope ? scope.host : null;
+  const matches = (obj: R2Object): boolean => {
+    if (urlHash !== null) return obj.customMetadata?.["urlHash"] === urlHash;
+    if (host !== null) return (obj.customMetadata?.["host"] ?? "").toLowerCase() === host;
+    return true; // { all: true }
+  };
+  let cursor: string | undefined;
+  let scanned = 0;
+  let deleted = 0;
+  let truncated = false;
+  for (let page = 0; page < pageBudget; page++) {
+    let listed: R2Objects;
+    try {
+      listed = await bucket.list({ prefix: PREFIX, limit: pageSize, cursor });
+    } catch {
+      break;
+    }
+    scanned += listed.objects.length;
+    const doomed = listed.objects.filter(matches);
+    await Promise.all(doomed.map((obj) => bucket.delete(obj.key).catch(() => undefined)));
+    deleted += doomed.length;
+    if (!listed.truncated || !listed.cursor) break;
+    cursor = listed.cursor;
+    // Ran out of budget with pages still waiting.
+    if (page === pageBudget - 1) truncated = true;
+  }
+  return { scanned, deleted, truncated };
+}
+
+/** One entry in the console's sample of the cache (see `sampleCache`). */
+export interface CacheSampleEntry {
+  /** First 12 hex chars of the key — enough to correlate, not a URL. */
+  key: string;
+  host: string;
+  bytes: number;
+  storedAt: number;
+  expiresAt: number;
+  expired: boolean;
+}
+
+export interface CacheSample {
+  entries: CacheSampleEntry[];
+  bytes: number;
+  expired: number;
+  /** More keys exist than this call inspected (the page budget ran out). */
+  truncated: boolean;
+}
+
+/**
+ * A bounded look at what the cache currently holds: the first `limit` keys of
+ * the prefix, with per-host counts. Never a full scan — a page of keys is
+ * enough to show the shape of the cache and the purge page states plainly that
+ * the numbers are a sample.
+ */
+export async function sampleCache(bucket: R2Bucket, limit = 200): Promise<CacheSample> {
+  const now = Date.now();
+  const out: CacheSample = { entries: [], bytes: 0, expired: 0, truncated: false };
+  let cursor: string | undefined;
+  let seen = 0;
+  while (seen < limit) {
+    let listed: R2Objects;
+    try {
+      listed = await bucket.list({ prefix: PREFIX, limit: Math.min(PRUNE_PAGE_SIZE, limit - seen), cursor });
+    } catch {
+      break;
+    }
+    for (const obj of listed.objects) {
+      const bytes = Number(obj.size ?? 0);
+      const expiresAt = Number(obj.customMetadata?.["expiresAt"] ?? 0);
+      const expired = Number.isFinite(expiresAt) && expiresAt > 0 && expiresAt < now;
+      out.entries.push({
+        key: obj.key.slice(PREFIX.length, PREFIX.length + 12),
+        host: obj.customMetadata?.["host"] ?? "",
+        bytes,
+        storedAt: Number(obj.customMetadata?.["storedAt"] ?? 0),
+        expiresAt,
+        expired,
+      });
+      out.bytes += bytes;
+      if (expired) out.expired++;
+      seen++;
+    }
+    if (!listed.truncated || !listed.cursor) break;
+    cursor = listed.cursor;
+  }
+  out.truncated = seen >= limit;
+  return out;
+}
+
+/** Per-host entry counts and bytes, busiest first. */
+export function sampleByHost(sample: CacheSample, top = 8): Array<{ host: string; entries: number; bytes: number }> {
+  const map = new Map<string, { entries: number; bytes: number }>();
+  for (const entry of sample.entries) {
+    const host = entry.host || "(unknown)";
+    const row = map.get(host) ?? { entries: 0, bytes: 0 };
+    row.entries++;
+    row.bytes += entry.bytes;
+    map.set(host, row);
+  }
+  return [...map.entries()]
+    .map(([host, v]) => ({ host, ...v }))
+    .sort((a, b) => b.bytes - a.bytes)
+    .slice(0, top);
 }

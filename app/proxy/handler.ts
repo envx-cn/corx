@@ -33,6 +33,8 @@ import {
   ttlSeconds,
   shouldBypassCache,
   cachedResponse,
+  cacheHost,
+  cacheUrlHash,
   entryNotModified,
   notModifiedResponse,
   readBounded,
@@ -804,7 +806,13 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         // cache key already carries those rules, so a HIT reproduces this run
         // header-for-header instead of resurrecting the upstream's.
         const stored = new Response(null, { status: upstream.status, headers: resHeaders });
-        c.executionCtx.waitUntil(putCached(c.env.CACHE_BUCKET, cacheKey, stored, resBody, ttl).catch(() => undefined));
+        // The index makes the entry addressable for purge (by URL digest or
+        // host) — see `CacheIndex`: the URL itself must not be stored, because
+        // the key is built from the post-injection URL.
+        const index = { urlHash: await cacheUrlHash(fetchUrl.toString()), host };
+        c.executionCtx.waitUntil(
+          putCached(c.env.CACHE_BUCKET, cacheKey, index, stored, resBody, ttl).catch(() => undefined),
+        );
       }
 
       finish(upstream.status);
