@@ -106,6 +106,18 @@ export function normalizeBlockedHostname(raw: string): string | null {
  * host unblocked by hand while an isolate still has it memoized.
  */
 const BLOCKLIST_TTL_MS = 30_000;
+/**
+ * Hard cap on memo entries. The memo is keyed by hostname and an isolate never
+ * shrinks on its own, so without a bound a caller cycling distinct hostnames
+ * through the proxy (open by design in subdomain mode) grows the Map until the
+ * isolate hits its memory cap. 4096 is far above the working set of a real
+ * deployment — it is a backstop, not a cache-sizing knob.
+ *
+ * Eviction is a whole-Map clear: partial eviction would need an LRU structure
+ * and a clock we deliberately do not keep, and the cost of being wrong is only
+ * one extra D1 read per host until the next entry repopulates it.
+ */
+const BLOCKLIST_MEMO_MAX = 4096;
 const blocklistMemo = new Map<string, { at: number; blocked: boolean }>();
 
 /**
@@ -133,6 +145,10 @@ export async function checkDbBlocklist(db: D1Database, hostname: string): Promis
       .prepare(`SELECT hostname FROM blocked_hosts WHERE hostname IN (${placeholders}) LIMIT 1`)
       .bind(...candidates)
       .first();
+    // Drop the whole memo rather than let it grow without bound (see
+    // BLOCKLIST_MEMO_MAX). Blocking fails closed inside the memo, so a clear
+    // can only ever cost a re-read — never let a blocked host through.
+    if (blocklistMemo.size >= BLOCKLIST_MEMO_MAX) blocklistMemo.clear();
     blocklistMemo.set(memoKey, { at: Date.now(), blocked: Boolean(row) });
     if (row) throw new ProxyError(403, `Blocked host: ${hostname}`);
   } catch (err) {

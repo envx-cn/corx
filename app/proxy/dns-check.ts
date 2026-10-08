@@ -19,7 +19,10 @@ import { ipv4ToInt, ipv6ToBigInt, isPublicIp } from "./ip.js";
 
 const DOH_URL = "https://cloudflare-dns.com/dns-query";
 const RESOLVE_CACHE_TTL_MS = 30_000;
-
+/** Hard cap on resolve-cache entries — same reasoning as the blocklist memo in
+ *  guard.ts: the key is a hostname an attacker chooses, an isolate never
+ *  shrinks, and clearing wholesale only costs one extra DoH lookup per host. */
+const RESOLVE_CACHE_MAX = 4096;
 const resolveCache = new Map<string, { at: number; ips: string[] }>();
 
 async function resolveType(host: string, type: "A" | "AAAA"): Promise<string[]> {
@@ -55,6 +58,7 @@ export async function assertPublicHost(host: string): Promise<void> {
   try {
     const [a, aaaa] = await Promise.all([resolveType(h, "A"), resolveType(h, "AAAA")]);
     const ips = [...a, ...aaaa];
+    if (resolveCache.size >= RESOLVE_CACHE_MAX) resolveCache.clear();
     resolveCache.set(h, { at: Date.now(), ips });
     if (ips.some((ip) => !isPublicIp(ip))) {
       throw new ProxyError(403, `Blocked host (resolves to non-public IP): ${host}`);

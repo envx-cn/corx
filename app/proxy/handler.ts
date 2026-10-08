@@ -568,17 +568,20 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         // exhausted here, so this resolves immediately; a real upload blocks on
         // I/O and the race is over before the next byte lands. The pending read
         // is KEPT rather than abandoned — a reader has one read in flight at a
-        // time, and dropping the probe's result would swallow a chunk.
-        let pending: Promise<ReadableStreamReadResult<Uint8Array>> | null = reader
+        // time, and dropping the probe's result would swallow a chunk. Named
+        // `pendingRead`, not `pending`: the outer `pending` is the response
+        // header map, and shadowing it in a block that also builds a response is
+        // how a header silently stops being set.
+        let pendingRead: Promise<ReadableStreamReadResult<Uint8Array>> | null = reader
           .read()
           .catch(() => ({ done: true, value: undefined }));
         const nextRead = async (): Promise<ReadableStreamReadResult<Uint8Array>> => {
-          const result = pending ?? (await reader.read());
-          pending = null;
+          const result = pendingRead ?? (await reader.read());
+          pendingRead = null;
           return result;
         };
         const more = await Promise.race([
-          pending,
+          pendingRead,
           new Promise<{ done: false; value: undefined }>((resolve) =>
             setTimeout(() => resolve({ done: false, value: undefined }), 0),
           ),
