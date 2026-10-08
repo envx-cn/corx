@@ -304,6 +304,15 @@ export function DocsPage(props: {
           <Section id="security" title={t("docs.security.title")}>
             <p class="mt-2 text-sm text-base-content/75 leading-relaxed">{t("docs.security.lead")}</p>
             <p class="mt-3 text-sm text-base-content/75 leading-relaxed">{t("docs.security.ssrf")}</p>
+            {/* A 403 has two very different causes; this is the one that is not
+                visible from the error body. */}
+            <p
+              class="mt-3 text-sm text-base-content/75 leading-relaxed"
+              // The copy carries one link of its own (to /blocked), so it is a
+              // fragment rather than plain text — the only such string in the
+              // docs dictionary.
+              innerHTML={t("docs.security.blocklist")}
+            />
             <p class="mt-3 text-sm text-base-content/75 leading-relaxed">{t("docs.security.headers")}</p>
             <p class="mt-3 text-sm text-base-content/75 leading-relaxed">{t("docs.security.visibility")}</p>
             <p class="mt-3 text-sm text-base-content/75 leading-relaxed">{t("docs.security.trust")}</p>

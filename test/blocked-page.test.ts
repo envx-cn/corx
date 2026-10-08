@@ -130,6 +130,26 @@ describe("GET /blocked", () => {
   });
 });
 
+describe("discoverability", () => {
+  it("is linked from the footer of every public page", async () => {
+    // The footer is the one row each public page carries; the landing nav stays
+    // anchors-plus-/docs on purpose, so this is the entry point.
+    const html = await (await get("/blocked")).text();
+    expect(html).toContain('href="/blocked"');
+    expect(html).toContain("Blocked hosts");
+    const terms = await (await get("/terms")).text();
+    expect(terms).toContain('href="/blocked"');
+  });
+
+  it("is one sentence away from the docs security section, where a 403 hurts", async () => {
+    const docs = await get("/docs");
+    expect(docs.status).toBe(200);
+    const html = await docs.text();
+    expect(html).toContain("/blocked");
+    expect(html).toContain("403");
+  });
+});
+
 describe("subdomain mode", () => {
   it("never decodes the /blocked label as a target host", async () => {
     // The coupling #106 established for every new top-level route.

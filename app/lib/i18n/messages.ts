@@ -25,6 +25,7 @@ const en = {
     tagline: "CORS proxy, served from the edge",
     console: "Console",
     terms: "Terms",
+    blocked: "Blocked hosts",
     github: "GitHub",
     githubAria: "View the CORX source on GitHub",
     menu: "Menu",
@@ -471,6 +472,8 @@ const en = {
         "CORX is a CORS proxy, so it is a man in the middle by construction: whoever operates an instance can read, change and replay everything passing through it. The guards below reduce what an untrusted caller can reach; they do not make a shared instance safe for secrets.",
       ssrf:
         "SSRF guards: private, link-local, CGNAT, multicast and reserved IP literals are blocked, the host is resolved over DoH and re-checked so a name cannot rebind to a private address, and a D1 blocklist covers whole hosts and their subdomains. A trusted key can opt out of the IP/hostname and DNS checks; the blocklist and Cloudflare's own rules are never bypassed.",
+      blocklist:
+        "A 403 can also mean this instance refuses that host on purpose: the blocklist is published at <a href=\"/blocked\">/blocked</a> (hostname and date only — the reason is kept private). Self-hosted deployments keep the same list behind their own console.",
       headers:
         "Header hygiene: hop-by-hop and proxy-owned headers (`Host`, `Connection`, `X-Forwarded-For`, `CF-*`, …) are stripped on the way in and out, `Set-Cookie` is never forwarded, and the public tier strips `Cookie` and `Authorization` before forwarding.",
       visibility:
@@ -1328,6 +1331,7 @@ const zh: Messages = {
     tagline: "边缘 CORS 代理",
     console: "控制台",
     terms: "使用条款",
+    blocked: "已封禁主机",
     github: "GitHub",
     githubAria: "在 GitHub 上查看 CORX 源码",
     menu: "菜单",
@@ -1737,6 +1741,8 @@ const zh: Messages = {
         "CORX 是 CORS 代理，因此本质上就是中间人：运行实例的人可以读取、修改并重放经过它的所有内容。下面的防护只能限制不可信调用方能碰到什么，并不能让共享实例变得适合承载机密。",
       ssrf:
         "SSRF 防护：私有、链路本地、CGNAT、组播和保留网段的 IP 字面量会被拦截；主机名会通过 DoH 解析并复核，防止重绑定到内网；D1 黑名单按域名及其子域生效。可信的 key 可以关掉 IP/主机名检查和 DNS 检查，但黑名单与 Cloudflare 自身的规则永远不会被绕过。",
+      blocklist:
+        "403 也可能意味着本站实例有意拒绝该主机：黑名单公开在 <a href=\"/blocked\">/blocked</a>（只列主机名与日期，原因不公开）。自托管部署的同一份清单在自己的控制台里。",
       headers:
         "请求头卫生：逐跳头和代理自有头（`Host`、`Connection`、`X-Forwarded-For`、`CF-*` 等）在进出两个方向都会被剥掉，`Set-Cookie` 不会转发，公共档位在转发前剥离 `Cookie` 和 `Authorization`。",
       visibility:
