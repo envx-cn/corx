@@ -820,8 +820,17 @@ their new value out of the same `INSERT … ON CONFLICT … RETURNING count` tha
 writes them, so a dimension costs one round trip instead of an upsert plus a
 re-read. **Rows written did not change** (D1 bills rows, not statements) — what
 shrank is the read/latency side, from eight statements to six. The remaining
-write reduction is moving the per-minute limiter off D1 entirely (a Workers
-Rate Limiting binding), which would be per-isolate rather than global.
+write reduction is the per-minute limiter, the last row write on the miss path.
+The per-minute limiter is the piece you can move off D1, per key
+(`rateLimitMode: "edge"` on the console/API): a Workers Rate Limiting binding
+costs no write and — because `limit({ key })` namespaces the counter — keeps
+corx's bucket shapes, so per-IP stays per-IP. It gives up three things: the
+limit comes from the binding rather than the key's own field, counters are per
+isolate (real ceiling `N × limit`), and it cannot report remaining requests, so
+those keys send no `X-RateLimit-*` headers. It is opt-in per key, and a
+deployment with no binding configured falls back to the D1 window with a
+warning. Raise the quotas before reaching for it; FEATURES §4 has the
+comparison.
 
 **Logging is configurable, and the trade is real.** `LOG_REQUESTS=false` stops
 the `request_logs` insert at the source (`app/lib/db.ts`), so the proxy keeps
@@ -994,7 +1003,7 @@ vars are rewritten from the config file each time.
 | `CACHE_TTL_SECONDS` | `3600` | Default R2 TTL for GET 200s; also caps per-request `?corx-ttl=` |
 | `CACHE_STALE_SECONDS` | `0` | stale-if-error grace window (1–86400, `0` = off). When set, an entry lives `TTL + this` and is served **only** if the upstream fails — with `X-Corx-Cache: STALE` and `Warning: 110`. Off by default: serving a body past its TTL is a policy decision |
 | `TIMEOUT_MS` | `30000` | Upstream timeout |
-| `RATE_LIMIT_PER_MIN` | `60` | Per key (or per IP) per minute — cache hits are free |
+| `RATE_LIMIT_PER_MIN` | `60` | Per key (or per IP) per minute — cache hits are free. Fixed 1-minute window in D1, deliberately global: the counter is a row write per cache miss. A key can opt into the `RATE_LIMITER` binding instead (see below and FEATURES §4) |
 | `MAX_BODY_BYTES` | `10485760` | Max forwarded request body. A declared oversized upload is refused before anything is read; an upload that is still arriving is **streamed** (with the cap enforced as it flows, so the upstream connection opens before the caller finishes sending), and only a body that has already been read in full is held in memory — small JSON/form posts, which keep the `413`-before-forwarding and re-sendable-on-`307` behaviour. An unreadable body is rejected, never forwarded empty. A `307`/`308` for a *streamed* body is handed back to the caller rather than re-sent, since re-sending a consumed body is impossible |
 | `LOG_REQUESTS` | `true` | `false`/`0`/`off`/`no` writes **nothing** to `request_logs`: no per-request rows, no per-day trend. Rate limiting, quota headers and `X-Corx-*` markers are unaffected. The hosted instance logs (it says so in /terms); a self-hosted deployment may not want to |
 | `LOG_RETENTION_DAYS` | `30` | Days of raw `request_logs` kept before the cron prune (1–365; junk falls back to 30). The daily rollup (`stats_daily`) follows the same window, and the console's stats read raw rows only while they exist — a shorter value means the trend comes from the rollup sooner |
@@ -1007,6 +1016,36 @@ vars are rewritten from the config file each time.
 | `PUBLIC_KEY` (secret) | `""` | Raw value of the public-tier key, rendered on the landing page (public by design — a secret only to keep deployment values out of the repo; D1 stores only its hash). Empty = no public key advertised |
 | `PUBLIC_CACHE_TTL_SECONDS` | `300` | Default R2 TTL for public-tier GETs; public keys reject `corx-ttl` |
 | `DEMO_KEY` (secret) | `""` | Raw value of the injection-demo key shown on the landing page. Its host allowlist must cover this deployment (that is also the check that hides the demo), and its rules inject a fake credential into `/demo/echo` — see [See secret injection work](#see-secret-injection-work) |
+
+### The optional edge rate limiter
+
+A key whose limiter is set to **edge** needs a Workers Rate Limiting binding. It
+is deliberately *not* in `wrangler.jsonc`: a namespace id belongs to one
+deployment, and a deployment that never sets one keeps metering in D1 (with a
+warning if a key asks for edge).
+
+```jsonc
+// wrangler.jsonc — per deployment
+"ratelimits": [
+  {
+    "name": "RATE_LIMITER",
+    "namespace_id": "<a uuid or number unique to this deployment>",
+    // ONE number for every edge key; `rate_limit_per_min` is not consulted
+    // in this mode. Period is 10 or 60 seconds.
+    "simple": { "limit": 60, "period": 60 }
+  }
+]
+```
+
+What edge mode changes, in one paragraph: the counter becomes per-isolate (the
+real ceiling is `N × limit` for `N` isolates serving the key), the limit is the
+binding's rather than the key's own field, and because the binding answers
+`success` only, those responses carry **no** `X-RateLimit-Limit` /
+`X-RateLimit-Remaining` headers. Bucket shapes are preserved — the per-key /
+per-IP / per-`origin+IP` identity is handed to the binding, so one caller
+exhausting their bucket does not affect another. If the binding is absent or
+errors, corx falls back to the D1 window rather than letting the key through
+unmetered. See FEATURES §4.
 
 ### Rotating `INJECTION_KEK`
 

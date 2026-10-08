@@ -124,6 +124,27 @@ Files: `app/lib/auth.ts`, `app/lib/admin.ts`, `app/routes/api/keys*`,
   free; `X-RateLimit-Limit` + `X-RateLimit-Remaining` on miss responses;
   fail-open. The counter is one statement — `INSERT … ON CONFLICT … RETURNING
   count` — not an upsert plus a re-read.
+- **Two limiters, per key (#118).** `rate_limit_mode` is `d1` (default — the
+  global D1 window: one number every isolate agrees on, one row write per cache
+  miss) or `edge` (a Workers Rate Limiting binding: no D1 write, counted
+  per isolate). Because `limit({ key })` namespaces the counter, the bucket key
+  is handed over verbatim, so per key / per IP / per `origin + IP` remain their
+  own counters rather than collapsing into one pool. Edge mode gives up three
+  things, which is why it is a per-key choice:
+  1. the limit is the binding's `simple.limit`, not this key's
+     `rate_limit_per_min` — every edge key shares one number;
+  2. counters are per isolate, so the real ceiling is `N × limit` for the `N`
+     isolates serving the key;
+  3. the binding reports only `success`, so `X-RateLimit-Limit` /
+     `X-RateLimit-Remaining` are **omitted** rather than invented.
+
+  Both fail open, and edge mode **degrades to the D1 window** rather than
+  failing closed: a missing `RATE_LIMITER` binding (a deployment that never
+  configured one) or a binding that throws is a once-per-isolate `console.warn`,
+  never a new way for the proxy to be unmetered. The binding is deliberately not
+  in `wrangler.jsonc` — a namespace id is a per-deployment value, and every
+  deployment that has not set one keeps metering in D1.
+
 - Public-tier daily quotas (UTC days) per calling `Origin`, per target host
   and per key, checked *before* the cache so hits consume budget too; over cap
   → `429` + `Retry-After` + `{ scope, limit, resetAt }`; announced via
@@ -678,12 +699,14 @@ flagged has been fixed below.
 
 1. **HLS/DASH playlists** with absolute segment URLs break out of the proxy;
    relative URLs (or subdomain mode) work.
-2. **Rate limiting is fixed-window** (D1-backed, fail-open) — simple and
-   cross-isolate, but a burst can straddle a window boundary. The counter is one
-   statement per miss (v0.2.0), yet it is still a D1 row write per request, and
-   the only way to remove that is to move the limiter off D1 to a Workers Rate
-   Limiting binding — which is per-isolate rather than global, so it is an
-   opt-in product decision, not a drop-in change.
+2. **Rate limiting is fixed-window, and the edge mode is approximate.** The D1
+   limiter (default) is global and exact but costs one row write per cache miss
+   and lets a burst straddle a window boundary. The opt-in `edge` limiter costs
+   no write but counts **per isolate** (so the real ceiling is `N × limit`), takes
+   its limit from the deployment's binding rather than from the key's own field,
+   and cannot report remaining requests — so it sends no `X-RateLimit-*` headers
+   at all. Neither mode is wrong; they answer different questions, and §4 says
+   which to pick.
 3. **Public-tier quotas fail open too.** A D1 write error means the request is
    allowed; the total cap is sized under the write budget so that state should
    not arise from proxied traffic, but it is not a hard guarantee. A public key

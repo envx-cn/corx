@@ -29,6 +29,13 @@ export interface Env {
   TIMEOUT_MS?: string;
   /** Default rate limit per key/IP per minute. */
   RATE_LIMIT_PER_MIN?: string;
+  /**
+   * Workers Rate Limiting binding, used only by keys whose `rate_limit_mode`
+   * is `'edge'`. Deliberately not configured in `wrangler.jsonc`: a namespace
+   * id is a per-deployment value, and a deployment that never sets this binding
+   * keeps the D1 limiter for every key.
+   */
+  RATE_LIMITER?: RateLimit;
   /** Max proxied request body in bytes. */
   MAX_BODY_BYTES?: string;
   /** Admin bearer token (set via `wrangler secret put ADMIN_TOKEN`). */
@@ -77,6 +84,12 @@ export interface ApiKeyRow {
   ip_check: number;
   /** 1 (default) = run the DoH resolve-and-classify check for this key. */
   dns_check: number;
+  /**
+   * Which rate limiter meters this key: `'d1'` (default — the global D1 fixed
+   * window) or `'edge'` (a Workers Rate Limiting binding, per isolate). See
+   * migration 0015 for the three things edge mode gives up.
+   */
+  rate_limit_mode: string;
   /** JSON array of variables ({name,value}); see app/proxy/inject.ts. */
   vars: string | null;
   /** JSON array of upstream header rules. */

@@ -20,6 +20,8 @@ export interface KeyFormValues {
   noCache: boolean;
   ipCheck: boolean;
   dnsCheck: boolean;
+  /** Which limiter meters this key: "d1" (global window) or "edge" (binding). */
+  rateLimitMode: string;
   keyless: boolean;
   /** Per-key scope (migration 0014): blank = no restriction. */
   allowedMethods: string;
@@ -44,6 +46,7 @@ export function blankKeyForm(): KeyFormValues {
     noCache: false,
     ipCheck: true,
     dnsCheck: true,
+    rateLimitMode: "d1",
     keyless: false,
     allowedMethods: "",
     allowedPaths: "",
@@ -99,6 +102,7 @@ export function readKeyForm(form: Record<string, unknown>): KeyFormValues {
     // `checks` gates the switches that must default to ON; the scope fields are
     // plain text, so a post without them (scripts) simply sets no restriction.
     requireHttps: on("requireHttps"),
+    rateLimitMode: String(form["rateLimitMode"] ?? "d1") === "edge" ? "edge" : "d1",
     allowedMethods: String(form["allowedMethods"] ?? ""),
     allowedPaths: String(form["allowedPaths"] ?? ""),
     allowedCidrs: String(form["allowedCidrs"] ?? ""),
@@ -132,6 +136,7 @@ export function valuesFromKeyRow(k: KeyRow): KeyFormValues {
     noCache: !!k.no_cache,
     ipCheck: !!k.ip_check,
     dnsCheck: !!k.dns_check,
+    rateLimitMode: k.rate_limit_mode === "edge" ? "edge" : "d1",
     keyless: !!k.keyless,
     allowedMethods: k.allowed_methods ?? "",
     allowedPaths: k.allowed_paths ?? "",
@@ -155,6 +160,7 @@ export function policyUpdate(values: KeyFormValues): KeyUpdate {
     noCache: values.noCache,
     ipCheck: values.ipCheck,
     dnsCheck: values.dnsCheck,
+    rateLimitMode: values.rateLimitMode,
     keyless: values.keyless,
     allowedMethods: values.allowedMethods,
     allowedPaths: values.allowedPaths,
@@ -214,6 +220,10 @@ export interface PolicyI18n {
   dailyLimitPerHost: string;
   dailyLimitTotal: string;
   dailyLimitPh: string;
+  rateLimitMode: string;
+  rateLimitModeD1: string;
+  rateLimitModeEdge: string;
+  rateLimitModeHint: string;
   scope: string;
   allowedMethods: string;
   allowedMethodsPh: string;
@@ -266,6 +276,10 @@ export function policyLabels(
     dailyLimitPerHost: t("console.keys.dailyLimitPerHost"),
     dailyLimitTotal: t("console.keys.dailyLimitTotal"),
     dailyLimitPh: t("console.keys.dailyLimitPh"),
+    rateLimitMode: t("console.keys.rateLimitMode"),
+    rateLimitModeD1: t("console.keys.rateLimitModeD1"),
+    rateLimitModeEdge: t("console.keys.rateLimitModeEdge"),
+    rateLimitModeHint: t("console.keys.rateLimitModeHint"),
     scope: t("console.keys.scope"),
     allowedMethods: t("console.keys.allowedMethods"),
     allowedMethodsPh: t("console.keys.allowedMethodsPh"),
@@ -332,6 +346,21 @@ export function PolicyBasics(props: { values: KeyFormValues; labels: PolicyI18n 
           class="input input-bordered w-full"
         />
         <p class="mt-1 text-xs text-base-content/75">{labels.rateDefault}</p>
+      </Field>
+      <Field label={labels.rateLimitMode}>
+        <select
+          name="rateLimitMode"
+          class="select select-bordered w-full"
+          title={labels.rateLimitModeHint}
+        >
+          <option value="d1" selected={v.rateLimitMode !== "edge"}>
+            {labels.rateLimitModeD1}
+          </option>
+          <option value="edge" selected={v.rateLimitMode === "edge"}>
+            {labels.rateLimitModeEdge}
+          </option>
+        </select>
+        <p class="mt-1 text-xs text-base-content/75">{labels.rateLimitModeHint}</p>
       </Field>
       <Field label={labels.allowedOrigins} class="sm:col-span-2">
         <input
