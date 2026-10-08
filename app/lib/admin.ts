@@ -513,6 +513,8 @@ export interface KeyRow {
   allowed_hosts: string | null;
   keyless: number;
   tier: string;
+  /** "d1" (default) | "edge" — see migration 0015. */
+  rate_limit_mode: string;
   daily_limit_per_origin: number | null;
   daily_limit_per_host: number | null;
   daily_limit_total: number | null;
@@ -530,7 +532,7 @@ export interface KeyRow {
 export async function queryKeys(db: D1Database): Promise<KeyRow[]> {
   const rows = await db
     .prepare(
-      "SELECT id, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, response_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, allowed_methods, allowed_paths, require_https, allowed_cidrs, expires_at, created_at, revoked_at FROM api_keys ORDER BY created_at DESC",
+      "SELECT id, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, rate_limit_mode, vars, header_rules, param_rules, response_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, allowed_methods, allowed_paths, require_https, allowed_cidrs, expires_at, created_at, revoked_at FROM api_keys ORDER BY created_at DESC",
     )
     .all<KeyRow>();
   return rows.results;
@@ -540,7 +542,7 @@ export async function queryKeys(db: D1Database): Promise<KeyRow[]> {
 export async function queryKeyById(db: D1Database, id: string, kek?: string): Promise<ApiKeyRow | null> {
   const row = await db
     .prepare(
-      "SELECT id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, response_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, allowed_methods, allowed_paths, require_https, allowed_cidrs, expires_at, created_at, revoked_at FROM api_keys WHERE id = ?",
+      "SELECT id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, rate_limit_mode, vars, header_rules, param_rules, response_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, allowed_methods, allowed_paths, require_https, allowed_cidrs, expires_at, created_at, revoked_at FROM api_keys WHERE id = ?",
     )
     .bind(id)
     .first<ApiKeyRow>();
@@ -577,6 +579,8 @@ export interface KeyInput {
   ipCheck?: boolean;
   /** Run the DoH resolve-and-classify check (default true). */
   dnsCheck?: boolean;
+  /** Which limiter meters this key: "d1" (default) or "edge" (the binding). */
+  rateLimitMode?: unknown;
   /** Allowed origins may use this key without presenting it (keyless access). */
   keyless?: boolean;
   /** Per-key scope: CSV of methods / path prefixes / caller CIDRs, https-only,
@@ -636,6 +640,21 @@ function parseRateLimit(raw: unknown): number | null {
     throw new ProxyError(400, "Rate limit must be a positive integer (blank = global default)");
   }
   return n;
+}
+
+/**
+ * Which limiter meters a key: `"d1"` (default) or `"edge"`.
+ *
+ * Anything else is a 400 rather than a silent fallback — a key that looks like
+ * it is edge-metered but is not is exactly the kind of misconfiguration that
+ * only shows up under load.
+ */
+export function normalizeRateLimitMode(raw: unknown): string {
+  if (raw === undefined || raw === null || raw === "" || raw === false) return "d1";
+  if (raw === true) return "edge"; // the console form's boolean switch
+  const mode = String(raw).trim().toLowerCase();
+  if (mode === "d1" || mode === "edge") return mode;
+  throw new ProxyError(400, 'Rate limit mode must be "d1" or "edge"');
 }
 
 /** Daily quota input: blank/null → null (no cap), a positive integer otherwise. */
@@ -887,7 +906,7 @@ export async function createApiKey(db: D1Database, input: KeyInput, kek?: string
 
   await db
     .prepare(
-      "INSERT INTO api_keys (id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, response_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, allowed_methods, allowed_paths, require_https, allowed_cidrs, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO api_keys (id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, rate_limit_mode, vars, header_rules, param_rules, response_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, allowed_methods, allowed_paths, require_https, allowed_cidrs, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(
       id,
@@ -899,6 +918,7 @@ export async function createApiKey(db: D1Database, input: KeyInput, kek?: string
       input.noCache ? 1 : 0,
       ipCheck,
       dnsCheck,
+      normalizeRateLimitMode(input.rateLimitMode),
       stored.vars,
       stored.headerRules,
       stored.paramRules,
@@ -930,6 +950,8 @@ export interface KeyUpdate {
   noCache?: boolean;
   ipCheck?: boolean;
   dnsCheck?: boolean;
+  /** "d1" (default) | "edge" — see KeyInput. */
+  rateLimitMode?: unknown;
   keyless?: boolean;
   /** Per-key scope — see KeyInput ("" / false / null clears to "no restriction"). */
   allowedMethods?: string;
@@ -1041,6 +1063,10 @@ export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate
   if (update.dnsCheck !== undefined) {
     sets.push("dns_check = ?");
     values.push(update.dnsCheck ? 1 : 0);
+  }
+  if (update.rateLimitMode !== undefined) {
+    sets.push("rate_limit_mode = ?");
+    values.push(normalizeRateLimitMode(update.rateLimitMode));
   }
   if (touchesInjection) {
     parts = buildInjection(update, readStoredInjection(current));

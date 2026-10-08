@@ -973,6 +973,11 @@ const en = {
       dailyLimitPerOrigin: "Per origin / day",
       dailyLimitPerHost: "Per target host / day",
       dailyLimitTotal: "Total / day (required)",
+      rateLimitMode: "Limiter",
+      rateLimitModeD1: "D1 window (global)",
+      rateLimitModeEdge: "Edge binding (per isolate)",
+      rateLimitModeHint:
+        "The edge limiter costs no D1 write, but its limit comes from the deployment's binding rather than this key's field, it counts per isolate, and it cannot report how many requests are left — so no X-RateLimit-* headers. Without a RATE_LIMITER binding it falls back to the D1 window.",
       dailyLimitPh: "e.g. 3000",
       scope: "Scope",
       allowedMethods: "Allowed methods",
@@ -2199,6 +2204,11 @@ const zh: Messages = {
       dailyLimitPerOrigin: "每来源站点/天",
       dailyLimitPerHost: "每目标站点/天",
       dailyLimitTotal: "总量/天（必填）",
+      rateLimitMode: "限流器",
+      rateLimitModeD1: "D1 窗口（全局）",
+      rateLimitModeEdge: "边缘 binding（每 isolate）",
+      rateLimitModeHint:
+        "边缘限流不写 D1，但限额来自部署的 binding 而不是本字段；它按 isolate 计数，也无法报告剩余额度——因此不会返回 X-RateLimit-* 头。若未配置 RATE_LIMITER binding，会自动回退到 D1 窗口。",
       dailyLimitPh: "如 3000",
       scope: "作用域",
       allowedMethods: "允许的方法",

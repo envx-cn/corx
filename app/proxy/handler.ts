@@ -457,9 +457,15 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
           isPublic
           ? `rl:public:ip:${ip || "unknown"}`
           : `rl:${apiKeyId ?? `ip:${ip || "unknown"}`}`;
-    const { limit, remaining } = await checkRateLimit(c.env.DB, c.env, bucket, row?.rate_limit_per_min);
-    pending.set("X-RateLimit-Limit", String(limit));
-    pending.set("X-RateLimit-Remaining", String(remaining));
+    const rl = await checkRateLimit(c.env.DB, c.env, bucket, {
+      customLimit: row?.rate_limit_per_min,
+      mode: row?.rate_limit_mode,
+    });
+    // The edge limiter answers `success` only — it cannot report a limit or a
+    // remaining count, so the headers are omitted rather than invented. A client
+    // that reads them gets them from a d1-metered key, or from the console.
+    if (rl.limit !== null) pending.set("X-RateLimit-Limit", String(rl.limit));
+    if (rl.remaining !== null) pending.set("X-RateLimit-Remaining", String(rl.remaining));
 
     // Build upstream request.
     const timeoutMs = num(c.env.TIMEOUT_MS, 30_000);

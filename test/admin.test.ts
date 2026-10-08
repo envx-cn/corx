@@ -66,6 +66,7 @@ describe("createApiKey", () => {
       1, // no_cache
       0, // ip_check off
       1, // dns_check on
+      "d1", // rate_limit_mode: the global D1 window
       "[]", // vars
       "[]", // header_rules
       "[]", // param_rules
@@ -88,7 +89,7 @@ describe("createApiKey", () => {
     const { db, calls } = recordingDb();
     await createApiKey(db, { name: "app", rateLimitPerMin: null });
     expect(calls[0]?.values.slice(7)).toEqual([
-      1, 1, "[]", "[]", "[]", "[]", null, 0, "standard", null, null, null, null, null, 0, null, null,
+      1, 1, "d1", "[]", "[]", "[]", "[]", null, 0, "standard", null, null, null, null, null, 0, null, null,
     ]);
   });
 
@@ -101,12 +102,12 @@ describe("createApiKey", () => {
       allowedHosts: "api.vendor.com",
     });
     const values = calls[0]?.values ?? [];
-    expect(JSON.parse(String(values[9]))).toEqual([{ name: "TOKEN", value: "sk-1" }]);
-    expect(JSON.parse(String(values[10]))).toEqual([
+    expect(JSON.parse(String(values[10]))).toEqual([{ name: "TOKEN", value: "sk-1" }]);
+    expect(JSON.parse(String(values[11]))).toEqual([
       { action: "set", name: "Authorization", value: "Bearer ${TOKEN}" },
     ]);
-    expect(JSON.parse(String(values[12]))).toEqual([]); // response_rules
-    expect(values[13]).toBe("api.vendor.com");
+    expect(JSON.parse(String(values[13]))).toEqual([]); // response_rules
+    expect(values[14]).toBe("api.vendor.com");
 
     const withoutHosts = recordingDb();
     await expect(
@@ -135,7 +136,7 @@ describe("createApiKey", () => {
       keyless: true,
     });
     const insert = calls.find((c) => c.sql.includes("INSERT INTO api_keys"));
-    expect(insert?.values[14]).toBe(1); // keyless
+    expect(insert?.values[15]).toBe(1); // keyless
     const grant = calls.find((c) => c.sql.includes("INSERT OR IGNORE INTO keyless_origins"));
     expect(grant?.values).toEqual(["https://app.example", id]);
     expect(calls.some((c) => c.sql.includes("DELETE FROM keyless_origins"))).toBe(true);
@@ -324,13 +325,13 @@ describe("public tier policy", () => {
       dailyLimitPerHost: "5000",
       dailyLimitTotal: "15000",
     });
-    expect(calls[0]?.values.slice(15, 19)).toEqual(["public", 3000, 5000, 15000]);
+    expect(calls[0]?.values.slice(16, 20)).toEqual(["public", 3000, 5000, 15000]);
   });
 
   it("accepts a boolean tier from the console form", async () => {
     const { db, calls } = recordingDb();
     await createApiKey(db, { name: "public", tier: true, dailyLimitTotal: "15000" });
-    expect(calls[0]?.values[15]).toBe("public");
+    expect(calls[0]?.values[16]).toBe("public");
   });
 
   it("rejects injection on a public key", async () => {
@@ -411,7 +412,7 @@ describe("public tier policy", () => {
   it("leaves a standard key alone", async () => {
     const { db, calls } = recordingDb();
     await createApiKey(db, { name: "app" });
-    expect(calls[0]?.values[15]).toBe("standard");
+    expect(calls[0]?.values[16]).toBe("standard");
   });
 });
 
@@ -427,7 +428,7 @@ describe("secret encryption at rest", () => {
     const created = recordingDb();
     await createApiKey(created.db, { name: "app", vars: "TOKEN=sk-live", allowedHosts: "api.vendor.com" }, KEK);
     const insert = created.calls.find((c) => c.sql.startsWith("INSERT INTO api_keys"));
-    const storedVars = String(insert?.values[9]);
+    const storedVars = String(insert?.values[10]);
     expect(JSON.stringify(insert?.values)).not.toContain("sk-live");
     expect((JSON.parse(storedVars) as Array<{ value: string }>)[0]?.value.startsWith("enc:v1:")).toBe(true);
 
@@ -531,7 +532,7 @@ describe("host-scoped variables", () => {
       allowedHosts: "api.vendor.com",
     });
     const insert = calls.find((c) => c.sql.includes("INSERT INTO api_keys"));
-    expect(JSON.parse(String(insert?.values[9]))).toEqual([
+    expect(JSON.parse(String(insert?.values[10]))).toEqual([
       { name: "K", value: "1", client: true, hosts: ["api.vendor.com"] },
       { name: "PLAIN", value: "2" },
     ]);

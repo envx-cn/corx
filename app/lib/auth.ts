@@ -88,7 +88,7 @@ export async function lookupApiKey(db: D1Database, raw: string, kek?: string): P
   try {
     const row = await db
       .prepare(
-        `SELECT id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars,
+        `SELECT id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, rate_limit_mode, vars,
          header_rules, param_rules, response_rules, allowed_hosts, keyless, tier,
          allowed_methods, allowed_paths, require_https, allowed_cidrs, expires_at,
          daily_limit_per_origin, daily_limit_per_host, daily_limit_total, created_at, revoked_at

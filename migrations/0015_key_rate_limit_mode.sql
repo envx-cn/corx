@@ -1,0 +1,22 @@
+-- Per-key choice of rate limiter: the global D1 counter (default) or the edge.
+--
+-- The D1 limiter is one global fixed window: every isolate sees the same
+-- numbers, so a key's limit means the same thing everywhere, and the counter
+-- costs one row write per cache miss.
+--
+-- `edge` swaps that counter for a Workers Rate Limiting binding, which counts
+-- in-isolate and much cheaper. Because `limit({ key })` namespaces the counter,
+-- the bucket shapes survive — per key / per IP / per origin+IP are all still
+-- their own counter — but three things change, and that is why this is opt-in
+-- rather than a replacement:
+--
+--   1. the limit comes from the binding's `simple.limit`, not from this key's
+--      `rate_limit_per_min`, so every key in edge mode shares one number;
+--   2. counters are per isolate, so the effective ceiling is N x limit for N
+--      isolates serving the key;
+--   3. the binding reports only success, so `X-RateLimit-Limit` /
+--      `X-RateLimit-Remaining` are omitted rather than guessed.
+--
+-- Missing binding, or a binding that errors, falls back to the D1 limiter —
+-- the feature is a knob, never a new way to be unavailable.
+ALTER TABLE api_keys ADD COLUMN rate_limit_mode TEXT NOT NULL DEFAULT 'd1';
