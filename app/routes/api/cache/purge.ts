@@ -11,10 +11,17 @@ import { parsePurgeScope, purgeCache, PRUNE_PAGE_BUDGET, PRUNE_PAGE_SIZE } from 
  *
  *   { "url": "https://api.example.com/data" }  one URL (every entry of it)
  *   { "host": "api.example.com" }             every entry for that host
+ *   { "keyId": "<uuid>" }                      entries that key populated
  *   { "all": true }                            the whole cache
  *
  * The response says what was scanned, what was deleted, and whether the bucket
  * was larger than one run's page budget (`truncated`).
+ *
+ * `{keyId}` is scoped to the entries that key *populated* (see `CacheIndex.keyId`):
+ * a shared entry is dropped when its writer's key is revoked or deleted, and any
+ * other key that had been reusing it re-fetches once. That is why the console's
+ * revoke and delete purge automatically — an operator should never have to
+ * remember to clean up a body nobody can request through that key any more.
  */
 const app = new Hono<{ Bindings: Env }>();
 

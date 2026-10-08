@@ -365,11 +365,20 @@ Preflight `OPTIONS` is answered on every route. Upstream `set-cookie` is strippe
 response-rule fingerprint, so nothing could remove one on demand until each
 entry also carries an index: a **digest** of the effective URL (never the URL —
 the key is built from the *post-injection* URL, which can carry an injected
-secret, and R2 metadata is readable by anyone with bucket access) and the
-proxied hostname. `POST /api/cache/purge` takes one of `{url}`, `{host}`,
-`{all}`; every scope walks the prefix, bounded by the nightly sweep's page
-budget, and reports `truncated` when the bucket is larger than that.
-`/console/cache` shows the same state with buttons.
+secret, and R2 metadata is readable by anyone with bucket access), the proxied
+hostname, and the id of the key that **populated** it. `POST /api/cache/purge`
+takes one of `{url}`, `{host}`, `{keyId}`, `{all}`; every scope walks the
+prefix, bounded by the nightly sweep's page budget, and reports `truncated` when
+the bucket is larger than that. `/console/cache` shows the same state with
+buttons.
+
+The `{keyId}` scope is the *writer*, not every reader — recording readers would
+need a write on the cache-hit path (one R2 Class A op per hit, well over the
+free tier at real traffic), and putting the key in the cache key would end the
+cross-key sharing that makes the hit rate what it is. So an entry is dropped
+when the key that stored it is revoked or deleted, and another key that had
+been reusing it re-fetches once. The console's revoke and delete do this
+automatically and report the count, so nobody has to remember.
 
 **stale-if-error (`CACHE_STALE_SECONDS`, off by default).** When set, an
 expired entry is kept for that many extra seconds and used only when the
@@ -1253,6 +1262,12 @@ curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: applicati
   https://corx.<you>.workers.dev/api/cache/purge
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"host":"api.vendor.com"}' \
+  https://corx.<you>.workers.dev/api/cache/purge
+# by key: the entries that key populated. Revoking or deleting a key does this
+# for you (the console reports how many it dropped), since a body nobody can
+# request through that key any more is just storage you pay for.
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"keyId":"KEY_ID"}' \
   https://corx.<you>.workers.dev/api/cache/purge
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"all":true}' \

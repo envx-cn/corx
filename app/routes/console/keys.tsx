@@ -23,6 +23,7 @@ app.get("/", async (c) => {
       dir={c.req.query("dir") === "desc" ? "desc" : "asc"}
       lastUsed={await queryLastUsed(c.env.DB, logRetentionDays(c.env))}
       logDays={logRetentionDays(c.env)}
+      purged={purgedCount(c.req.query("purged"))}
       t={t}
     />,
     {
@@ -34,6 +35,16 @@ app.get("/", async (c) => {
 export default app;
 
 // ---------- Page markup (colocated) ----------
+
+/**
+ * How many cached entries the revoke/delete that redirected here dropped.
+ * Absent unless the query carries it: "0" is a real answer (nothing was
+ * cached) and deserves to be shown, while "no parameter" means "not a purge".
+ */
+function purgedCount(raw: string | undefined): number | undefined {
+  if (raw === undefined || !/^\d{1,9}$/.test(raw)) return undefined;
+  return Number(raw);
+}
 
 /** Sortable columns of the keys table; anything else falls back to created. */
 type KeySort = "name" | "rate" | "origins" | "lastUsed" | "created";
@@ -83,6 +94,8 @@ function KeysContent(props: {
   lastUsed?: Map<string, string>;
   /** Raw-log retention, for the last-used caveat. */
   logDays?: number;
+  /** Cached responses dropped by the revoke/delete that just happened (?purged=N). */
+  purged?: number;
   t: TFunc;
 }) {
   const { t } = props;
@@ -148,6 +161,13 @@ function KeysContent(props: {
   );
   return (
     <>
+      {/* The revoke/delete handlers purge what the key had cached, so say so —
+          an operator must never have to guess whether a side effect happened. */}
+      {props.purged !== undefined ? (
+        <div class="alert alert-info mb-4 text-sm" role="status">
+          {t("console.keys.purgedNotice", { n: props.purged })}
+        </div>
+      ) : null}
       <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
         <h1 class="text-3xl font-semibold tracking-tight">{t("console.title.keys")}</h1>
         <div class="flex items-center gap-2">

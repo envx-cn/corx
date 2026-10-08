@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { ApiKeyRow, Env } from "../../../lib/types.js";
 import { ProxyError } from "../../../lib/types.js";
 import { queryKeyById, updateApiKey } from "../../../lib/admin.js";
+import { purgeCache } from "../../../proxy/cache.js";
 import type { KeyUpdate } from "../../../lib/admin.js";
 import { applyHeaderRules, readStoredInjection, rulesToText, varMap } from "../../../proxy/inject.js";
 import type { InjectionParts } from "../../../proxy/inject.js";
@@ -123,7 +124,14 @@ app.post("/revoke", async (c) => {
   )
     .bind(id)
     .run();
-  return c.redirect(`/console/keys/${encodeURIComponent(id)}`, 302);
+  // The kill switch means "stops traffic", and a cached body is traffic this key
+  // populated: drop what it left behind instead of leaving it served (to another
+  // key, for up to `cacheTtl`) after the revoke. Non-fatal by contract.
+  const purged = await purgeCache(c.env.CACHE_BUCKET, { keyId: id }).then(
+    (r) => r.deleted,
+    () => 0,
+  );
+  return c.redirect(`/console/keys/${encodeURIComponent(id)}?purged=${purged}`, 302);
 });
 
 /** Hard delete — the dialog asks the admin to type the key's name first. */
@@ -142,7 +150,13 @@ app.post("/delete", async (c) => {
     );
   }
   await c.env.DB.prepare("DELETE FROM api_keys WHERE id = ?").bind(id).run();
-  return c.redirect("/console/keys", 302);
+  // Same reason as the revoke: the row is gone, so the bodies it populated are
+  // dead weight nobody asked for.
+  const purged = await purgeCache(c.env.CACHE_BUCKET, { keyId: id }).then(
+    (r) => r.deleted,
+    () => 0,
+  );
+  return c.redirect(`/console/keys?purged=${purged}`, 302);
 });
 
 export default app;
