@@ -1318,7 +1318,8 @@ browser ──► CORX (Worker)
               ├─ inject params (effective URL) + headers (rules always win)
               ├─ GET cache? ──► R2 corx-cache (header-rule keys bypass;
               │    auth'd requests & no-store/vary responses never cached)
-              ├─ rate limit (misses only) ──► D1 rate_windows (fixed window)
+              ├─ rate limit (misses only) ──► D1 rate_windows (fixed window,
+              │    one upsert + RETURNING count)
               ├─ fetch upstream (timeout, size caps, header filtering,
               │    manual redirects — every hop re-validated)
               └─ log ──► D1 request_logs (waitUntil — for a streamed

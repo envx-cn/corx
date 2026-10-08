@@ -669,7 +669,11 @@ flagged has been fixed below.
 1. **HLS/DASH playlists** with absolute segment URLs break out of the proxy;
    relative URLs (or subdomain mode) work.
 2. **Rate limiting is fixed-window** (D1-backed, fail-open) — simple and
-   cross-isolate, but a burst can straddle a window boundary.
+   cross-isolate, but a burst can straddle a window boundary. The counter is one
+   statement per miss (v0.2.0), yet it is still a D1 row write per request, and
+   the only way to remove that is to move the limiter off D1 to a Workers Rate
+   Limiting binding — which is per-isolate rather than global, so it is an
+   opt-in product decision, not a drop-in change.
 3. **Public-tier quotas fail open too.** A D1 write error means the request is
    allowed; the total cap is sized under the write budget so that state should
    not arise from proxied traffic, but it is not a hard guarantee. A public key
@@ -677,6 +681,25 @@ flagged has been fixed below.
 4. **The landing page reads D1 once per view** when `PUBLIC_KEY` is set (to
    render the enforced caps). Cheap, but it is a real read on a page that is
    otherwise static.
+5. **The blocklist memo has a bounded staleness window.** Answers are cached
+   per isolate for 30 s (v0.2.0), so a row written *straight into D1* — not
+   through the console or the API, which invalidate immediately — can take up
+   to that long to take effect on a warm isolate. Blocking and unblocking
+   through the app are instant.
+6. **Cache housekeeping is page-bounded.** The nightly sweep and every purge
+   walk at most `PRUNE_PAGE_BUDGET` pages (10 × 1000 keys) per run, so a bucket
+   much larger than that takes several nights, and a purge answers
+   `truncated: true` when there was more to walk. Exact for what it scanned,
+   eventual for the rest.
+7. **stale-if-error is opt-in and off by default** (`CACHE_STALE_SECONDS=0`).
+   A deployment that turns it on is choosing to serve bodies past their TTL
+   when an upstream fails — which is a policy decision, not a technical one, and
+   it says so on the response (`X-Corx-Cache: STALE`, `Warning: 110`).
+8. **A `307`/`308` for a *streamed* request body is handed back to the caller**
+   instead of being followed: the body was consumed by the hop that redirected.
+   A body that had already been read in full (the small-request path) is still
+   re-sent, and a browser following the redirect itself has the right CORS
+   semantics anyway.
 
 Product **non-goals** are a separate list from the limitations above — not gaps
 but deliberate scope decisions with their reasons: image transforms,
