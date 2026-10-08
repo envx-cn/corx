@@ -428,7 +428,10 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
 ## 9. Landing page, errors, branding & i18n
 
 - **`/blocked` (public, SSR, noindex)** — the instance's blocklist as a read-only
-  page: hostname + date only, never the operator's `reason` note. One URL with a
+  page: hostname + date only, never the operator's `reason` note. Linked from
+  the **footer of every public page** and from the **security section of
+  `/docs`** (where a reader who just hit a `403` is looking); deliberately not
+  from the landing nav, which is anchors-plus-`/docs` by design. One URL with a
   cookie-driven language (like `/terms`), no islands, no public JSON endpoint,
   capped at 200 rows with a count of the rest, and a D1 error renders an empty
   list rather than a 500. **Deliberately no intake form**: the blocklist is the
