@@ -285,6 +285,15 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     // Per-key SSRF opt-outs (api_keys.ip_check / dns_check, both default on).
     // Read the row before the guards so a key can skip them.
     const row = c.get("apiKey");
+    // Attribute the request to its key HERE, not further down: everything from
+    // here to the end of the try block can reject, and a rejection still gets a
+    // log row. Assigning after the first of those checks meant every 429/403 for
+    // an authenticated key was written with `api_key_id = NULL` — which splits
+    // one caller across two buckets in the logs and hides the key from the
+    // console's "Last used", the per-key log filter and the daily rollup's
+    // distinct-key count. Only the *gate order* matters below (the
+    // REQUIRE_API_KEY 401 keeps its place), not when we note who called.
+    apiKeyId = row?.id ?? null;
     // Public tier: the shared key users embed on their own sites. Reduced
     // feature set (GET/HEAD only, no cache control, no subdomain mode, no
     // credential forwarding) so the hosted instance stays generic — advanced
@@ -353,7 +362,6 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     }
 
     // Auth: optional unless REQUIRE_API_KEY=true (key resolved by apiKeyMiddleware).
-    apiKeyId = row?.id ?? null;
     if ((c.env.REQUIRE_API_KEY ?? "false").toLowerCase() === "true" && !apiKeyId) {
       throw new ProxyError(401, "Valid API key required (X-Api-Key, Authorization: Bearer, or ?corx-key=)");
     }
