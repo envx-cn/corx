@@ -31,6 +31,18 @@ const en = {
     ogAlt: "The CORX wordmark — CORS proxy, served from the edge",
     copyright: "© {year} CORX",
   },
+  blocked: {
+    title: "Blocked hosts",
+    lead:
+      "Hosts this instance will not proxy for anyone. A request to one of them answers 403 before any upstream call, from every key — including yours.",
+    headHost: "Host",
+    headSince: "Blocked since",
+    empty: "Nothing is blocked on this instance.",
+    more: "…and {n} more, not shown.",
+    why:
+      "Entries come from this instance's own moderation: complaints, abuse, or hosts the operator of a self-hosted deployment blocked on purpose. The reason for each one is kept private. If you run your own copy, the same list is one console click away.",
+    terms: "Terms of use",
+  },
   terms: {
     title: "Terms of use",
     updated: "Last updated {date}",
@@ -1321,6 +1333,17 @@ const zh: Messages = {
     menu: "菜单",
     ogAlt: "CORX 标识——边缘 CORS 代理",
     copyright: "© {year} CORX",
+  },
+  blocked: {
+    title: "已封禁的主机",
+    lead: "本站实例不会为任何人代理以下主机。对它们的请求会在回源之前直接返回 403，对所有 key 一视同仁——包括你自己的 key。",
+    headHost: "主机",
+    headSince: "封禁时间",
+    empty: "本实例没有封禁任何主机。",
+    more: "另有 {n} 条未展示。",
+    why:
+      "这些条目来自本站实例自己的处置：投诉、滥用，或自托管部署的运营者主动封禁。逐条原因不予公开。如果你自己部署一份，同一份清单就在控制台里。",
+    terms: "使用条款",
   },
   terms: {
     title: "使用条款",

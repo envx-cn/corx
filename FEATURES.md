@@ -427,6 +427,16 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
 
 ## 9. Landing page, errors, branding & i18n
 
+- **`/blocked` (public, SSR, noindex)** — the instance's blocklist as a read-only
+  page: hostname + date only, never the operator's `reason` note. One URL with a
+  cookie-driven language (like `/terms`), no islands, no public JSON endpoint,
+  capped at 200 rows with a count of the rest, and a D1 error renders an empty
+  list rather than a 500. **Deliberately no intake form**: the blocklist is the
+  operator's one-vote veto, so an anonymous write path into it is a way to have
+  someone else's domain denied here — publishing the list carries none of that
+  risk. `blocked` is in the subdomain `RESERVED_LABELS` so the label never
+  decodes as a target host.
+
 - Branded landing at `/` (plus `/zh`, `/en`): two-column hero — copy on the
   left, the animated **X panel** on the right (sticky through the try-it
   screen, desktop only, 10% brand red). Hovering the mark's geometry fires a
