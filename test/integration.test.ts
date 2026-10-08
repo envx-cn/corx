@@ -1829,8 +1829,9 @@ describe("console key form (integration)", () => {
 
     const ok = await post(`confirmName=my-app&csrf=${csrf}`);
     expect(ok.status).toBe(302);
-    // Back to the key's page, which now renders the revoked, read-only state.
-    expect(ok.headers.get("location")).toBe("/console/keys/key-1");
+    // Back to the key's page (with the cache-purge count it performed), which
+    // now renders the revoked, read-only state.
+    expect(ok.headers.get("location")).toBe("/console/keys/key-1?purged=0");
     const revoke = updates.find((u) => u.sql.includes("revoked_at"));
     expect(revoke, "revoke must set revoked_at").toBeDefined();
     expect(revoke?.values).toContain("key-1");

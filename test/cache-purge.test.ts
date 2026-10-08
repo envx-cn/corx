@@ -409,3 +409,238 @@ describe("/console/cache", () => {
     expect(store.size).toBe(0);
   });
 });
+/**
+ * #119 — per-key purge, done by recording the *writer* of an entry rather than
+ * every reader of it. Appending readers would need a read-modify-write on the
+ * hit path (an extra R2 Class A write per cache hit), which costs more than the
+ * problem; putting a keyId in the cache *key* would end cross-key sharing and
+ * the hit rate that comes with it.
+ */
+describe("purge by key", () => {
+  const entry = (key: string, index: { host?: string; keyId?: string }) => ({
+    key: `corx/v1/${key}`,
+    size: 128,
+    meta: {
+      status: "200",
+      headers: "{}",
+      storedAt: String(NOW - 1000),
+      expiresAt: String(NOW + 60_000),
+      urlHash: "",
+      host: index.host ?? "",
+      keyId: index.keyId ?? "",
+    },
+  });
+
+  it("removes only the entries that key populated", async () => {
+    const { bucket, remaining } = bucketMock([
+      entry("aaa", { keyId: "11111111-1111-1111-1111-111111111111" }),
+      entry("bbb", { keyId: "11111111-1111-1111-1111-111111111111" }),
+      entry("ccc", { keyId: "22222222-2222-2222-2222-222222222222" }),
+      entry("ddd", { keyId: "" }), // anonymous
+    ]);
+    const out = await purgeCache(bucket, { keyId: "11111111-1111-1111-1111-111111111111" });
+    expect(out.deleted).toBe(2);
+    expect([...remaining.keys()].sort()).toEqual([
+      "corx/v1/ccc",
+      "corx/v1/ddd", // shared/anonymous entries are never attributed to a key
+    ]);
+  });
+
+  it("never matches entries written before the field existed", async () => {
+    const legacy = {
+      key: "corx/v1/old",
+      size: 8,
+      meta: { status: "200", headers: "{}", storedAt: "0", expiresAt: String(NOW + 1000), urlHash: "", host: "" },
+    };
+    const { bucket, remaining } = bucketMock([legacy]);
+    expect((await purgeCache(bucket, { keyId: "11111111-1111-1111-1111-111111111111" })).deleted).toBe(0);
+    expect(remaining.size).toBe(1);
+  });
+
+  it("rejects a keyId that is not one", async () => {
+    expect(await parsePurgeScope({ keyId: "not-a-key" })).toBeNull();
+    expect(await parsePurgeScope({ keyId: "11111111-1111-1111-1111-111111111111" })).toEqual({
+      keyId: "11111111-1111-1111-1111-111111111111",
+    });
+  });
+});
+
+describe("entries record the key that populated them", () => {
+  it("stores the writer id on a MISS, and anonymous traffic stores none", async () => {
+    const store = new Map();
+    const env = appEnv(store);
+    stubUpstream();
+    const row = { id: "key-42", tier: "standard", keyless: 0, ip_check: 1, dns_check: 1 };
+    const withKey = {
+      ...env,
+      DB: {
+        prepare: (sql: string) => {
+          const stmt = {
+            bind: () => stmt,
+            run: async () => ({ meta: { changes: 1 } }),
+            first: async () =>
+              sql.includes("FROM api_keys")
+                ? row
+                : sql.includes("quota_counters") || sql.includes("rate_windows")
+                ? { count: 1 }
+                : null,
+            all: async () => ({ results: [] }),
+          };
+          return stmt;
+        },
+      },
+    } as unknown as Env;
+    const path = "/fetch?url=" + encodeURIComponent("https://api.vendor.com/data");
+
+    await worker.fetch(new Request(`https://corx.test${path}`, { headers: { "x-api-key": "corx_k" } }), withKey, ctx);
+    await flush();
+    const keyed = [...store.values()][0]!;
+    expect(keyed.customMetadata["keyId"]).toBe("key-42");
+
+    store.clear();
+    await worker.fetch(new Request(`https://corx.test${path}`), env, ctx);
+    await flush();
+    expect([...store.values()][0]!.customMetadata["keyId"]).toBe("");
+  });
+});
+
+describe("key lifecycle purges what the key had cached", () => {
+  /** D1 that answers the key row, plus records the revoke/delete. */
+  function keyDb(row: Record<string, unknown>) {
+    const updates: string[] = [];
+    return {
+      updates,
+      db: {
+        prepare: (sql: string) => {
+          const stmt = {
+            bind: () => stmt,
+            run: async () => {
+              updates.push(sql);
+              return { meta: { changes: 1 } };
+            },
+            first: async () => (sql.includes("FROM api_keys") ? row : null),
+            all: async () => ({ results: [] }),
+          };
+          return stmt;
+        },
+      },
+    };
+  }
+
+  const row = {
+    id: "key-42",
+    key_hash: "h",
+    name: "my-app",
+    rate_limit_per_min: null,
+    allowed_origins: null,
+    cache_ttl: null,
+    no_cache: 0,
+    ip_check: 1,
+    dns_check: 1,
+    vars: "[]",
+    header_rules: "[]",
+    param_rules: "[]",
+    response_rules: "[]",
+    allowed_hosts: null,
+    keyless: 0,
+    tier: "standard",
+    daily_limit_per_origin: null,
+    daily_limit_per_host: null,
+    daily_limit_total: null,
+    allowed_methods: null,
+    allowed_paths: null,
+    require_https: 0,
+    allowed_cidrs: null,
+    expires_at: null,
+    created_at: "2026-01-01T00:00:00.000Z",
+    revoked_at: null,
+  };
+
+  /** Bucket holding one entry per key id. */
+  function seededBucket() {
+    const store = new Map<string, { body: ArrayBuffer; customMetadata: Record<string, string> }>();
+    for (const [i, keyId] of ["key-42", "key-99", ""].entries()) {
+      store.set(`corx/v1/e${i}`, {
+        body: new ArrayBuffer(4),
+        customMetadata: {
+          status: "200",
+          headers: "{}",
+          storedAt: String(Date.now()),
+          expiresAt: String(Date.now() + 60_000),
+          urlHash: "",
+          host: "api.vendor.com",
+          keyId,
+        },
+      });
+    }
+    return appEnv(store).CACHE_BUCKET;
+  }
+
+  it("POST /api/keys/:id/revoke drops that key's entries and says how many", async () => {
+    const { db, updates } = keyDb(row);
+    const env = { ...appEnv(new Map()), DB: db, CACHE_BUCKET: seededBucket() } as unknown as Env;
+    const res = await worker.fetch(
+      new Request("https://corx.test/api/keys/key-42/revoke", {
+        method: "POST",
+        headers: { authorization: "Bearer test-token" },
+      }),
+      env,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, purged: 1 });
+    expect(updates.some((u) => u.includes("revoked_at"))).toBe(true);
+  });
+
+  it("a missing key is a 404 and purges nothing", async () => {
+    const { db } = keyDb(row);
+    const notFound = {
+      prepare: (sql: string) => {
+        const stmt = {
+          bind: () => stmt,
+          run: async () => ({ meta: { changes: 0 } }),
+          first: async () => (sql.includes("FROM api_keys") ? row : null),
+          all: async () => ({ results: [] }),
+        };
+        return stmt;
+      },
+    };
+    const env = { ...appEnv(new Map()), DB: notFound, CACHE_BUCKET: seededBucket() } as unknown as Env;
+    const res = await worker.fetch(
+      new Request("https://corx.test/api/keys/nope/revoke", {
+        method: "POST",
+        headers: { authorization: "Bearer test-token" },
+      }),
+      env,
+      ctx,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("the console delete purges too, and the keys list reports the count", async () => {
+    const { db, updates } = keyDb(row);
+    const env = { ...appEnv(new Map()), DB: db, CACHE_BUCKET: seededBucket() } as unknown as Env;
+    const session = await signSession("tester@example.com", "test-token");
+    const page = await worker.fetch(
+      new Request("https://corx.test/console/keys/key-42", { headers: { cookie: `corx_session=${session}` } }),
+      env,
+      ctx,
+    );
+    const csrf = (await page.text()).match(/name="csrf" value="([^"]+)"/)?.[1];
+    const res = await worker.fetch(
+      new Request("https://corx.test/console/keys/key-42/delete", {
+        method: "POST",
+        headers: {
+          cookie: `corx_session=${session}`,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({ csrf: csrf!, confirmName: "my-app" }).toString(),
+      }),
+      env,
+      ctx,
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/console/keys?purged=1");
+    expect(updates.some((u) => u.includes("DELETE FROM api_keys"))).toBe(true);
+  });
+});

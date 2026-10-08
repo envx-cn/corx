@@ -950,10 +950,11 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         // cache key already carries those rules, so a HIT reproduces this run
         // header-for-header instead of resurrecting the upstream's.
         const stored = new Response(null, { status: upstream.status, headers: resHeaders });
-        // The index makes the entry addressable for purge (by URL digest or
-        // host) — see `CacheIndex`: the URL itself must not be stored, because
-        // the key is built from the post-injection URL.
-        const index = { urlHash: await cacheUrlHash(fetchUrl.toString()), host };
+        // The index makes the entry addressable for purge (by URL digest, host
+        // or the key that populated it) — see `CacheIndex`: the URL itself must
+        // not be stored, because the cache key is built from the post-injection
+        // URL, and the writer id is free here because this write happens anyway.
+        const index = { urlHash: await cacheUrlHash(fetchUrl.toString()), host, keyId: apiKeyId ?? "" };
         c.executionCtx.waitUntil(
           putCached(c.env.CACHE_BUCKET, cacheKey, index, stored, resBody, ttl, staleGraceSecs(c.env)).catch(
             () => undefined,

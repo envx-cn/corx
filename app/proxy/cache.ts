@@ -292,6 +292,22 @@ async function readEntry(obj: R2ObjectBody): Promise<CachedEntry> {
 export interface CacheIndex {
   urlHash: string;
   host: string;
+  /**
+   * The key that *populated* this entry ("" for anonymous/keyless traffic).
+   *
+   * Recorded on write, not on read: appending every reader would need a
+   * read-modify-write on the hit path (an extra R2 Class A write per cache hit —
+   * ~450k/month at modest traffic, well over the free tier). So the attribution
+   * is "who stored this body", which costs nothing because `putCached` was
+   * writing this metadata anyway.
+   *
+   * The imprecision is deliberate and harmless: a shared entry is removed when
+   * its writer's key is deleted or revoked, and another key that had been
+   * reusing it re-fetches once. Cross-key sharing — and therefore the hit rate
+   * — is untouched, which is what putting a keyId in the cache *key* would have
+   * cost (see #119).
+   */
+  keyId: string;
 }
 
 /** Digest of the effective upstream URL — the purge-by-URL index value. */
@@ -334,6 +350,7 @@ export async function putCached(
       staleUntil: staleGraceSecs > 0 ? String(now + (ttlSecs + staleGraceSecs) * 1000) : "0",
       urlHash: index.urlHash,
       host: index.host,
+      keyId: index.keyId,
     },
   });
 }
@@ -488,14 +505,15 @@ export async function pruneExpiredCache(
   return { scanned, deleted, pages };
 }
 
-/** What to delete: everything, every entry for one host, or one URL. */
-export type PurgeScope = { all: true } | { host: string } | { url: string };
+/** What to delete: everything, a host's entries, one URL, or one key's entries. */
+export type PurgeScope = { all: true } | { host: string } | { url: string } | { keyId: string };
 
 /** Normalize a purge scope from untrusted input; null when it names nothing. */
 export function parsePurgeScope(input: {
   all?: unknown;
   host?: unknown;
   url?: unknown;
+  keyId?: unknown;
 }): Promise<PurgeScope | null> | PurgeScope | null {
   if (input.all === true || input.all === "true" || input.all === "1") return { all: true };
   const url = String(input.url ?? "").trim();
@@ -507,6 +525,13 @@ export function parsePurgeScope(input: {
     } catch {
       return null;
     }
+  }
+  // A key id (the writer of the entry, see `CacheIndex.keyId`). Kept
+  // deliberately narrow: it only ever compares against a stored uuid, so
+  // anything that is not one is a caller mistake worth a 400.
+  const keyId = String(input.keyId ?? "").trim();
+  if (keyId) {
+    return /^[0-9a-f-]{8,64}$/i.test(keyId) ? { keyId } : null;
   }
   const host = String(input.host ?? "").trim().toLowerCase().replace(/\.+$/, "");
   if (host) {
@@ -520,7 +545,8 @@ export function parsePurgeScope(input: {
  *
  * Every scope except `all` still has to walk the prefix: an entry's key is a
  * sha256 over the URL *and* the key's response-rule fingerprint, so there is no
- * key to compute for "every entry of this URL". The walk is bounded by the same
+ * key to compute for "every entry of this URL" or "every entry this key
+ * populated". The walk is bounded by the same
  * page budget as the nightly sweep (a purge is an operator action, not a
  * background job, so it gets one run's worth of pages and reports
  * `truncated` when the bucket is larger than that).
@@ -534,9 +560,13 @@ export async function purgeCache(
   const pageBudget = opts.pageBudget ?? PRUNE_PAGE_BUDGET;
   const urlHash = "url" in scope ? await cacheUrlHash(scope.url) : null;
   const host = "host" in scope ? scope.host : null;
+  const keyId = "keyId" in scope ? scope.keyId : null;
   const matches = (obj: R2Object): boolean => {
     if (urlHash !== null) return obj.customMetadata?.["urlHash"] === urlHash;
     if (host !== null) return (obj.customMetadata?.["host"] ?? "").toLowerCase() === host;
+    // Entries written before this field existed have no writer and are never
+    // attributed to a key; they age out through the nightly sweep.
+    if (keyId !== null) return (obj.customMetadata?.["keyId"] ?? "") === keyId;
     return true; // { all: true }
   };
   let cursor: string | undefined;

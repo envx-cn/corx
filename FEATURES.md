@@ -205,10 +205,20 @@ Files: `app/proxy/ip.ts`, `app/proxy/guard.ts`, `app/proxy/dns-check.ts`,
   different injected values never collide; injected-header keys bypass.
 
 - **Addressable for purge**: every entry stores an index — a sha256 digest of
-  the effective upstream URL plus the proxied hostname. Never the URL itself:
-  the cache key is built from the *post-injection* URL, which can carry an
-  injected secret, and R2 custom metadata is readable by anyone with bucket
-  access.
+  the effective upstream URL, the proxied hostname, and the id of the key that
+  *populated* it. Never the URL itself: the cache key is built from the
+  *post-injection* URL, which can carry an injected secret, and R2 custom
+  metadata is readable by anyone with bucket access.
+- **Per-key purge is by *writer*, not by reader.** Recording every reader would
+  need a read-modify-write on the hit path (an extra R2 Class A write per cache
+  hit — over the free tier at real traffic), and a `keyId` in the cache key would
+  end cross-key sharing and the hit rate that comes with it. The attribution is
+  therefore "who stored this body", recorded for free on a write that happens
+  anyway, and **revoke/delete purge automatically** (console +
+  `POST /api/keys/:id/revoke`, which reports the count). A shared entry goes
+  when its writer does; another key that had been reusing it re-fetches once.
+  Entries written before the field existed cannot be attributed and age out
+  through the sweep.
 - **stale-if-error** (`CACHE_STALE_SECONDS`, `0` = off): an expired entry is
   kept for that many extra seconds and served **only** when the upstream
   answers `5xx`, fails or times out — `X-Corx-Cache: STALE` + `Warning: 110`,
@@ -217,7 +227,7 @@ Files: `app/proxy/ip.ts`, `app/proxy/guard.ts`, `app/proxy/dns-check.ts`,
   cache path (authenticated, `Range`, JSONP, header-rule key); the blocklist is
   still checked first, so a host blocked after the fact wins. Off by default —
   serving a body past its TTL is a policy decision.
-- **`POST /api/cache/purge`** (`{url}` | `{host}` | `{all}`) and
+- **`POST /api/cache/purge`** (`{url}` | `{host}` | `{keyId}` | `{all}`) and
   `/console/cache` (bounded sample of the bucket + the 24 h hit ratio + purge
   buttons, en/zh). Every scope walks the prefix — the key mixes the URL with the
   response-rule fingerprint, so there is no key to compute for "every entry of
@@ -686,16 +696,21 @@ flagged has been fixed below.
    through the console or the API, which invalidate immediately — can take up
    to that long to take effect on a warm isolate. Blocking and unblocking
    through the app are instant.
-6. **Cache housekeeping is page-bounded.** The nightly sweep and every purge
+6. **A key purge is scoped to the entries that key stored**, not to every entry
+   it ever read: with cross-key sharing, a body another key populated stays
+   (correctly) after this key is gone, while a body *this* key stored is dropped
+   even if another key was also reading it — that one refetches. Entries written
+   before the writer field existed cannot be attributed at all.
+7. **Cache housekeeping is page-bounded.** The nightly sweep and every purge
    walk at most `PRUNE_PAGE_BUDGET` pages (10 × 1000 keys) per run, so a bucket
    much larger than that takes several nights, and a purge answers
    `truncated: true` when there was more to walk. Exact for what it scanned,
    eventual for the rest.
-7. **stale-if-error is opt-in and off by default** (`CACHE_STALE_SECONDS=0`).
+8. **stale-if-error is opt-in and off by default** (`CACHE_STALE_SECONDS=0`).
    A deployment that turns it on is choosing to serve bodies past their TTL
    when an upstream fails — which is a policy decision, not a technical one, and
    it says so on the response (`X-Corx-Cache: STALE`, `Warning: 110`).
-8. **A `307`/`308` for a *streamed* request body is handed back to the caller**
+9. **A `307`/`308` for a *streamed* request body is handed back to the caller**
    instead of being followed: the body was consumed by the hop that redirected.
    A body that had already been read in full (the small-request path) is still
    re-sent, and a browser following the redirect itself has the right CORS
