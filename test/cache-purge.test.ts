@@ -262,7 +262,11 @@ describe("POST /api/cache/purge", () => {
       ctx,
     );
     expect(res.status).toBe(400);
-    expect(await res.json()).toMatchObject({ error: expect.stringContaining("exactly one") });
+    // keyId is a real scope alongside url/host/all, so the 400 must not talk
+    // callers out of using it.
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("exactly one");
+    expect(body.error).toContain("keyId");
   });
 
   it("purges what the proxy actually cached", async () => {
@@ -367,6 +371,31 @@ describe("/console/cache", () => {
     expect(html).toContain('name="host"');
     // No real URL ever reaches the page: entries are shown as key + host.
     expect(html).not.toContain("api.vendor.com/a");
+  });
+
+  it("renders no nested <form> — a form inside a form is dropped by the HTML parser", async () => {
+    // The confirm dialog renders its own <form> and its submit button points at
+    // it with form=…; wrapping it in another <form> made the parser discard the
+    // inner one, so the button targeted an element that no longer existed and
+    // "purge everything" only worked by falling through to the outer form.
+    const store = new Map();
+    const env = appEnv(store);
+    const res = await worker.fetch(new Request("https://corx.test/console/cache", { headers: cookie }), env, ctx);
+    const html = await res.text();
+
+    let depth = 0;
+    let maxDepth = 0;
+    for (const tag of html.matchAll(/<form\b|<\/form>/g)) {
+      depth += tag[0] === "</form>" ? -1 : 1;
+      maxDepth = Math.max(maxDepth, depth);
+    }
+    // Balanced siblings reach 1; only a nested form reaches 2.
+    expect(maxDepth).toBeLessThanOrEqual(1);
+    expect(depth).toBe(0);
+    // Every form's submit target must resolve to a form that actually exists.
+    for (const [, id] of html.matchAll(/<form id="([^"]+)"/g)) {
+      expect(html).toContain(`form="${id}"`);
+    }
   });
 
   it("purges through the console form, and refuses a POST without the CSRF token", async () => {

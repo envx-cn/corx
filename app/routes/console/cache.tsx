@@ -131,23 +131,25 @@ function CacheContent(props: {
             />
             <button class="btn btn-sm shrink-0">{t("console.cache.purgeHost")}</button>
           </form>
-          <form method="post" action="/console/cache/purge">
-            <ConfirmButton
-              action="/console/cache/purge"
-              csrf={props.csrf}
-              label={t("console.cache.purgeAll")}
-              fields={{ all: "1" }}
-              triggerClass="btn btn-sm btn-error btn-outline"
-              confirmClass="btn btn-error"
-              i18n={{
-                title: t("console.cache.purgeAllTitle"),
-                body: t("console.cache.purgeAllBody"),
-                confirm: t("console.cache.purgeAll"),
-                cancel: t("ui.cancel"),
-                close: t("ui.close"),
-              }}
-            />
-          </form>
+          {/* No wrapping <form> here: ConfirmButton renders its own (a <form>
+              inside a <form> is dropped by the HTML parser, which would leave
+              the dialog's submit button pointing at a form that no longer
+              exists). The two forms above are real, so this one is a sibling. */}
+          <ConfirmButton
+            action="/console/cache/purge"
+            csrf={props.csrf}
+            label={t("console.cache.purgeAll")}
+            fields={{ all: "1" }}
+            triggerClass="btn btn-sm btn-error btn-outline"
+            confirmClass="btn btn-error"
+            i18n={{
+              title: t("console.cache.purgeAllTitle"),
+              body: t("console.cache.purgeAllBody"),
+              confirm: t("console.cache.purgeAll"),
+              cancel: t("ui.cancel"),
+              close: t("ui.close"),
+            }}
+          />
         </div>
       </div>
 

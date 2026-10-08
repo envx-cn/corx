@@ -27,11 +27,11 @@ const app = new Hono<{ Bindings: Env }>();
 
 app.post("/", async (c) => {
   const body = await c.req
-    .json<{ url?: string; host?: string; all?: boolean }>()
-    .catch(() => ({}) as { url?: string; host?: string; all?: boolean });
+    .json<{ url?: string; host?: string; keyId?: string; all?: boolean }>()
+    .catch(() => ({}) as { url?: string; host?: string; keyId?: string; all?: boolean });
   const scope = await parsePurgeScope(body);
   if (!scope) {
-    return c.json({ error: "Provide exactly one of: url, host, all" }, 400);
+    return c.json({ error: "Provide exactly one of: url, host, keyId, all" }, 400);
   }
   try {
     const result = await purgeCache(c.env.CACHE_BUCKET, scope, {
