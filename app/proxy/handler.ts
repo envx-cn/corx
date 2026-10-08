@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import type { Env } from "../lib/types.js";
+import type { CachedEntry, Env } from "../lib/types.js";
 import { ProxyError } from "../lib/types.js";
 import { isCorxKeyShape, type ProxyVariables } from "../lib/auth.js";
 import { normalizeOrigin } from "./cors.js";
@@ -19,6 +19,8 @@ import {
   applyHeaderRules,
   applyParamRules,
   assertHostAllowed,
+  assertKeyScope,
+  assertKeyTargetScope,
   clientVarMap,
   effectiveInjection,
   hostAllowed,
@@ -33,6 +35,11 @@ import {
   ttlSeconds,
   shouldBypassCache,
   cachedResponse,
+  cacheUrlHash,
+  staleGraceSecs,
+  staleResponse,
+  entryNotModified,
+  notModifiedResponse,
   readBounded,
   responseCacheable,
   CACHE_MAX_BYTES,
@@ -96,6 +103,26 @@ const STREAM_STRIP_RESPONSE = new Set([
 ]);
 
 const MAX_REDIRECTS = 20;
+
+/**
+ * Statuses the fetch spec forbids a body on ("null body statuses").
+ * `new Response(bytes, { status })` THROWS for them, so an upstream `304`
+ * that reached a buffered path turned into a `500` that also served the
+ * runtime's internal message ("Response constructor: Invalid response status
+ * code 304") to the caller. That is not a corner case: corx forwards the
+ * caller's `If-None-Match` / `If-Modified-Since` upstream, so a browser
+ * revalidating a response reaches it routinely.
+ *
+ * Anything in here is passed through bodyless. A text transform and JSONP both
+ * have nothing to work on, and running them anyway would fabricate a body
+ * (`{"contents":""}`) or fail with a misleading JSON error.
+ */
+const NULL_BODY_STATUS = new Set([101, 103, 204, 205, 304]);
+
+/** True when a response with this status must not carry a body. */
+export function isNullBodyStatus(status: number): boolean {
+  return NULL_BODY_STATUS.has(status);
+}
 
 /**
  * Wrap a stream and count the bytes actually delivered, then call onDone.
@@ -166,27 +193,59 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
   // Set once `?corx-callback=` parses. Declared outside the try so even an error
   // response can be wrapped for a <script> caller (see the catch below).
   let jsonpName: string | null = null;
+  // stale-if-error: an entry past its TTL but inside the CACHE_STALE_SECONDS
+  // grace window. Declared out here for the same reason — the catch block needs
+  // it. Never served on a plain miss, only when the upstream fails.
+  let staleEntry: CachedEntry | null = null;
+
+  /**
+   * The row for one proxied request. Split out of `finish` so a streamed
+   * response can write it *inside* a lifetime it registered before returning
+   * (see `streamIt`) instead of from a `waitUntil` call that arrives too late.
+   */
+  const logRow = (status: number | null, error = "") => ({
+    method: c.req.method,
+    targetUrl: target,
+    targetHost: host,
+    status,
+    latencyMs: Date.now() - started,
+    clientIp: ip,
+    country,
+    apiKeyId,
+    cached,
+    error,
+    reqBytes,
+    resBytes,
+    authVia,
+    origin: caller ?? "",
+    injected,
+  });
 
   const finish = (status: number | null, error = "") => {
-    c.executionCtx.waitUntil(
-      logRequest(c.env, {
-        method: c.req.method,
-        targetUrl: target,
-        targetHost: host,
-        status,
-        latencyMs: Date.now() - started,
-        clientIp: ip,
-        country,
-        apiKeyId,
-        cached,
-        error,
-        reqBytes,
-        resBytes,
-        authVia,
-        origin: caller ?? "",
-        injected,
-      }),
-    );
+    c.executionCtx.waitUntil(logRequest(c.env, logRow(status, error)));
+  };
+
+  /**
+   * Serve the held stale entry because the upstream did not (5xx response, or a
+   * failed/timed-out fetch). The log names what it is standing in for, so the
+   * vendor's failure stays visible next to the 200 the caller received.
+   *
+   * Null when there is nothing held — i.e. stale-if-error is off, the entry is
+   * past its grace window, or this caller never entered the cache path at all
+   * (authenticated, Range, JSONP, header-rule key), in which case stale-if-error
+   * does not exist for them.
+   */
+  const serveStale = (upstreamStatus: number | string): Response | null => {
+    if (!staleEntry) return null;
+    const entry = staleEntry;
+    staleEntry = null;
+    cached = true;
+    resBytes = entry.body.byteLength;
+    finish(entry.status, `stale-if-error after upstream ${upstreamStatus}`);
+    const res = staleResponse(entry);
+    res.headers.set("X-Corx-Target", host);
+    res.headers.set("X-Corx-Latency-Ms", String(Date.now() - started));
+    return withPending(res);
   };
 
   // Headers that must ride on the *response object*: c.header() before a
@@ -266,6 +325,12 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     // on a cross-origin hop — a blocked (or private) host is one 302 away.
     assertHostAllowed(host, injection.hosts);
 
+    // Per-key scope (migration 0014): method, path prefix, https-only, caller
+    // CIDRs, expiry. Checked here — after the host allowlist, before the cache,
+    // the guards and any upstream call — so a violation costs nothing and never
+    // reaches the network. Each one is opt-in and fail-closed when set.
+    assertKeyScope(row, c.req.method, ip);
+
     // SSRF: literal checks (above, per-key ip_check) + DNS-resolved IP check
     // (per-key dns_check) + admin blocklist (always on).
     // Blocklist runs even on cache hits — we must not serve cached content of
@@ -329,6 +394,11 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     }
     if (clientResolved) injected = true;
 
+    // Path + scheme, now that the effective URL is final: the scope must cover
+    // the URL corx actually requests, so an injected param cannot route around
+    // a path allowlist.
+    if (row) assertKeyTargetScope(row, fetchUrl);
+
     // R2 cache for GET. Runs BEFORE the rate limit so cheap cache hits don't
     // burn D1 writes/reads (and don't consume the caller's quota). Keys with
     // header rules are excluded by shouldBypassCache (personalized requests).
@@ -350,12 +420,22 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     if (!bypass) {
       try {
         cacheKey = await cacheKeyForUrl(fetchUrl.toString(), responseFingerprint);
-        const hit = await getCached(c.env.CACHE_BUCKET, cacheKey);
-        if (hit) {
+        const lookup = await getCached(c.env.CACHE_BUCKET, cacheKey, {
+          staleGraceSecs: staleGraceSecs(c.env),
+        });
+        if (lookup.state === "stale") {
+          staleEntry = lookup.entry;
+        } else if (lookup.state === "fresh") {
+          const hit = lookup.entry;
           cached = true;
-          resBytes = hit.body.byteLength;
-          finish(hit.status);
-          const res = cachedResponse(hit);
+          // A caller's validators that match the entry we are holding cost no
+          // bytes: answer 304 (a HEAD answers it too — the GET's headers are
+          // what HEAD must return, with no body).
+          const revalidated = entryNotModified(c.req.raw, hit);
+          const headLike = c.req.method === "HEAD" || revalidated;
+          resBytes = headLike ? 0 : hit.body.byteLength;
+          finish(revalidated ? 304 : hit.status);
+          const res = revalidated ? notModifiedResponse(hit) : cachedResponse(hit, { body: !headLike });
           res.headers.set("X-Corx-Target", host);
           res.headers.set("X-Corx-Latency-Ms", String(Date.now() - started));
           return withPending(res);
@@ -364,6 +444,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         // cache errors are non-fatal
       }
     }
+
 
     // Rate limit per key (or per IP for anonymous) — cache misses only.
     // Keyless traffic is metered per origin+IP so one site's visitors can't
@@ -442,24 +523,98 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       };
 
       let body: BodyInit | undefined;
-      if (c.req.method !== "GET" && c.req.method !== "HEAD") {
-        // Reject declared-oversized uploads before buffering anything.
+      // Uploads are forwarded as a stream whenever they are big enough to
+      // matter, and read into memory only when the whole body has already
+      // arrived — which is the case for the small JSON/form posts most APIs
+      // take, and the case that has to keep working exactly as it did (size
+      // checked before anything is forwarded, a failed read is a loud 400, and
+      // a body small enough to re-send on a 307/308 redirect).
+      //
+      // Before this, every non-GET body was `arrayBuffer()`ed whole: a 10 MiB
+      // upload sat in Worker memory for the life of the request (concurrent
+      // uploads multiplied that), and a chunked caller had to finish sending
+      // before corx even opened the upstream connection.
+      let bodyStreamed = false;
+      let capExceeded = false;
+      if (c.req.method !== "GET" && c.req.method !== "HEAD" && c.req.raw.body) {
+        // Reject a declared-oversized upload before reading a single byte.
         const declared = Number(c.req.header("content-length") ?? NaN);
         if (Number.isFinite(declared) && declared > maxBody) {
           throw new ProxyError(413, `Request body too large (>${maxBody} bytes)`);
         }
-        let buf: ArrayBuffer;
+        const reader = c.req.raw.body.getReader();
+        let head: Uint8Array;
         try {
-          buf = await c.req.raw.arrayBuffer();
+          head = (await reader.read()).value ?? new Uint8Array(0);
         } catch {
           // A failed read must never become a silently-empty forwarded body.
           throw new ProxyError(400, "Failed to read request body");
         }
-        if (buf.byteLength > maxBody) {
-          throw new ProxyError(413, `Request body too large (>${maxBody} bytes)`);
+        // Is anything left? A body that arrived in one piece is already
+        // exhausted here, so this resolves immediately; a real upload blocks on
+        // I/O and the race is over before the next byte lands. The pending read
+        // is KEPT rather than abandoned — a reader has one read in flight at a
+        // time, and dropping the probe's result would swallow a chunk.
+        let pending: Promise<ReadableStreamReadResult<Uint8Array>> | null = reader
+          .read()
+          .catch(() => ({ done: true, value: undefined }));
+        const nextRead = async (): Promise<ReadableStreamReadResult<Uint8Array>> => {
+          const result = pending ?? (await reader.read());
+          pending = null;
+          return result;
+        };
+        const more = await Promise.race([
+          pending,
+          new Promise<{ done: false; value: undefined }>((resolve) =>
+            setTimeout(() => resolve({ done: false, value: undefined }), 0),
+          ),
+        ]);
+        if (more.done) {
+          // Whole body in hand — the historical path, unchanged.
+          const buf = new Uint8Array(head.byteLength);
+          buf.set(head);
+          if (buf.byteLength > maxBody) {
+            throw new ProxyError(413, `Request body too large (>${maxBody} bytes)`);
+          }
+          reqBytes = buf.byteLength;
+          body = buf;
+          void reader.cancel().catch(() => undefined);
+        } else {
+          // Still arriving: forward the head we have plus the rest, counting as
+          // it goes. `MAX_BODY_BYTES` is a hard cap even for a caller that
+          // declared nothing — erroring the stream aborts the upstream fetch
+          // with this reason instead of the body growing past the limit.
+          let sent = head.byteLength;
+          body = new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(head);
+            },
+            async pull(controller) {
+              const { done, value } = await nextRead().catch((err) => {
+                controller.error(err);
+                return { done: true, value: undefined };
+              });
+              if (done) {
+                reqBytes = sent; // the log reads this once the upload finished
+                controller.close();
+                return;
+              }
+              sent += value?.byteLength ?? 0;
+              if (sent > maxBody) {
+                capExceeded = true;
+                reader.cancel().catch(() => undefined);
+                controller.error(new ProxyError(413, `Request body too large (>${maxBody} bytes)`));
+                return;
+              }
+              controller.enqueue(value!);
+            },
+            cancel() {
+              void reader.cancel().catch(() => undefined);
+            },
+          });
+          bodyStreamed = true;
+          reqBytes = Number.isFinite(declared) ? declared : 0;
         }
-        reqBytes = buf.byteLength;
-        body = buf;
       }
 
       let upstream: Response | null = null;
@@ -500,7 +655,13 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
             upstream = await attempt();
           }
         } catch (err) {
+          if (capExceeded) throw new ProxyError(413, `Request body too large (>${maxBody} bytes)`);
           if ((err as Error)?.name === "AbortError") throw new ProxyError(504, "Upstream timed out");
+          // A body-carrying request that never produced a response usually
+          // failed while reading the upload (the client hung up), and the old
+          // buffered path answered exactly that with a 400 — keep saying so
+          // rather than blaming the upstream for a client-side abort.
+          if (hopBody && bodyStreamed) throw new ProxyError(400, "Failed to read request body");
           throw new ProxyError(502, `Upstream fetch failed: ${(err as Error)?.message ?? "unknown"}`);
         }
 
@@ -534,6 +695,15 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         if (row?.dns_check !== 0) await assertPublicHost(next.hostname);
 
         if (next.origin !== currentUrl.origin) dropClientAuth = true;
+        // 307/308 preserve the method AND the body, and a streamed upload has
+        // already been consumed by the hop that answered with the redirect. The
+        // caller's client can follow it itself (with its own CORS semantics);
+        // re-sending is impossible, and silently dropping the body would be a
+        // second POST that looks like the first.
+        if ((upstream.status === 307 || upstream.status === 308) && hopBody && bodyStreamed) {
+          stoppedRedirect = next.toString();
+          break;
+        }
         // fetch spec: 301/302 rewrite only POST to GET; 303 rewrites every
         // method except GET/HEAD. Both drop the body — re-sending it would
         // double-apply a side effect the upstream already handled.
@@ -550,16 +720,28 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       }
       if (!upstream) throw new ProxyError(502, "Upstream fetch failed");
 
+      // A bodyless upstream response (204/304, …) has nothing to transform or
+      // wrap: it is passed through with its validators, never fabricated.
+      const bodyless = isNullBodyStatus(upstream.status);
+
       // Transforms only apply to text, JSON and XML — check the upstream's
       // content type before touching the body, so a binary response is a 400
       // instead of a corrupted one.
-      if (transforming && !isTextualContentType(upstream.headers.get("content-type"))) {
+      if (transforming && !bodyless && !isTextualContentType(upstream.headers.get("content-type"))) {
         throw new ProxyError(
           400,
           `corx-charset/corx-wrap need a text, JSON or XML response (got ${
             upstream.headers.get("content-type") ?? "no content-type"
           })`,
         );
+      }
+
+      // An upstream 5xx while a stale-if-error entry is held: the cached body
+      // is what the caller gets, not the vendor's error page. The upstream body
+      // is cancelled so the connection is not left hanging.
+      if (upstream.status >= 500 && staleEntry) {
+        void upstream.body?.cancel().catch(() => undefined);
+        return serveStale(upstream.status)!;
       }
 
       // Response rules are scoped by the host that actually answered (the last
@@ -626,16 +808,42 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         streamHeaders.set("X-Corx-Cache", "MISS");
         streamHeaders.set("X-Corx-Target", host);
         streamHeaders.set("X-Corx-Latency-Ms", String(Date.now() - started));
-        if (!body) {
-          resBytes = null;
+        // No body, or one the status forbids: attach nothing. The runtime
+        // gives a 304 a null body today, but never hand `countStream` a stream
+        // for a status the constructor would reject.
+        if (!body || bodyless) {
+          if (bodyless) {
+            streamHeaders.delete("content-length");
+            resBytes = 0;
+          } else {
+            resBytes = null;
+          }
           finish(upstream.status);
           return withPending(new Response(null, { status: upstream.status, headers: streamHeaders }));
         }
+        // The stream is written after this handler returns, so a `waitUntil`
+        // registered from `finish()` at that point cannot extend the request
+        // and the log row for the heaviest traffic (SSE, media) is the one
+        // most likely to be dropped. Register the lifetime NOW and settle it
+        // once the row is written; the runtime holds the Worker until then.
+        let settle!: () => void;
+        const streamDone = new Promise<void>((resolve) => {
+          settle = resolve;
+        });
+        c.executionCtx.waitUntil(streamDone);
+        // A client that is gone before the stream ends must not hold the
+        // Worker open indefinitely; the log for that request is written by
+        // countStream's own cancel/error path if the runtime reports it.
+        c.req.raw.signal?.addEventListener("abort", () => settle(), { once: true });
+        let logged = false;
+        const logStreamEnd = (bytes: number) => {
+          resBytes = bytes;
+          if (logged) return;
+          logged = true;
+          void logRequest(c.env, logRow(upstream.status)).finally(() => settle());
+        };
         return withPending(
-          new Response(countStream(body, (bytes) => {
-            resBytes = bytes;
-            finish(upstream.status);
-          }), { status: upstream.status, headers: streamHeaders }),
+          new Response(countStream(body, logStreamEnd), { status: upstream.status, headers: streamHeaders }),
         );
       };
 
@@ -644,7 +852,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       if (jsonpName) {
         // `corx-wrap=json` turns any textual body into JSON, so it satisfies
         // JSONP's requirement; otherwise the upstream itself must be JSON.
-        if (!transform.wrap && !isJsonContentType(upstream.headers.get("content-type"))) {
+        if (!transform.wrap && !bodyless && !isJsonContentType(upstream.headers.get("content-type"))) {
           throw new ProxyError(
             400,
             `JSONP needs a JSON response (got ${upstream.headers.get("content-type") ?? "no content-type"})`,
@@ -654,6 +862,16 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         jsonpResHeaders.set("X-Corx-Cache", "MISS");
         jsonpResHeaders.set("X-Corx-Target", host);
         jsonpResHeaders.set("X-Corx-Latency-Ms", String(Date.now() - started));
+        // Nothing to wrap: a 304 (the script tag revalidating) or a 204 is
+        // answered with its status and no body, never `cb({contents:""})` and
+        // never a "Upstream returned invalid JSON" that hides the real status.
+        if (bodyless) {
+          jsonpResHeaders.delete("content-length");
+          jsonpResHeaders.delete("content-type");
+          resBytes = 0;
+          finish(upstream.status);
+          return withPending(new Response(null, { status: upstream.status, headers: jsonpResHeaders }));
+        }
         if (c.req.method === "HEAD") {
           finish(upstream.status);
           return withPending(new Response(null, { status: upstream.status, headers: jsonpResHeaders }));
@@ -687,7 +905,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       // A transform needs the whole body, so it buffers a response that would
       // otherwise stream (an uncacheable one included). Too large is a 413 —
       // never a silently untransformed body.
-      if (transforming) {
+      if (transforming && !bodyless) {
         if (tooLarge) throw new ProxyError(413, `Response too large to transform (>${CACHE_MAX_BYTES} bytes)`);
       } else if (!cacheable || tooLarge) {
         // Known-huge bodies stream without ever buffering.
@@ -714,10 +932,13 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       sandboxDocument(resHeaders);
       applyResponseRules(resHeaders);
       // Transform after the response rules, so an explicit charset/wrap request
-      // always wins over a key's header rules on content-type.
-      if (transforming) resBody = applyTextTransforms(resBody, resHeaders, transform);
+      // always wins over a key's header rules on content-type. A bodyless
+      // status is skipped: there is nothing to decode or wrap, and wrapping
+      // zero bytes would invent `{"contents":""}`.
+      if (transforming && !bodyless) resBody = applyTextTransforms(resBody, resHeaders, transform);
+      if (bodyless) resHeaders.delete("content-length");
       // A HEAD response has no body, even though the transform above ran on one.
-      resBytes = c.req.method === "HEAD" ? 0 : resBody.byteLength;
+      resBytes = c.req.method === "HEAD" || bodyless ? 0 : resBody.byteLength;
       resHeaders.set("X-Corx-Cache", "MISS");
       resHeaders.set("X-Corx-Target", host);
       resHeaders.set("X-Corx-Latency-Ms", String(Date.now() - started));
@@ -729,14 +950,27 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         // cache key already carries those rules, so a HIT reproduces this run
         // header-for-header instead of resurrecting the upstream's.
         const stored = new Response(null, { status: upstream.status, headers: resHeaders });
-        c.executionCtx.waitUntil(putCached(c.env.CACHE_BUCKET, cacheKey, stored, resBody, ttl).catch(() => undefined));
+        // The index makes the entry addressable for purge (by URL digest or
+        // host) — see `CacheIndex`: the URL itself must not be stored, because
+        // the key is built from the post-injection URL.
+        const index = { urlHash: await cacheUrlHash(fetchUrl.toString()), host };
+        c.executionCtx.waitUntil(
+          putCached(c.env.CACHE_BUCKET, cacheKey, index, stored, resBody, ttl, staleGraceSecs(c.env)).catch(
+            () => undefined,
+          ),
+        );
       }
 
       finish(upstream.status);
-      // HEAD reaches this path only when a transform was requested; it has no
-      // body, and the transform already corrected the headers above.
+      // HEAD reaches this path only when a transform was requested, and a
+      // bodyless status reaches it for the same reason (a transform or a
+      // JSONP wrap was requested); neither may carry a body — the constructor
+      // throws on one.
       return withPending(
-        new Response(c.req.method === "HEAD" ? null : resBody, { status: upstream.status, headers: resHeaders }),
+        new Response(
+          c.req.method === "HEAD" || bodyless ? null : resBody,
+          { status: upstream.status, headers: resHeaders },
+        ),
       );
     } finally {
       clearTimeout(timer);
@@ -744,6 +978,14 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
   } catch (err) {
     const status = err instanceof ProxyError ? err.status : 500;
     const message = err instanceof Error ? err.message : "Internal error";
+    // stale-if-error for the paths that never produced a response at all: the
+    // fetch failed (502) or the upstream timed out (504). Only those — a 400 or
+    // a proxy-level failure is the caller's problem, not the vendor's, and
+    // handing back a stale body for it would hide a real error.
+    if ((status === 502 || status === 504) && staleEntry) {
+      const stale = serveStale(message);
+      if (stale) return stale;
+    }
     finish(status, message);
     const data = err instanceof ProxyError ? err.data : undefined;
     if (typeof data?.["retryAfter"] === "number") pending.set("Retry-After", String(data["retryAfter"]));

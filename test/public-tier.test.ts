@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../app/server.js";
 import type { Env } from "../app/lib/types.js";
+import { invalidateBlocklistMemo } from "../app/proxy/guard.js";
 
 /**
  * Public-tier integration: the shared key users embed on their own sites. The
@@ -55,7 +56,9 @@ function envWithKey(row: Record<string, unknown>, used = 0, extra: Partial<Env> 
       run: async () => ({ meta: { changes: 1 } }),
       first: async () => {
         if (sql.includes("FROM api_keys")) return row;
-        if (sql.includes("FROM quota_counters")) return { count: used };
+        // The counter is charged and read back by one statement now
+        // (`INSERT … ON CONFLICT … RETURNING count`).
+        if (sql.includes("quota_counters")) return { count: used };
         return null;
       },
       all: async () => ({ results: [] }),
@@ -246,5 +249,56 @@ describe("terms (integration)", () => {
     const res = await worker.fetch(new Request("https://terms.corx.test/terms"), env, ctx);
     expect(res.status).toBe(200);
     expect(await res.text()).toContain("Terms of use");
+  });
+});
+
+/**
+ * #110 — the hot path's D1 cost, pinned as a number so a future change cannot
+ * quietly double it. Measured per proxied request (a public-tier key with all
+ * three caps configured, i.e. the worst case): key lookup, blocklist, three
+ * quota counters, rate limit, log row.
+ */
+describe("D1 statements per proxied request", () => {
+  it("stays at six — and five on a warm isolate", async () => {
+    const sqls: string[] = [];
+    const publicEnv = envWithKey(publicRow, 1);
+    const spy = {
+      prepare: (sql: string) => {
+        sqls.push(sql.replace(/\s+/g, " ").trim());
+        const stmt = {
+          bind: () => stmt,
+          run: async () => ({ meta: { changes: 1 } }),
+          first: async () => {
+            if (sql.includes("FROM api_keys")) return publicRow;
+            if (sql.includes("quota_counters") || sql.includes("rate_windows")) return { count: 1 };
+            return null; // blocklist
+          },
+          all: async () => ({ results: [] }),
+        };
+        return stmt;
+      },
+    };
+    const env = { ...publicEnv, DB: spy } as unknown as Env;
+
+    stubUpstream();
+    // A host no other test in this file touches: the blocklist memo is
+    // per-isolate and outlives a single test, so "cold" has to be a host that
+    // nothing has asked about yet.
+    const path = `/fetch?url=https://hot.example.com/x&corx-key=${PUBLIC_KEY}`;
+    invalidateBlocklistMemo();
+    await call(path, {}, env); // cold isolate: the blocklist is queried
+    await new Promise((r) => setTimeout(r, 0)); // flush the log write
+    const cold = sqls.length;
+    sqls.length = 0;
+    await call(path, {}, env); // warm isolate: served from the blocklist memo
+    await new Promise((r) => setTimeout(r, 0));
+    const warm = sqls.length;
+
+    // key lookup + 3 quota upserts + rate-limit upsert + log insert = 6; the
+    // blocklist read is the seventh statement, and the memo answers it.
+    expect(cold).toBe(7);
+    expect(warm).toBe(6);
+    expect(sqls.filter((s) => s.includes("quota_counters"))).toHaveLength(3);
+    expect(sqls.filter((s) => s.includes("rate_windows"))).toHaveLength(1);
   });
 });

@@ -87,17 +87,53 @@ export function normalizeBlockedHostname(raw: string): string | null {
   return /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(host) ? host : null;
 }
 
+/**
+ * Per-isolate memo of the blocklist answer, 30 s — the same trade the DoH
+ * resolver makes in `dns-check.ts`.
+ *
+ * `checkDbBlocklist` runs on EVERY proxied request (including cache hits, by
+ * design: a host blocked after the fact must stop being served), which made it
+ * the one per-request D1 read that carried no information a normal call could
+ * not have predicted: blocklists are small and change rarely, so the same host
+ * is asked about over and over inside one isolate.
+ *
+ * The cost is a bounded staleness window for an out-of-band edit: a row written
+ * straight into D1 (not through the console/API) can take up to 30 s to take
+ * effect on a warm isolate. Blocking and unblocking through the app call
+ * `invalidateBlocklistMemo()`, so an operator's own action is immediate; the
+ * window only ever applies to a hand-edited row. Blocking failing closed inside
+ * the memo is harmless (a blocked host stays blocked); what could soften is a
+ * host unblocked by hand while an isolate still has it memoized.
+ */
+const BLOCKLIST_TTL_MS = 30_000;
+const blocklistMemo = new Map<string, { at: number; blocked: boolean }>();
+
+/**
+ * Drop the memo — call after any write to `blocked_hosts` so the change is
+ * visible immediately instead of after the TTL.
+ */
+export function invalidateBlocklistMemo(): void {
+  blocklistMemo.clear();
+}
+
 /** Extra blocklist from D1 (admin-managed). A parent-domain entry covers its
  * subdomains. Fail-open on DB errors. */
 export async function checkDbBlocklist(db: D1Database, hostname: string): Promise<void> {
-  const candidates = blocklistCandidates(hostname);
+  const memoKey = hostname.toLowerCase().replace(/\.+$/, "");
+  const candidates = blocklistCandidates(memoKey);
   if (candidates.length === 0) return;
+  const memo = blocklistMemo.get(memoKey);
+  if (memo && Date.now() - memo.at < BLOCKLIST_TTL_MS) {
+    if (memo.blocked) throw new ProxyError(403, `Blocked host: ${hostname}`);
+    return;
+  }
   try {
     const placeholders = candidates.map(() => "?").join(", ");
     const row = await db
       .prepare(`SELECT hostname FROM blocked_hosts WHERE hostname IN (${placeholders}) LIMIT 1`)
       .bind(...candidates)
       .first();
+    blocklistMemo.set(memoKey, { at: Date.now(), blocked: Boolean(row) });
     if (row) throw new ProxyError(403, `Blocked host: ${hostname}`);
   } catch (err) {
     if (err instanceof ProxyError) throw err;

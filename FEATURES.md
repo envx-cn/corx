@@ -32,7 +32,7 @@ map, not the manual.
 | Streaming | Responses > 5 MiB (`CACHE_MAX_BYTES`) or non-cacheable stream straight through; a stream can never OOM the Worker (`app/proxy/cache.ts#readBounded`). Unbounded streams (`text/event-stream`, `multipart/x-mixed-replace`) are never cacheable whatever their `Cache-Control`, so SSE reaches the caller chunk-by-chunk. |
 | LLM APIs | The mainstream chat APIs are `POST` + SSE and work as-is: OpenAI, Azure OpenAI (`api-key`), Anthropic (`POST /v1/messages`), Gemini (`…:streamGenerateContent?alt=sse`), Ollama, and OpenAI-compatible runtimes. Anthropic's `x-api-key` rides through as a BYOK header when the caller sends a non-corx value; a corx-shaped `X-Api-Key` is CORX's credential and never forwarded, so the server-side injection recipe (`HeaderRules` with a `${VAR}`, see §6) stays the browser-safe path — the browser never holds the secret. No key means no injection, and the public tier is GET/HEAD-only (and never forwards any `X-Api-Key`), so LLM calls require a standard key. WebSocket/realtime APIs (OpenAI Realtime, Gemini Live) are a non-goal: `Upgrade` is hop-by-hop, and WSS is not CORS-gated, so a browser can connect directly. |
 | Media | Range requests pass through, `206`/`Content-Range`/`Accept-Ranges` preserved, seeking works in `<video>`/`<audio>`; Range always bypasses the cache. |
-| Logging | Every request logged to D1 via `waitUntil` (method, pre-injection target, host, status, latency, client IP, country, key, cache flag, bytes both ways, auth via, origin, injected flag); streamed bodies are byte-counted by `countStream` when they finish or the client disconnects. Configurable per deployment: `LOG_REQUESTS=false` writes no rows at all (nothing else depends on them), `LOG_RETENTION_DAYS` sets the raw window (1–365). |
+| Logging | Every request logged to D1 via `waitUntil` (method, pre-injection target, host, status, latency, client IP, country, key, cache flag, bytes both ways, auth via, origin, injected flag); streamed bodies are byte-counted by `countStream` when they finish or the client disconnects, and a streamed response registers its log lifetime **before** the response is returned — the row is written inside a `waitUntil` the runtime already holds and the promise settles when the write finishes, because a `waitUntil` registered from the stream's own `pull`/`cancel` arrives too late to extend the request (which is why SSE and media used to be the rows most likely to go missing). Configurable per deployment: `LOG_REQUESTS=false` writes no rows at all (nothing else depends on them), `LOG_RETENTION_DAYS` sets the raw window (1–365). |
 
 Files: `app/proxy/handler.ts`, `app/proxy/subdomain.ts`, `app/proxy/guard.ts`, `app/proxy/transform.ts`.
 
@@ -69,6 +69,15 @@ Files: `app/proxy/cors.ts`, `app/lib/auth.ts`, `app/lib/admin.ts`.
   (`corx:v1:` prefix) — raw values are shown once at creation and never again.
 - Credential forms: `X-Api-Key`, `Authorization: Bearer …`, `?corx-key=…`.
 - `REQUIRE_API_KEY=true` rejects anonymous proxy calls with 401.
+- **Per-key scope** (migration `0014`, all opt-in, all fail-closed when set):
+  `allowed_methods` (CSV, `GET` implies `HEAD`), `allowed_paths` (CSV of target
+  path prefixes, matched on segment boundaries *after* query rules so an
+  injected param cannot route around them), `require_https`, `allowed_cidrs`
+  (IPs / CIDR ranges, v4 and v6), `expires_at` (ISO date or timestamp — a past
+  date is accepted, which is how a key expires without being revoked). A
+  violation is a `403` naming the rule, raised before the cache, the guards and
+  any upstream call. Blank/false/null = no restriction, so every existing key
+  behaves exactly as before.
 - Per-key fields: name (required), `rate_limit_per_min`, `allowed_origins`,
   `cache_ttl` (blank = global, `0` = never store), `no_cache`, `ip_check`,
   `dns_check`, `keyless`, `tier` (`standard` | `public`) with the public
@@ -102,16 +111,27 @@ Files: `app/lib/auth.ts`, `app/lib/admin.ts`, `app/routes/api/keys*`,
 - D1 blocklist (`blocked_hosts`, admin-managed): a blocked parent domain also
   covers its subdomains (`evil.example` blocks `api.evil.example`; a bare TLD
   entry never matches); checked on every request, including cache hits, and on
-  every manual redirect hop; fail-open on DB errors.
+  every manual redirect hop; fail-open on DB errors. Answers are memoized per
+  isolate for 30 s (the DoH guard's trade): it is the one per-request read that
+  cannot predict its answer, so the memo removes a D1 round trip per request.
+  `invalidateBlocklistMemo()` is called by every write path (console add/remove,
+  `POST /api/block-host`, `DELETE /api/block-host/:host`), so an operator's own
+  block or unblock is immediate; the window only covers a row hand-written
+  into D1. Blocking stays fail-closed inside the window.
 - Rate limit: fixed 1-minute window in D1, per key / per IP / per
   `origin + IP` for keyless, and per IP for public keys (every caller shares
   one public key, so a per-key bucket would glob them together); cache hits are
   free; `X-RateLimit-Limit` + `X-RateLimit-Remaining` on miss responses;
-  fail-open.
+  fail-open. The counter is one statement — `INSERT … ON CONFLICT … RETURNING
+  count` — not an upsert plus a re-read.
 - Public-tier daily quotas (UTC days) per calling `Origin`, per target host
   and per key, checked *before* the cache so hits consume budget too; over cap
   → `429` + `Retry-After` + `{ scope, limit, resetAt }`; announced via
-  `X-Corx-Quota-*` (see §12).
+  `X-Corx-Quota-*` (see §12). Each capped dimension costs one statement
+  (`RETURNING count`), and the dimensions are charged in order origin → host →
+  total, so a caller rejected on its origin cap does not drain the instance-wide
+  pool — a deliberate trade the test suite pins. Hot-path cost is pinned as a
+  number: 6 statements per public request (7 on a cold isolate).
 - CORX's own credentials never reach upstream, and BYOK rides through:
   `X-Admin-Token` is always stripped; a **corx-shaped** `X-Api-Key` or
   `Authorization: Bearer corx_…` is consumed and stripped even when the key is
@@ -126,8 +146,18 @@ Files: `app/lib/auth.ts`, `app/lib/admin.ts`, `app/routes/api/keys*`,
   `X-Api-Key` / `?corx-key=` — the OAuth pattern (a corx-shaped `X-Api-Key`
   outranks the bearer header).
 - Body cap: `MAX_BODY_BYTES` (default 10 MiB) — enforced from `Content-Length`
-  before buffering and again on the buffered bytes; an unreadable body is a 400
-  rather than a silently-empty forward.
+  before a single byte is read, and again on the bytes themselves; an unreadable
+  body is a 400 rather than a silently-empty forward.
+- Request bodies are **streamed** while they are still arriving: the proxy reads
+  the first chunk, probes whether the rest has already landed (a body that
+  arrived in one piece is exhausted by then), and forwards the rest as a stream
+  with the cap enforced as it flows. So `MAX_BODY_BYTES` bounds memory without
+  making corx wait for the whole upload before opening the upstream connection,
+  and the small JSON/form post that is most of real API traffic still takes the
+  buffered path — same bytes, same `413`-before-forwarding, still re-sendable on
+  a `307`/`308`. A `307`/`308` for a *streamed* body is handed to the caller
+  instead: the body has been consumed by the hop that redirected, and a browser
+  following it itself has the right CORS semantics anyway.
 
 Files: `app/proxy/ip.ts`, `app/proxy/guard.ts`, `app/proxy/dns-check.ts`,
 `app/proxy/ratelimit.ts`, `app/proxy/quota.ts`.
@@ -150,12 +180,52 @@ Files: `app/proxy/ip.ts`, `app/proxy/guard.ts`, `app/proxy/dns-check.ts`,
   credentials never stored. `Vary: Origin` is intentionally cacheable — the
   proxy strips the caller's `Origin` before forwarding, so upstream can never
   vary on it (covered by a test).
-- Expiry is lazy on read plus a small list-prune batch from the cron; cache
-  read/write errors are non-fatal.
+- Cache keys are `corx/v1/<sha256(GET:url)>` plus a fingerprint of the key's
+  response rules and body transforms. The mode (subdomain vs path) is *not* in
+  the key, which is only safe because redirects stay uncached: in subdomain
+  mode a `Location` is rewritten to a relative path before it is stored, so
+  allowing 3xx to be cached would have to add the mode first.
+- A HIT answers with corx's own `Age` (residency since `storedAt`, capped at the
+  TTL) and a fresh `Date` — the upstream's `Age`/`Date` are excluded at store
+  time, so nothing downstream computes freshness from the origin's clock.
+- Conditional requests: a HIT whose stored `ETag`/`Last-Modified` satisfies the
+  caller's `If-None-Match` (weak comparison, lists, `*`; it wins over
+  `If-Modified-Since`, RFC 9110 §13.1.3) or `If-Modified-Since` answers `304`
+  with the validators and no body. `HEAD` reads the cache (never writes it) and
+  returns the `GET`'s headers without a body.
+- Expiry is lazy on read (a URL is only reclaimed when it is requested again)
+  plus a nightly sweep that walks the whole prefix page by page — `R2.list` is
+  cursor-paged behind an opaque key and cache keys are random-order hashes, so
+  a single-page prune could only ever reach the first few hundred keys and the
+  bucket grew without bound. The sweep is bounded per run (10 pages × 1000
+  keys, `PRUNE_PAGE_BUDGET`) so its Class A ops stay inside the free tier;
+  whatever is left is picked up the next night. Cache read/write/prune errors
+  are non-fatal.
 - Injected **param-only** keys share the cache under the effective URL, so
   different injected values never collide; injected-header keys bypass.
 
-Files: `app/proxy/cache.ts`, `app/proxy/handler.ts`.
+- **Addressable for purge**: every entry stores an index — a sha256 digest of
+  the effective upstream URL plus the proxied hostname. Never the URL itself:
+  the cache key is built from the *post-injection* URL, which can carry an
+  injected secret, and R2 custom metadata is readable by anyone with bucket
+  access.
+- **stale-if-error** (`CACHE_STALE_SECONDS`, `0` = off): an expired entry is
+  kept for that many extra seconds and served **only** when the upstream
+  answers `5xx`, fails or times out — `X-Corx-Cache: STALE` + `Warning: 110`,
+  the real (past-TTL) `Age`, and a log row naming the upstream failure it is
+  standing in for. Never on a plain miss; never for a caller that skipped the
+  cache path (authenticated, `Range`, JSONP, header-rule key); the blocklist is
+  still checked first, so a host blocked after the fact wins. Off by default —
+  serving a body past its TTL is a policy decision.
+- **`POST /api/cache/purge`** (`{url}` | `{host}` | `{all}`) and
+  `/console/cache` (bounded sample of the bucket + the 24 h hit ratio + purge
+  buttons, en/zh). Every scope walks the prefix — the key mixes the URL with the
+  response-rule fingerprint, so there is no key to compute for "every entry of
+  this URL" — bounded by the nightly sweep's page budget, reporting
+  `truncated` when the bucket is larger than that.
+
+Files: `app/proxy/cache.ts`, `app/proxy/handler.ts`,
+`app/routes/api/cache/purge.ts`, `app/routes/console/cache.tsx`.
 
 ## 6. Upstream injection (per key)
 
@@ -499,13 +569,30 @@ Files: `app/lib/access.ts`, `app/lib/session.ts`, `app/lib/csrf.ts`,
 
 ## 11. Operations & tooling
 
+- `GET /api/metrics` — Prometheus text (admin-gated by the shared `/api/*`
+  guard, so no per-deployment configuration can leave it open): requests, cache
+  hits + hit ratio, cached (upstream) bytes, request/response bytes, errors,
+  average/max latency over 24 h, active keys, the effective cache config
+  (`CACHE_TTL_SECONDS`, `CACHE_STALE_SECONDS`, `LOG_RETENTION_DAYS`), plus
+  per-host / per-status / per-country series capped at 20 each. Values come from
+  the same 24 h window the dashboard reads.
+- `GET /health` — liveness by default; `?deep=1` exercises D1 and R2 and
+  answers `503` with a per-binding status, so a monitor can tell "the Worker is
+  up" apart from "the Worker cannot reach its bindings".
+- `stats_daily` carries the cache dimensions (`cache_hits`, `cached_bytes`,
+  migration `0013`) that `request_logs` always had, so the 7/28/90-day trend can
+  answer whether the R2 cache is paying for itself after the raw rows are
+  pruned. Days rolled up before the migration read 0/0 — honest ("not
+  measured") rather than silently wrong.
+
 - Cron `0 3 * * *`: aggregate `request_logs` into `stats_daily` **before** the
   prune (the rollup is the trend's long memory; the raw rows are not), then
   prune `request_logs` past the deployment's `LOG_RETENTION_DAYS` (default 30;
   the rollup window and the stats read path follow the same value),
   `rate_windows` > 2 h,
-  `quota_counters` older than yesterday, and a 100-object batch of expired R2
-  entries.
+  `quota_counters` older than yesterday, and expired R2 cache entries — a
+  cursor-paged sweep of the cache prefix, capped per run (10 pages × 1000
+  keys) so one bad night cannot turn into an unbounded bill.
 - Observability enabled in `wrangler.jsonc`; `npm run tail` for live logs.
 - CI: `verify.yml` on every push to `main` and every pull request (typecheck →
   tests → contrast → production build, read-only, no secrets); `deploy.yml` is

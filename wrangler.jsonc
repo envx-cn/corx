@@ -51,6 +51,11 @@
 		"ALLOWED_ORIGINS": "*",
 		"REQUIRE_API_KEY": "true",
 		"CACHE_TTL_SECONDS": "3600",
+		// stale-if-error: keep an expired entry this many extra seconds and
+		// serve it ONLY when the upstream fails (5xx, fetch error, timeout).
+		// 0 = off: serving a body past its TTL is a policy decision, so it is
+		// opt-in per deployment.
+		"CACHE_STALE_SECONDS": "0",
 		"PUBLIC_CACHE_TTL_SECONDS": "300",
 		"TIMEOUT_MS": "30000",
 		"RATE_LIMIT_PER_MIN": "60",

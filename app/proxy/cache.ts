@@ -14,6 +14,12 @@ const EXCLUDED = new Set([
   "content-length",
   "transfer-encoding",
   "connection",
+  // `Age` and `Date` describe the *origin's* response, not corx's copy of it.
+  // Replaying them on a HIT made a downstream cache compute freshness from a
+  // timestamp that was already stale on the first read; corx generates its own
+  // from the entry's residency instead (see `cachedResponse`).
+  "age",
+  "date",
 ]);
 
 function pickCacheable(headers: Headers): Record<string, string> {
@@ -71,7 +77,11 @@ export type KeyCachePolicy = Pick<
 >;
 
 export function shouldBypassCache(req: Request, reqUrl: URL, keyRow?: KeyCachePolicy | null): boolean {
-  if (req.method !== "GET") return true;
+  // POST/PUT/… never read or write the cache (only GETs are stored). HEAD may
+  // *read* it: a revalidation or a link probe against a hot URL should not cost
+  // an upstream fetch, and the GET's headers are exactly what HEAD must
+  // return — with no body.
+  if (req.method !== "GET" && req.method !== "HEAD") return true;
   if (keyRow?.no_cache) return true;
   // Injected headers make the upstream response caller/key-specific (and may
   // carry credentials), so that key never reads or writes the shared cache.
@@ -202,30 +212,110 @@ export async function readBounded(body: ReadableStream<Uint8Array> | null, cap: 
   }
 }
 
-export async function getCached(bucket: R2Bucket, key: string): Promise<CachedEntry | null> {
+/**
+ * Stale-if-error grace window, in seconds, from `CACHE_STALE_SECONDS`.
+ *
+ * `0` (the default) disables it: serving a body past its TTL is a policy
+ * decision, not a technical one, so a deployment opts in explicitly. Entries
+ * only carry a `staleUntil` when the window is on, and the nightly sweep
+ * deletes whatever is past it.
+ */
+export function staleGraceSecs(env: Pick<Env, "CACHE_STALE_SECONDS">): number {
+  const n = Number(env.CACHE_STALE_SECONDS ?? 0);
+  return Number.isInteger(n) && n > 0 && n <= 86_400 ? n : 0;
+}
+
+/** What a cache lookup found. */
+export type CacheLookup =
+  | { state: "miss" }
+  /** Within its TTL: serve it. */
+  | { state: "fresh"; entry: CachedEntry }
+  /**
+   * Past its TTL but inside the stale-if-error grace window: NOT served on a
+   * plain miss — held back for the caller to use only when the upstream fails.
+   */
+  | { state: "stale"; entry: CachedEntry };
+
+export async function getCached(
+  bucket: R2Bucket,
+  key: string,
+  opts: { staleGraceSecs?: number } = {},
+): Promise<CacheLookup> {
   const obj = await bucket.get(key);
-  if (!obj) return null;
+  if (!obj) return { state: "miss" };
   const expiresAt = Number(obj.customMetadata?.["expiresAt"] ?? 0);
-  if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) {
-    await bucket.delete(key).catch(() => undefined);
-    return null;
+  const staleUntil = Number(obj.customMetadata?.["staleUntil"] ?? 0);
+  const now = Date.now();
+  if (!Number.isFinite(expiresAt) || now > expiresAt) {
+    // Past its TTL: keep it only while a stale-if-error grace window is open,
+    // otherwise drop it here (this read-time expiry is what reclaims a URL
+    // somebody requests again; the cron sweep bounds the rest).
+    const keepable = opts.staleGraceSecs ? staleUntil > now : false;
+    if (!keepable) {
+      await bucket.delete(key).catch(() => undefined);
+      return { state: "miss" };
+    }
+    return {
+      state: "stale",
+      entry: await readEntry(obj),
+    };
   }
+  return { state: "fresh", entry: await readEntry(obj) };
+}
+
+async function readEntry(obj: R2ObjectBody): Promise<CachedEntry> {
   const body = await obj.arrayBuffer();
   return {
     status: Number(obj.customMetadata?.["status"] ?? 200),
     headers: JSON.parse(obj.customMetadata?.["headers"] ?? "{}") as Record<string, string>,
     body,
     storedAt: Number(obj.customMetadata?.["storedAt"] ?? 0),
-    expiresAt,
+    expiresAt: Number(obj.customMetadata?.["expiresAt"] ?? 0),
   };
+}
+
+/**
+ * The addressable index stored with every cache entry.
+ *
+ * Without it an entry is only findable by its own sha256 key, so "purge this
+ * URL" / "purge this host" could not exist (the key also mixes in the response
+ * fingerprint, and the mapping is not invertible). Neither field is the URL:
+ *
+ *  - `urlHash` is a digest of the effective upstream URL. The cache key is
+ *    built from the *post-injection* URL, which can carry an injected secret,
+ *    and R2 custom metadata is readable by anyone with bucket access — a
+ *    digest gives purge-by-URL without storing the secret (or a reversible
+ *    form of it).
+ *  - `host` is the proxied hostname: no credentials in a hostname, and enough
+ *    for purge-by-host and the console's "what is cached" view.
+ */
+export interface CacheIndex {
+  urlHash: string;
+  host: string;
+}
+
+/** Digest of the effective upstream URL — the purge-by-URL index value. */
+export async function cacheUrlHash(target: string): Promise<string> {
+  return sha256Hex(`corx:purge:v1:${target}`);
+}
+
+/** Hostname of a target URL, for the index and for purge-by-host. */
+export function cacheHost(target: string): string {
+  try {
+    return new URL(target).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
 }
 
 export async function putCached(
   bucket: R2Bucket,
   key: string,
+  index: CacheIndex,
   res: Response,
   body: ArrayBuffer | Uint8Array,
   ttlSecs: number,
+  staleGraceSecs = 0,
 ): Promise<void> {
   if (ttlSecs <= 0) return;
   // Only cache small successful GETs.
@@ -239,12 +329,311 @@ export async function putCached(
       headers: JSON.stringify(pickCacheable(res.headers)),
       storedAt: String(now),
       expiresAt: String(now + ttlSecs * 1000),
+      // Only meaningful when the deployment enabled stale-if-error; absent
+      // otherwise, so a disabled deployment reclaims on the next read.
+      staleUntil: staleGraceSecs > 0 ? String(now + (ttlSecs + staleGraceSecs) * 1000) : "0",
+      urlHash: index.urlHash,
+      host: index.host,
     },
   });
 }
 
-export function cachedResponse(entry: CachedEntry): Response {
+export function cachedResponse(entry: CachedEntry, opts: { body?: boolean } = {}): Response {
   const headers = new Headers(entry.headers);
   headers.set("X-Corx-Cache", "HIT");
+  // RFC 9111 §5.1: a cache reports the entry's current age. Ours is the time
+  // since we stored it (never past its TTL), and `Date` is stamped fresh —
+  // the origin's own `Age`/`Date` are never stored (see EXCLUDED).
+  const ttl = Math.max(0, entry.expiresAt - entry.storedAt);
+  headers.set("age", String(Math.min(Math.floor((Date.now() - entry.storedAt) / 1000), Math.floor(ttl / 1000))));
+  headers.set("date", new Date().toUTCString());
+  // A HEAD served from the cache carries the GET's headers with no body.
+  if (opts.body === false) headers.delete("content-length");
+  return new Response(opts.body === false ? null : entry.body, { status: entry.status, headers });
+}
+
+/** `W/"x"` → `"x"` — weak comparison (RFC 9110 §8.8.3.2). */
+function bareTag(tag: string): string {
+  return tag.trim().replace(/^W\//i, "");
+}
+
+/**
+ * Does the caller's `If-None-Match` select this entry's entity tag?
+ *
+ * Weak comparison, comma-separated list, and `*` matching any existing
+ * representation — the same rules a browser uses when it revalidates a cached
+ * response, which is exactly the request that used to cost a full body.
+ */
+export function etagMatches(ifNoneMatch: string | null, etag: string | null | undefined): boolean {
+  if (!ifNoneMatch) return false;
+  if (!etag) return false;
+  const header = ifNoneMatch.trim();
+  if (header === "*") return true;
+  const target = bareTag(etag);
+  return header.split(",").some((candidate) => bareTag(candidate) === target);
+}
+
+/**
+ * True when the caller's validators say the cached entry is still good
+ * (RFC 9110 §13.1.3: `If-None-Match` wins; `If-Modified-Since` is only
+ * consulted when there is no `If-None-Match`). The entry must be a cache HIT
+ * that already carries its own stored validators.
+ */
+export function entryNotModified(req: Request, entry: CachedEntry): boolean {
+  const inm = req.headers.get("if-none-match");
+  if (inm !== null) return etagMatches(inm, entry.headers["etag"]);
+  const ims = req.headers.get("if-modified-since");
+  if (!ims) return false;
+  const lastModified = entry.headers["last-modified"];
+  if (!lastModified) return false;
+  const since = Date.parse(ims);
+  const modified = Date.parse(lastModified);
+  if (!Number.isFinite(since) || !Number.isFinite(modified)) return false;
+  // HTTP dates have second resolution: compare truncated to seconds.
+  return Math.floor(modified / 1000) <= Math.floor(since / 1000);
+}
+
+/**
+ * A stale-if-error response: the stored body with its own status, its real
+ * `Age` (past the TTL, honestly reported), and the RFC 9111 `Warning` that
+ * tells any downstream cache this is not fresh.
+ *
+ * `X-Corx-Cache: STALE` is the marker the console/playground read; it is only
+ * ever produced from an entry the caller was already entitled to (the cache
+ * path is skipped entirely for authenticated callers, Range, JSONP and keys
+ * with header rules or client-referencable variables).
+ */
+export function staleResponse(entry: CachedEntry): Response {
+  const headers = new Headers(entry.headers);
+  headers.set("X-Corx-Cache", "STALE");
+  headers.set("Age", String(Math.max(0, Math.floor((Date.now() - entry.storedAt) / 1000))));
+  headers.set("Date", new Date().toUTCString());
+  headers.set("Warning", '110 - "Response is stale"');
+  headers.delete("content-length");
+  headers.delete("content-encoding");
   return new Response(entry.body, { status: entry.status, headers });
+}
+
+/** A `304` for a cache HIT: the stored validators, no body, no length. */
+export function notModifiedResponse(entry: CachedEntry): Response {
+  const headers = new Headers(entry.headers);
+  headers.set("X-Corx-Cache", "HIT");
+  headers.set("age", String(Math.min(Math.floor((Date.now() - entry.storedAt) / 1000), Math.floor(Math.max(0, entry.expiresAt - entry.storedAt) / 1000))));
+  headers.set("date", new Date().toUTCString());
+  // A 304 has no body, so it must not advertise one (RFC 9110 §15.4.5 lists
+  // the headers a 304 may carry; content-length is not among them).
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+  return new Response(null, { status: 304, headers });
+}
+
+/** Objects inspected per `list` call during a prune sweep. */
+export const PRUNE_PAGE_SIZE = 1000;
+
+/** Pages one cron run may walk (10 × 1000 = 10k keys). `list` is an R2 Class A
+ * op, so the budget is what keeps the nightly sweep inside the free tier
+ * (1M Class A/month) while still clearing a bucket an order of magnitude
+ * larger than the page size in a couple of nights. */
+export const PRUNE_PAGE_BUDGET = 10;
+
+/**
+ * Delete expired cache objects, walking the prefix page by page.
+ *
+ * R2 `list` returns keys in lexicographic order behind a cursor, and cache keys
+ * are `corx/v1/<sha256>` — i.e. random order. A single `list({ limit })` call
+ * therefore only ever sees the first page, so an expired object further down
+ * would not become visible until everything before it had been deleted; with a
+ * long tail of one-shot URLs the bucket grew without bound and only read-time
+ * expiry (`getCached`) reclaimed anything, i.e. only URLs requested again.
+ *
+ * The sweep always starts at the beginning of the prefix, which is unbiased:
+ * expiry is uncorrelated with key order, and every deleted key shifts the next
+ * page forward, so consecutive runs make progress. `pageBudget` caps the work
+ * (and the Class A spend) of a single run; whatever is left is picked up the
+ * next night. Non-fatal by contract — a failed list or delete is skipped, never
+ * thrown, because cache housekeeping must not fail the cron.
+ */
+export async function pruneExpiredCache(
+  bucket: R2Bucket,
+  opts: { pageSize?: number; pageBudget?: number; now?: number } = {},
+): Promise<{ scanned: number; deleted: number; pages: number }> {
+  const pageSize = opts.pageSize ?? PRUNE_PAGE_SIZE;
+  const pageBudget = opts.pageBudget ?? PRUNE_PAGE_BUDGET;
+  const now = opts.now ?? Date.now();
+  let cursor: string | undefined;
+  let scanned = 0;
+  let deleted = 0;
+  let pages = 0;
+  for (let page = 0; page < pageBudget; page++) {
+    let listed: R2Objects;
+    try {
+      listed = await bucket.list({ prefix: PREFIX, limit: pageSize, cursor });
+    } catch {
+      break; // bucket-level trouble (permissions, outage): stop the sweep
+    }
+    pages++;
+    scanned += listed.objects.length;
+    const expired = listed.objects.filter((obj) => {
+      const expiresAt = Number(obj.customMetadata?.["expiresAt"] ?? 0);
+      return Number.isFinite(expiresAt) && expiresAt > 0 && expiresAt < now;
+    });
+    // A delete that fails is skipped, never thrown: housekeeping must not
+    // abort the rest of the sweep (the entry is simply reclaimed next run).
+    await Promise.all(expired.map((obj) => bucket.delete(obj.key).catch(() => undefined)));
+    deleted += expired.length;
+    // No cursor means we saw the end of the prefix.
+    if (!listed.truncated || !listed.cursor) break;
+    cursor = listed.cursor;
+  }
+  return { scanned, deleted, pages };
+}
+
+/** What to delete: everything, every entry for one host, or one URL. */
+export type PurgeScope = { all: true } | { host: string } | { url: string };
+
+/** Normalize a purge scope from untrusted input; null when it names nothing. */
+export function parsePurgeScope(input: {
+  all?: unknown;
+  host?: unknown;
+  url?: unknown;
+}): Promise<PurgeScope | null> | PurgeScope | null {
+  if (input.all === true || input.all === "true" || input.all === "1") return { all: true };
+  const url = String(input.url ?? "").trim();
+  if (url) {
+    try {
+      // Purge the *effective* URL, so a caller passes what they asked the proxy
+      // for; a caller who knows about injection rules purges by host instead.
+      return { url: new URL(url).toString() };
+    } catch {
+      return null;
+    }
+  }
+  const host = String(input.host ?? "").trim().toLowerCase().replace(/\.+$/, "");
+  if (host) {
+    return /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(host) ? { host } : null;
+  }
+  return null;
+}
+
+/**
+ * Delete cache entries matching a scope.
+ *
+ * Every scope except `all` still has to walk the prefix: an entry's key is a
+ * sha256 over the URL *and* the key's response-rule fingerprint, so there is no
+ * key to compute for "every entry of this URL". The walk is bounded by the same
+ * page budget as the nightly sweep (a purge is an operator action, not a
+ * background job, so it gets one run's worth of pages and reports
+ * `truncated` when the bucket is larger than that).
+ */
+export async function purgeCache(
+  bucket: R2Bucket,
+  scope: PurgeScope,
+  opts: { pageSize?: number; pageBudget?: number } = {},
+): Promise<{ scanned: number; deleted: number; truncated: boolean }> {
+  const pageSize = opts.pageSize ?? PRUNE_PAGE_SIZE;
+  const pageBudget = opts.pageBudget ?? PRUNE_PAGE_BUDGET;
+  const urlHash = "url" in scope ? await cacheUrlHash(scope.url) : null;
+  const host = "host" in scope ? scope.host : null;
+  const matches = (obj: R2Object): boolean => {
+    if (urlHash !== null) return obj.customMetadata?.["urlHash"] === urlHash;
+    if (host !== null) return (obj.customMetadata?.["host"] ?? "").toLowerCase() === host;
+    return true; // { all: true }
+  };
+  let cursor: string | undefined;
+  let scanned = 0;
+  let deleted = 0;
+  let truncated = false;
+  for (let page = 0; page < pageBudget; page++) {
+    let listed: R2Objects;
+    try {
+      listed = await bucket.list({ prefix: PREFIX, limit: pageSize, cursor });
+    } catch {
+      break;
+    }
+    scanned += listed.objects.length;
+    const doomed = listed.objects.filter(matches);
+    await Promise.all(doomed.map((obj) => bucket.delete(obj.key).catch(() => undefined)));
+    deleted += doomed.length;
+    if (!listed.truncated || !listed.cursor) break;
+    cursor = listed.cursor;
+    // Ran out of budget with pages still waiting.
+    if (page === pageBudget - 1) truncated = true;
+  }
+  return { scanned, deleted, truncated };
+}
+
+/** One entry in the console's sample of the cache (see `sampleCache`). */
+export interface CacheSampleEntry {
+  /** First 12 hex chars of the key — enough to correlate, not a URL. */
+  key: string;
+  host: string;
+  bytes: number;
+  storedAt: number;
+  expiresAt: number;
+  expired: boolean;
+}
+
+export interface CacheSample {
+  entries: CacheSampleEntry[];
+  bytes: number;
+  expired: number;
+  /** More keys exist than this call inspected (the page budget ran out). */
+  truncated: boolean;
+}
+
+/**
+ * A bounded look at what the cache currently holds: the first `limit` keys of
+ * the prefix, with per-host counts. Never a full scan — a page of keys is
+ * enough to show the shape of the cache and the purge page states plainly that
+ * the numbers are a sample.
+ */
+export async function sampleCache(bucket: R2Bucket, limit = 200): Promise<CacheSample> {
+  const now = Date.now();
+  const out: CacheSample = { entries: [], bytes: 0, expired: 0, truncated: false };
+  let cursor: string | undefined;
+  let seen = 0;
+  while (seen < limit) {
+    let listed: R2Objects;
+    try {
+      listed = await bucket.list({ prefix: PREFIX, limit: Math.min(PRUNE_PAGE_SIZE, limit - seen), cursor });
+    } catch {
+      break;
+    }
+    for (const obj of listed.objects) {
+      const bytes = Number(obj.size ?? 0);
+      const expiresAt = Number(obj.customMetadata?.["expiresAt"] ?? 0);
+      const expired = Number.isFinite(expiresAt) && expiresAt > 0 && expiresAt < now;
+      out.entries.push({
+        key: obj.key.slice(PREFIX.length, PREFIX.length + 12),
+        host: obj.customMetadata?.["host"] ?? "",
+        bytes,
+        storedAt: Number(obj.customMetadata?.["storedAt"] ?? 0),
+        expiresAt,
+        expired,
+      });
+      out.bytes += bytes;
+      if (expired) out.expired++;
+      seen++;
+    }
+    if (!listed.truncated || !listed.cursor) break;
+    cursor = listed.cursor;
+  }
+  out.truncated = seen >= limit;
+  return out;
+}
+
+/** Per-host entry counts and bytes, busiest first. */
+export function sampleByHost(sample: CacheSample, top = 8): Array<{ host: string; entries: number; bytes: number }> {
+  const map = new Map<string, { entries: number; bytes: number }>();
+  for (const entry of sample.entries) {
+    const host = entry.host || "(unknown)";
+    const row = map.get(host) ?? { entries: 0, bytes: 0 };
+    row.entries++;
+    row.bytes += entry.bytes;
+    map.set(host, row);
+  }
+  return [...map.entries()]
+    .map(([host, v]) => ({ host, ...v }))
+    .sort((a, b) => b.bytes - a.bytes)
+    .slice(0, top);
 }

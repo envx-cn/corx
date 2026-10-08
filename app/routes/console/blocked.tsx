@@ -4,7 +4,7 @@ import { queryBlockedHosts } from "../../lib/admin.js";
 import { DataTable, EmptyRow } from "../../components/table.js";
 import { RelTime } from "../../components/time.js";
 import { ConfirmButton } from "./_confirm.js";
-import { normalizeBlockedHostname } from "../../proxy/guard.js";
+import { invalidateBlocklistMemo, normalizeBlockedHostname } from "../../proxy/guard.js";
 import { consoleT } from "../../lib/i18n/hono.js";
 import type { TFunc } from "../../lib/i18n/locale.js";
 
@@ -24,6 +24,9 @@ app.post("/", async (c) => {
     await c.env.DB.prepare("INSERT OR IGNORE INTO blocked_hosts (hostname, reason) VALUES (?, ?)")
       .bind(hostname, String(form["reason"] ?? "").slice(0, 500))
       .run();
+    // The proxy memoizes blocklist answers per isolate for 30 s (see
+    // guard.ts); an operator's own block must not wait out that window.
+    invalidateBlocklistMemo();
   }
   return c.redirect("/console/blocked", 302);
 });
@@ -32,6 +35,8 @@ app.post("/:hostname/delete", async (c) => {
   await c.env.DB.prepare("DELETE FROM blocked_hosts WHERE hostname = ?")
     .bind((c.req.param("hostname") ?? "").toLowerCase())
     .run();
+  // Same reason as blocking: an unblock takes effect immediately.
+  invalidateBlocklistMemo();
   return c.redirect("/console/blocked", 302);
 });
 

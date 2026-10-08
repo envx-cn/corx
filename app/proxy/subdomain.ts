@@ -15,8 +15,49 @@ import { extractTargetUrl } from "./guard.js";
  * workers.dev hostnames can't do sub-subdomains, use /fetch?url= there.
  */
 
-/** First-labels that are always served locally, never decoded as targets. */
-const RESERVED_LABELS = new Set(["www", "admin", "console", "api", "health", "status", "terms", "privacy", "docs", "blog"]);
+/** First labels that are always served locally, never decoded as targets.
+ *
+ * Subdomain mode decodes the WHOLE first label into a hostname, so any label
+ * missing from here turns a mistyped (or copy-pasted) link into a live proxy
+ * request for a third party's real domain: `en.<zone>` would fetch
+ * `https://en.com/`, `snippets.<zone>` → `https://snippets.com/`. That is not
+ * a vulnerability — subdomain mode is an open proxy by design — but pointing
+ * the operator's own zone at somebody else's site is never what a link meant.
+ *
+ * The set must cover every top-level route the app serves; `test/subdomain.
+ * test.ts` derives that list from `app/routes/**` so a new top-level route
+ * fails the build until it is listed here. Labels mounted outside the file
+ * router (`/fetch`, `/proxy/*` in `app/server.ts`) and the traditional ones
+ * (`www`, `admin`, `health`, …) are covered by the same test explicitly.
+ */
+const RESERVED_LABELS = new Set([
+  // Every top-level segment under app/routes (file router).
+  "api",
+  "compare",
+  "console",
+  "demo",
+  "docs",
+  "en",
+  "snippets",
+  "terms",
+  "tools",
+  "zh",
+  // Mounted manually in app/server.ts.
+  "fetch",
+  "proxy",
+  // Traditional / defensive entries: never a target somebody wants to proxy to.
+  "www",
+  "admin",
+  "health",
+  "status",
+  "privacy",
+  "blog",
+]);
+
+/** The reserved set, for tests that couple it to the route table. */
+export function reservedLabels(): readonly string[] {
+  return [...RESERVED_LABELS].sort();
+}
 
 export function encodeHostname(hostname: string): string {
   return hostname.toLowerCase().replaceAll("-", "--").replaceAll(".", "-");

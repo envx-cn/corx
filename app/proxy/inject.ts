@@ -29,7 +29,9 @@
  * must declare the hosts it may reach, and the proxy refuses everything else
  * before any secret is attached to the request.
  */
+import type { ApiKeyRow } from "../lib/types.js";
 import { ProxyError } from "../lib/types.js";
+import { ipAllowed } from "./ip.js";
 import { CONTROL_PARAMS } from "../lib/control.js";
 import { splitListInput } from "./list-input.js";
 
@@ -926,4 +928,80 @@ export function responseRulesFingerprint(rules: InjectionRule[], vars: Map<strin
   );
   parts.sort();
   return parts.join("\u0001");
+}
+
+// --- Per-key scope (migration 0014) ---------------------------------------
+
+/** The subset of a key row the scope checks read. */
+export type ScopeRow = Pick<
+  ApiKeyRow,
+  "allowed_methods" | "allowed_paths" | "require_https" | "allowed_cidrs" | "expires_at"
+>;
+
+/** Methods a key's CSV allows; empty/null = no restriction. */
+export function methodAllowed(row: ScopeRow | null | undefined, method: string): boolean {
+  const list = (row?.allowed_methods ?? "").trim();
+  if (!list) return true;
+  const allowed = new Set(
+    list
+      .split(",")
+      .map((m) => m.trim().toUpperCase())
+      .filter(Boolean),
+  );
+  // A GET-allowlist key must still answer HEAD; the save path stores both, but
+  // a hand-edited row that only says GET should not break preflights or probes.
+  if (allowed.has("GET") && method.toUpperCase() === "HEAD") return true;
+  return allowed.has(method.toUpperCase());
+}
+
+/** Target path prefixes a key's CSV allows; empty/null = no restriction. */
+export function pathAllowed(row: ScopeRow | null | undefined, pathname: string): boolean {
+  const list = (row?.allowed_paths ?? "").trim();
+  if (!list) return true;
+  const prefixes = list
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (prefixes.length === 0) return true;
+  return prefixes.some((prefix) => {
+    const base = prefix.length > 1 && prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+    // `/api` covers `/api`, `/api/x` and `/api?x=1`, but not `/apix` — the
+    // segment boundary is what makes a prefix list safe.
+    if (base === "/") return true;
+    return pathname === base || pathname.startsWith(base + "/");
+  });
+}
+
+/**
+ * Caller-facing part of the scope: method, caller IP, expiry.
+ *
+ * Split from the URL checks so it can run before any request work, and so the
+ * reason a request was refused is a single named rule rather than "403".
+ */
+export function assertKeyScope(row: ScopeRow | null | undefined, method: string, ip: string): void {
+  if (!row) return;
+  if (!methodAllowed(row, method)) {
+    throw new ProxyError(403, `This key may not use ${method.toUpperCase()} (allowed: ${row.allowed_methods})`);
+  }
+  if (!ipAllowed(ip, row.allowed_cidrs)) {
+    throw new ProxyError(403, `Caller IP ${ip || "unknown"} is not in this key's allowed ranges`);
+  }
+  if (row.expires_at) {
+    const at = Date.parse(row.expires_at);
+    // An unparseable expiry must not silently grant access.
+    if (!Number.isFinite(at) || Date.now() > at) {
+      throw new ProxyError(403, `This key expired at ${row.expires_at}`);
+    }
+  }
+}
+
+/** URL-facing part of the scope: scheme and path of the effective target. */
+export function assertKeyTargetScope(row: ScopeRow | null | undefined, target: URL): void {
+  if (!row) return;
+  if (row.require_https && target.protocol !== "https:") {
+    throw new ProxyError(403, "This key only allows https:// targets");
+  }
+  if (!pathAllowed(row, target.pathname)) {
+    throw new ProxyError(403, `Path ${target.pathname} is outside this key's allowed paths`);
+  }
 }

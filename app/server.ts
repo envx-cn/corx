@@ -11,6 +11,7 @@ import { rollupDailyStats } from "./lib/admin.js";
 import { logRetentionDays } from "./lib/db.js";
 import { cors, withProxyCors } from "./proxy/cors.js";
 import { proxyHandler } from "./proxy/handler.js";
+import { pruneExpiredCache } from "./proxy/cache.js";
 import { utcDay } from "./proxy/quota.js";
 import { resolveRawTarget } from "./proxy/subdomain.js";
 import { notFoundResponse } from "./routes/_not-found.js";
@@ -30,7 +31,38 @@ const base = new Hono<{ Bindings: Env; Variables: ProxyVariables }>({ strict: fa
 base.use(apiKeyMiddleware);
 base.use(cors());
 
-base.get("/health", (c) => c.json({ ok: true, service: "corx", time: new Date().toISOString() }));
+/**
+ * `/health` — liveness by default, dependency check on request.
+ *
+ * The shallow answer is deliberately cheap (it runs on every platform probe),
+ * which means a green `/health` says nothing about D1 or R2. `?deep=1` actually
+ * exercises both and reports per-binding status, so a monitoring check can tell
+ * "the Worker is up" apart from "the Worker cannot reach its database".
+ */
+base.get("/health", async (c) => {
+  if (c.req.query("deep") !== "1") {
+    return c.json({ ok: true, service: "corx", time: new Date().toISOString() });
+  }
+  const [d1, r2] = await Promise.all([
+    c.env.DB.prepare("SELECT 1 AS ok").first<{ ok: number }>().then(
+      () => ({ ok: true }),
+      (err: unknown) => ({ ok: false, error: (err as Error)?.message ?? "unknown" }),
+    ),
+    c.env.CACHE_BUCKET.list({ prefix: "corx/v1/", limit: 1 }).then(
+      () => ({ ok: true }),
+      (err: unknown) => ({ ok: false, error: (err as Error)?.message ?? "unknown" }),
+    ),
+  ]);
+  return c.json(
+    {
+      ok: d1.ok && r2.ok,
+      service: "corx",
+      time: new Date().toISOString(),
+      checks: { d1, r2 },
+    },
+    (d1.ok && r2.ok ? 200 : 503) as ContentfulStatusCode,
+  );
+});
 
 /**
  * Crawler-facing text files (robots.txt, sitemap.xml, llms.txt,
@@ -242,15 +274,10 @@ export default {
           .bind(utcDay(Date.now() - 86_400_000))
           .run()
           .catch(() => undefined);
-        // R2 TTL is lazy (checked on read); list-prune a small batch each run.
+        // R2 TTL is lazy (checked on read); the prune sweeps the prefix page
+        // by page so entries past the first page are reclaimed too (#107).
         try {
-          const listed = await env.CACHE_BUCKET.list({ prefix: "corx/v1/", limit: 100 });
-          const expired: string[] = [];
-          for (const obj of listed.objects) {
-            const exp = Number(obj.customMetadata?.["expiresAt"] ?? 0);
-            if (exp && Date.now() > exp) expired.push(obj.key);
-          }
-          await Promise.all(expired.map((k) => env.CACHE_BUCKET.delete(k).catch(() => undefined)));
+          await pruneExpiredCache(env.CACHE_BUCKET);
         } catch {
           /* non-fatal */
         }

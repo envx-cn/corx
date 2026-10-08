@@ -69,6 +69,20 @@ function cap(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : null;
 }
 
+/**
+ * Increment one bucket and read the new count back in the SAME statement.
+ *
+ * The upsert alone cannot tell us the new value, which is why this used to be
+ * an `INSERT … ON CONFLICT` followed by a `SELECT` — two round trips per
+ * dimension, six per request on a fully-capped public key. `RETURNING` gives
+ * the row SQLite just wrote, so the count is exact (still a single writer per
+ * bucket row, no read-modify-write race) at half the statements.
+ */
+const BUMP_SQL = `INSERT INTO quota_counters (bucket_key, period, count)
+       VALUES (?, ?, 1)
+       ON CONFLICT (bucket_key, period) DO UPDATE SET count = count + 1
+       RETURNING count`;
+
 /** Increment one bucket, then reject when the day's count is over its cap. */
 async function bump(
   db: D1Database,
@@ -77,19 +91,13 @@ async function bump(
   limit: number,
   scope: QuotaScope,
 ): Promise<QuotaBucket> {
-  await db
-    .prepare(
-      `INSERT INTO quota_counters (bucket_key, period, count)
-       VALUES (?, ?, 1)
-       ON CONFLICT (bucket_key, period) DO UPDATE SET count = count + 1`,
-    )
-    .bind(bucketKey, period)
-    .run();
   const row = await db
-    .prepare("SELECT count FROM quota_counters WHERE bucket_key = ? AND period = ?")
+    .prepare(BUMP_SQL)
     .bind(bucketKey, period)
     .first<{ count: number }>();
-  const used = row?.count ?? 1;
+  // A count we cannot read is treated as "this request, nothing before it",
+  // which is the same fail-open posture the catch below has always had.
+  const used = Number(row?.count ?? 1) || 1;
   if (used > limit) {
     const where = scope === "total" ? "this service" : scope === "origin" ? "your origin" : "that host";
     throw new ProxyError(429, `Daily request limit reached for ${where} (${limit}/day)`, {

@@ -36,6 +36,12 @@ export function ConfirmButton(props: {
   i18n: ConfirmI18n;
   /** Session-bound CSRF token (omit only where no session exists). */
   csrf?: string;
+  /**
+   * Extra values for the POST (the cache page confirms a purge with
+   * `all=1`). Kept as an explicit map rather than a body so the shape of what
+   * a confirm can trigger stays visible at every call site.
+   */
+  fields?: Record<string, string>;
 }) {
   seq += 1;
   const id = `corx-confirm-${seq}`;
@@ -48,6 +54,9 @@ export function ConfirmButton(props: {
       </button>
       <form id={formId} method="post" action={props.action} class="contents">
         {props.csrf ? <input type="hidden" name="csrf" value={props.csrf} /> : null}
+        {Object.entries(props.fields ?? {}).map(([name, value]) => (
+          <input key={name} type="hidden" name={name} value={value} />
+        ))}
       </form>
       <dialog id={id} class="modal" aria-labelledby={titleId}>
         <div class="modal-box max-w-sm">

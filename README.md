@@ -87,6 +87,9 @@ fetch("https://corx.<you>.workers.dev/fetch?url=" + encodeURIComponent("https://
 //   GET /https://api.example.com/data
 // Subdomain mode (needs wildcard domain *.your-zone):
 //   GET https://api-example-com.your-zone/data
+//   The first label is the target host, except the labels CORX serves itself
+//   (api, console, docs, en, zh, snippets, tools, compare, demo, fetch,
+//   proxy, terms, www, …) — those never decode to a hostname.
 ```
 
 Options:
@@ -98,6 +101,10 @@ Options:
 | `?corx-callback=cb` | JSONP: wrap the JSON body as `cb(<json>);` for a `<script>` tag (see below) |
 | `?corx-charset=utf-8` | Re-decode a text/JSON/XML response with this label and re-emit it as UTF-8 — the fix for a mislabelled upstream charset (unknown labels are a 400) |
 | `?corx-wrap=json` | Wrap the text body as `{"contents":"…"}` with `application/json`, so `r.json()` works for HTML too (binary responses are a 400) |
+
+Both transforms are a no-op on a bodyless status (`204`, `304`, …): there is
+nothing to re-encode or wrap, so the upstream's status and validators are
+passed through unchanged.
 
 Pass an API key with `X-Api-Key`, `Authorization: Bearer …`, or `?corx-key=…`
 (required when `REQUIRE_API_KEY=true`). What CORX authenticated with never
@@ -152,6 +159,13 @@ round-trip is what trusted internal keys may want to drop). The D1 blocklist
 (a blocked domain also covers its subdomains) and Cloudflare's own private-IP
 rules for Workers are never bypassed. Skipping
 a guard widens what that key can reach, so both default to on.
+
+The blocklist is answered from a per-isolate memo for 30 s, the same trade the
+DoH resolver makes — it runs on *every* request (cache hits included, so a host
+blocked after the fact stops being served), which made it the one per-request
+read that carried no new information. Blocking or unblocking through the console
+or the API clears the memo immediately; the window only applies to a row
+written straight into D1.
 
 **JSONP (`?corx-callback=fn`)**
 
@@ -346,6 +360,34 @@ the caller's `Origin` before forwarding, so upstream can never vary on it.
 
 Responses carry `X-Corx-Cache: HIT/MISS`, `X-Corx-Target`, `X-Corx-Latency-Ms`.
 Preflight `OPTIONS` is answered on every route. Upstream `set-cookie` is stripped.
+
+**Purging.** Entries are keyed by a sha256 of the URL mixed with the key's
+response-rule fingerprint, so nothing could remove one on demand until each
+entry also carries an index: a **digest** of the effective URL (never the URL —
+the key is built from the *post-injection* URL, which can carry an injected
+secret, and R2 metadata is readable by anyone with bucket access) and the
+proxied hostname. `POST /api/cache/purge` takes one of `{url}`, `{host}`,
+`{all}`; every scope walks the prefix, bounded by the nightly sweep's page
+budget, and reports `truncated` when the bucket is larger than that.
+`/console/cache` shows the same state with buttons.
+
+**stale-if-error (`CACHE_STALE_SECONDS`, off by default).** When set, an
+expired entry is kept for that many extra seconds and used only when the
+upstream answers `5xx`, fails, or times out — the caller gets the cached body
+with `X-Corx-Cache: STALE` and `Warning: 110` instead of the vendor's error
+page, and the log records what it is standing in for. It never applies to a
+plain miss, to authenticated callers, `Range`, JSONP, or a key with header
+rules — those never enter the cache path at all — and a host blocked after the
+fact still wins, because the blocklist is checked before the cache.
+
+**A HIT is a proper cache response.** It carries corx's own `Age` (seconds since
+the entry was stored, capped at its TTL) and a fresh `Date` — the upstream's
+`Age`/`Date` are never stored or replayed, so a browser or CDN downstream
+computes freshness from the copy it actually received. A caller whose
+`If-None-Match` (weak comparison, lists and `*` included) or
+`If-Modified-Since` matches the stored validator gets a `304` with no body
+instead of the whole payload, and a `HEAD` reads the cache too — same headers
+as the `GET`, no body, no upstream fetch.
 
 **Encoding:** upstreams are asked for identity (uncompressed) bodies
 (`accept-encoding: identity`), and any `Content-Encoding` header is stripped on
@@ -761,6 +803,17 @@ Workers Paid ($5/mo lifts D1 to 50M writes and Workers to 10M requests per
 month), or by trimming writes (log sampling, edge rate limiting) — not by
 simply raising the number.
 
+**What one request actually costs in D1.** A public-tier request with all three
+caps configured runs six statements: the key lookup, one upsert per capped
+dimension, one upsert for the rate-limit window, and the log row — plus a
+seventh on a cold isolate, the blocklist read (see below). The counters read
+their new value out of the same `INSERT … ON CONFLICT … RETURNING count` that
+writes them, so a dimension costs one round trip instead of an upsert plus a
+re-read. **Rows written did not change** (D1 bills rows, not statements) — what
+shrank is the read/latency side, from eight statements to six. The remaining
+write reduction is moving the per-minute limiter off D1 entirely (a Workers
+Rate Limiting binding), which would be per-isolate rather than global.
+
 **Logging is configurable, and the trade is real.** `LOG_REQUESTS=false` stops
 the `request_logs` insert at the source (`app/lib/db.ts`), so the proxy keeps
 serving but the console's logs list and 24-hour stats go quiet, and the daily
@@ -930,9 +983,10 @@ vars are rewritten from the config file each time.
 | `ALLOWED_ORIGINS` | `*` | `*` or comma/whitespace-separated origins allowed to use the **proxy routes only** (console/API never get CORS headers); a loopback port wildcard (`http://localhost:*`) is allowed |
 | `REQUIRE_API_KEY` | `true` | `"true"` to require an API key |
 | `CACHE_TTL_SECONDS` | `3600` | Default R2 TTL for GET 200s; also caps per-request `?corx-ttl=` |
+| `CACHE_STALE_SECONDS` | `0` | stale-if-error grace window (1–86400, `0` = off). When set, an entry lives `TTL + this` and is served **only** if the upstream fails — with `X-Corx-Cache: STALE` and `Warning: 110`. Off by default: serving a body past its TTL is a policy decision |
 | `TIMEOUT_MS` | `30000` | Upstream timeout |
 | `RATE_LIMIT_PER_MIN` | `60` | Per key (or per IP) per minute — cache hits are free |
-| `MAX_BODY_BYTES` | `10485760` | Max forwarded request body (early Content-Length check, then a buffered cap; an unreadable body is rejected, never forwarded empty) |
+| `MAX_BODY_BYTES` | `10485760` | Max forwarded request body. A declared oversized upload is refused before anything is read; an upload that is still arriving is **streamed** (with the cap enforced as it flows, so the upstream connection opens before the caller finishes sending), and only a body that has already been read in full is held in memory — small JSON/form posts, which keep the `413`-before-forwarding and re-sendable-on-`307` behaviour. An unreadable body is rejected, never forwarded empty. A `307`/`308` for a *streamed* body is handed back to the caller rather than re-sent, since re-sending a consumed body is impossible |
 | `LOG_REQUESTS` | `true` | `false`/`0`/`off`/`no` writes **nothing** to `request_logs`: no per-request rows, no per-day trend. Rate limiting, quota headers and `X-Corx-*` markers are unaffected. The hosted instance logs (it says so in /terms); a self-hosted deployment may not want to |
 | `LOG_RETENTION_DAYS` | `30` | Days of raw `request_logs` kept before the cron prune (1–365; junk falls back to 30). The daily rollup (`stats_daily`) follows the same window, and the console's stats read raw rows only while they exist — a shorter value means the trend comes from the rollup sooner |
 | `ADMIN_TOKEN` (secret) | — | Bearer token for `/api/*`; legacy HMAC key for console sessions |
@@ -1041,6 +1095,10 @@ Logs (per-request size, plus the **Via** — presented key / keyless / anon — 
 **Caller** origin that authorized it, with a 1h–7d lookback **Window** slider
 that re-filters on release) · Host
 blocklist (add inline — blocking a domain also covers its subdomains — remove behind a confirm dialog; logout confirms too) ·
+Response cache (what the R2 cache holds right now — entries, bytes, the 24 h
+hit ratio and the busiest hosts, all from a bounded sample that says so — plus
+purge by URL, by host, or everything behind a confirm dialog; the numbers
+refresh after a purge) ·
 Profile.
 
 Timestamps are rendered relative ("5m ago") with the exact UTC value on hover,
@@ -1125,10 +1183,17 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" 'https://corx.<you>.workers.dev/api
 
 # period over period (1–365 complete UTC days): current vs previous, with
 # requests / distinct origins / distinct keys / errors and their deltas, a
-# daily series, and whether it came from raw logs or the daily rollup. Read
-# origins and keys first — request counts are noise. The window ends
-# yesterday, so both periods are complete and directly comparable.
+# daily series (including cache hits and cached bytes), and whether it came from
+# raw logs or the daily rollup. Read origins and keys first — request counts
+# are noise. The window ends yesterday, so both periods are complete and
+# directly comparable.
 curl -H "Authorization: Bearer $ADMIN_TOKEN" 'https://corx.<you>.workers.dev/api/stats?days=28'
+
+# Prometheus text for your own monitoring (admin-gated, like every /api/*):
+# requests, cache hits + hit ratio, cached (upstream) bytes, latency, active
+# keys, the effective cache config, plus per-host / per-status / per-country
+# breakdowns capped at 20 series each.
+curl -H "Authorization: Bearer $ADMIN_TOKEN" https://corx.<you>.workers.dev/api/metrics
 
 # create a key (raw key shown once!; "name" is required)
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
@@ -1166,11 +1231,36 @@ curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: applicat
 curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"tier":"public","dailyLimitPerOrigin":3000,"dailyLimitPerHost":5000,"dailyLimitTotal":15000}' \
   https://corx.<you>.workers.dev/api/keys/KEY_ID
+# per-key scope: narrow what the key may reach beyond its host allowlist.
+# Blank / false = no restriction, so an existing key is unaffected.
+# Methods (GET implies HEAD), target path prefixes (matched on segment
+# boundaries, after query rules), https-only, caller CIDRs, and an expiry —
+# a violation is a 403 before any upstream call.
+curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"allowedMethods":"GET, POST","allowedPaths":"/v1/, /v2/embed","requireHttps":true,
+       "allowedCidrs":"203.0.113.0/24, 2001:db8::/32","expiresAt":"2026-12-31"}' \
+  https://corx.<you>.workers.dev/api/keys/KEY_ID
+
 # revoke (kill switch; keeps the row; the console has the same button) / block hosts
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" https://corx.<you>.workers.dev/api/keys/KEY_ID/revoke
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"hostname":"evil.example","reason":"abuse"}' \
   https://corx.<you>.workers.dev/api/block-host
+
+# cache purge: drop cached responses before their TTL does. One of url / host / all:
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"url":"https://api.vendor.com/data"}' \
+  https://corx.<you>.workers.dev/api/cache/purge
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"host":"api.vendor.com"}' \
+  https://corx.<you>.workers.dev/api/cache/purge
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"all":true}' \
+  https://corx.<you>.workers.dev/api/cache/purge
+# → { "scope": …, "scanned": N, "deleted": N, "truncated": false }
+# `truncated: true` means the bucket is larger than one run's page budget (10 ×
+# 1000 keys): what was scanned was purged exactly, the rest waits for the next
+# run. /console/cache shows the same thing with buttons.
 ```
 
 ## Non-goals
@@ -1231,7 +1321,10 @@ browser ──► CORX (Worker)
               ├─ rate limit (misses only) ──► D1 rate_windows (fixed window)
               ├─ fetch upstream (timeout, size caps, header filtering,
               │    manual redirects — every hop re-validated)
-              └─ log ──► D1 request_logs (waitUntil; skipped entirely when
+              └─ log ──► D1 request_logs (waitUntil — for a streamed
+                          response the lifetime is registered before
+                          the response is returned, so the row survives
+                          the stream; skipped entirely when
                           LOG_REQUESTS=false; the cron rolls each day
                            into stats_daily before pruning raw rows)
 ```

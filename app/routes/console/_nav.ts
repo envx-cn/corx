@@ -3,6 +3,7 @@ import keySvg from "lucide-static/icons/key-round.svg?raw";
 import playgroundSvg from "lucide-static/icons/flask-conical.svg?raw";
 import logsSvg from "lucide-static/icons/scroll-text.svg?raw";
 import blockedSvg from "lucide-static/icons/shield-alert.svg?raw";
+import databaseSvg from "lucide-static/icons/database.svg?raw";
 import type { MessageKey } from "../../lib/i18n/messages.js";
 
 /** One entry in the console navigation. */
@@ -20,6 +21,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/console/playground", label: "console.nav.playground", svg: playgroundSvg },
   { href: "/console/logs", label: "console.nav.logs", svg: logsSvg },
   { href: "/console/blocked", label: "console.nav.blocked", svg: blockedSvg },
+  { href: "/console/cache", label: "console.nav.cache", svg: databaseSvg },
 ];
 
 /**

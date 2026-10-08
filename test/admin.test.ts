@@ -76,13 +76,20 @@ describe("createApiKey", () => {
       null, // daily_limit_per_origin
       null, // daily_limit_per_host
       null, // daily_limit_total
+      null, // allowed_methods: no method scope
+      null, // allowed_paths
+      0, // require_https off
+      null, // allowed_cidrs
+      null, // expires_at: never
     ]);
   });
 
   it("defaults both checks to on (and no injection/keyless)", async () => {
     const { db, calls } = recordingDb();
     await createApiKey(db, { name: "app", rateLimitPerMin: null });
-    expect(calls[0]?.values.slice(7)).toEqual([1, 1, "[]", "[]", "[]", "[]", null, 0, "standard", null, null, null]);
+    expect(calls[0]?.values.slice(7)).toEqual([
+      1, 1, "[]", "[]", "[]", "[]", null, 0, "standard", null, null, null, null, null, 0, null, null,
+    ]);
   });
 
   it("stores injection fields and requires a host allowlist", async () => {
@@ -317,7 +324,7 @@ describe("public tier policy", () => {
       dailyLimitPerHost: "5000",
       dailyLimitTotal: "15000",
     });
-    expect(calls[0]?.values.slice(15)).toEqual(["public", 3000, 5000, 15000]);
+    expect(calls[0]?.values.slice(15, 19)).toEqual(["public", 3000, 5000, 15000]);
   });
 
   it("accepts a boolean tier from the console form", async () => {
