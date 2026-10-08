@@ -266,6 +266,7 @@ function KeyPage(props: {
         </h2>
         <div class="mt-3">
           <InjectionForm
+            hostsOnly={keyRow.tier === "public"}
             action={`/console/keys/${encodeURIComponent(keyRow.id)}/injection`}
             values={injectionValues}
             previousNames={parts.vars.map((v) => v.name)}
@@ -278,7 +279,9 @@ function KeyPage(props: {
         </div>
       </section>
 
-      <PreviewCard t={t} parts={parts} preview={preview} sample={sample} />
+      {keyRow.tier === "public" ? null : (
+        <PreviewCard t={t} parts={parts} preview={preview} sample={sample} />
+      )}
 
       <section class="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-box border border-error/30 bg-error/5 p-4">
         <div>
@@ -404,6 +407,7 @@ function injectionLabels(t: TFunc): InjectionFormI18n {
     allowedHosts: t("console.keys.allowedHosts"),
     allowedHostsPh: t("console.keys.allowedHostsPh"),
     hostsRequired: t("console.keys.injectionHostsHint"),
+    hostsOptionalHint: t("console.keys.injectionHostsOptionalHint"),
     vars: t("console.keys.vars"),
     varsHint: t("console.keys.varsHint"),
     varName: t("console.keys.varName"),

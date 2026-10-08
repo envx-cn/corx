@@ -970,8 +970,8 @@ const en = {
         "The shared key for this hosted instance: GET/HEAD only, no cache control, no subdomain mode, credentials never forwarded, and the daily quotas below. Safe to hand out.",
       dailyLimits:
         "Daily quotas in UTC days. Blank = unlimited, except the total, which is required — it is what keeps this instance inside its Cloudflare budget.",
-      dailyLimitPerOrigin: "Per origin / day",
-      dailyLimitPerHost: "Per target host / day",
+      dailyLimitPerOrigin: "Per origin / day (attribution, not a limit)",
+      dailyLimitPerHost: "Per target host / day — the one that bounds a scrape",
       dailyLimitTotal: "Total / day (required)",
       rateLimitMode: "Limiter",
       rateLimitModeD1: "D1 window (global)",
@@ -1001,6 +1001,8 @@ const en = {
       injectionHint: "Variables are injected into headers/params on the way out. One rule per line; @hosts scopes the lines below, !Name removes, ${var} inserts a variable. The same header can be set once per host (@host1 / @host2), so one key can hold a credential per upstream.",
       injectionHostsHint:
         "Needs at least one allowed target host (Advanced policy) — the save is rejected without one.",
+      injectionHostsOptionalHint:
+        "Optional here: blank means this shared key may reach any host. Set it to the hosts you actually mean to serve — a published public key is a standing invitation otherwise.",
       injectionLink: "Injection",
       logsLink: "Logs",
       playgroundLink: "Playground",
@@ -2201,8 +2203,8 @@ const zh: Messages = {
         "面向本站访客的共享 key：仅 GET/HEAD、不支持缓存控制、不支持子域模式、不转发凭证，并受下方每日配额约束。可以放心分发。",
       dailyLimits:
         "每日配额（UTC 自然日）。留空 = 不限制；但总量必填——它是把本实例控制在 Cloudflare 额度内的那道闸。",
-      dailyLimitPerOrigin: "每来源站点/天",
-      dailyLimitPerHost: "每目标站点/天",
+      dailyLimitPerOrigin: "每来源站点/天（归因用，非硬限制）",
+      dailyLimitPerHost: "每目标站点/天——真正能挡住抓取的那一项",
       dailyLimitTotal: "总量/天（必填）",
       rateLimitMode: "限流器",
       rateLimitModeD1: "D1 窗口（全局）",
@@ -2231,6 +2233,8 @@ const zh: Messages = {
       injection: "上游注入",
       injectionHint: "变量会在转发时注入到 Header / Query。每行一条规则；@hosts 为下方规则限定作用域，!Name 表示删除，${var} 插入变量。同一个 header 可以在不同 host 下各设一次（@host1 / @host2），因此一个 key 能为每个上游各带一套凭证。",
       injectionHostsHint: "至少需要一个允许的目标主机（在“高级策略”中）——否则变量和规则会被拒绝保存。",
+      injectionHostsOptionalHint:
+        "在这里是可选的：留空表示这把共享 key 可以访问任意主机。建议填上你真正打算提供的主机——公开的 public key 本身就是一张长期有效的邀请函。",
       injectionLink: "注入",
       logsLink: "日志",
       playgroundLink: "调试台",

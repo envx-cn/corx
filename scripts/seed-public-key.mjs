@@ -15,6 +15,7 @@
  *   npm run db:seed:public                          # key from .dev.vars, default caps
  *   npm run db:seed:public -- --key corx_abc123    # explicit key
  *   npm run db:seed:public -- --origin 3000 --host 5000 --total 15000
+ *   npm run db:seed:public -- --hosts api.example.com,*.cdn.example.com
  *
  * Local only: it runs `wrangler d1 execute --local`. For the deployed instance,
  * create the key in the console (tick "Public tier") and copy the raw value
@@ -57,6 +58,17 @@ const key = arg("key") ?? keyFromDevVars() ?? DEFAULT_KEY;
 const origin = cap("origin", 3000);
 const host = cap("host", 5000);
 const total = cap("total", 15000);
+// Optional target allowlist. Blank = any host (the default, and what an
+// operator who has not thought about it gets); a hosted instance's published key
+// really should name the hosts it serves — see the public tier in README.
+const hosts = (arg("hosts") ?? "").trim();
+const hostList = hosts
+  .split(/[\s,]+/)
+  .map((h) => h.trim())
+  .filter(Boolean)
+  .map((h) => `'${h.replaceAll("'", "''")}'`)
+  .join(", ");
+const allowedHosts = hostList ? hostList : "NULL";
 const hash = createHash("sha256").update(`corx:v1:${key}`).digest("hex");
 
 // The hash column is UNIQUE, so clear any row already holding this key (a key
@@ -65,7 +77,7 @@ const sql = [
   `DELETE FROM api_keys WHERE key_hash = '${hash}'`,
   `DELETE FROM keyless_origins WHERE key_id = '${ID}'`,
   `INSERT INTO api_keys (id, key_hash, name, tier, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, allowed_hosts, keyless, daily_limit_per_origin, daily_limit_per_host, daily_limit_total) ` +
-    `VALUES ('${ID}', '${hash}', 'public (local)', 'public', NULL, 300, 0, 1, 1, '[]', '[]', '[]', NULL, 0, ${origin}, ${host}, ${total})`,
+    `VALUES ('${ID}', '${hash}', 'public (local)', 'public', NULL, 300, 0, 1, 1, '[]', '[]', '[]', ${allowedHosts}, 0, ${origin}, ${host}, ${total})`,
 ].join("; ");
 
 try {
@@ -82,6 +94,7 @@ console.log(`Seeded the local public-tier key.
   key                ${key}
   sha256(corx:v1:key) ${hash}
   daily caps          ${origin} per origin · ${host} per host · ${total} total
+  allowed hosts       ${hosts || "(any — pass --hosts to restrict)"}
 
 Make sure PUBLIC_KEY is set to that same value (.dev.vars locally, or the
 PUBLIC_KEY secret when deployed) — then open / and look for the

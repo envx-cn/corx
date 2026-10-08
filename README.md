@@ -800,6 +800,20 @@ hit the proxy answers `429` with `Retry-After` (seconds to UTC midnight) and a
 or `PATCH /api/keys/:id`), and the landing page reads them from D1 so the
 numbers it advertises are the ones being enforced.
 
+**The three caps are not equally strong, and the difference matters when a
+scraper finds the key.** The per-key and per-**host** caps are real, global
+limits. The per-**origin** cap is *attribution, not a limit*: a non-browser
+caller usually sends no `Origin` at all (the dimension then becomes per-IP — one
+budget per address), and `Origin` is a caller-supplied header, so a script can
+rotate it freely. Against a distributed caller the per-origin number buys
+nothing; what actually stops a scrape of one API is **`dailyLimitPerHost`**
+(the shipped default is 5 000/day — consider 200), with `dailyLimitTotal` as the
+backstop for everything else. If you publish a public key, set an **allowed
+target host list** on it too (`allowedHosts`): the daily caps bound volume, an
+allowlist bounds *what* — and the console's public key page is exactly where
+that lives. A published key with no allowlist is a standing invitation, and one
+scraper finding it should be treated as expected rather than exceptional.
+
 **Sizing — the free plan is the budget.** Cloudflare's free tier gives 100k
 Worker requests/day and **100k D1 rows written/day** (indexes count: a
 `request_logs` insert costs ~3), plus ~33k R2 Class A and ~333k Class B per
@@ -811,6 +825,48 @@ origin, 5 000 per host, 60/min per IP) sit inside that budget. Raise them with
 Workers Paid ($5/mo lifts D1 to 50M writes and Workers to 10M requests per
 month), or by trimming writes (log sampling, edge rate limiting) — not by
 simply raising the number.
+
+### When Cloudflare emails you about the D1 budget
+
+A **"D1 daily operation limit N% reached"** alert is the signal this deployment
+sends. Work top to bottom; the first step answers "one caller or everyone" in one
+request.
+
+1. **Who and what, from metrics** — one scrape, admin-gated:
+   ```bash
+   curl -H "Authorization: Bearer $ADMIN_TOKEN" https://<host>/api/metrics | \
+     grep -E "requests_24h|host_requests_24h|cache_hits_24h|active_keys"
+   ```
+   `corx_host_requests_24h{host="…"}` names the target; `corx_requests_24h` and
+   `corx_cache_hits_24h` say whether it is one caller or a crowd. A high hit
+   ratio means the same URLs over and over (a loop); a low one with a single
+   dominant host means real fetching.
+2. **Which key, and was it capped** — the console's **Logs** table (filter by
+   key) or `GET /api/logs?limit=50`; the `Via` column shows whether the caller
+   presented a key, used a keyless origin grant, or sent none.
+3. **Change the lever that works**, in this order:
+   ```bash
+   # per target host, per day — the one that bounds a single-API scrape
+   curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+     -d '{"dailyLimitPerHost":200,"dailyLimitTotal":3000}' https://<host>/api/keys/KEY_ID
+   # refuse a target outright (applies to cache hits too — the blocklist is
+   # checked before the cache)
+   curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+     -d '{"hostname":"scraper.example.com","reason":"abuse"}' https://<host>/api/block-host
+   ```
+   If a key is one you do not recognise, **revoke it** (`POST /api/keys/:id/revoke`)
+   and rotate anything it could reach. Revoking also purges the responses that
+   key stored.
+4. **The payload itself** — `POST /api/cache/purge` (`{url}` / `{host}` /
+   `{keyId}` / `{all}`) or the same buttons on `/console/cache`.
+5. **`LOG_REQUESTS=false` last** — it removes the log insert (≈3 of the ≈5–7 rows
+   a request writes), so it roughly halves the burn, and it destroys the
+   evidence for the investigation. Take the queries first.
+
+The arithmetic to compare against the tier limit: a proxied request writes
+**≈5–7 D1 rows** (the log row plus its two indexes, the rate-limit window, and
+0–3 quota counters), so "requests/day × ≈5" is the number that has to fit under
+the daily row budget.
 
 **What one request actually costs in D1.** A public-tier request with all three
 caps configured runs six statements: the key lookup, one upsert per capped

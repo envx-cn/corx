@@ -773,12 +773,18 @@ function assertPublicPolicy(
   dailyLimitTotal: number | null,
 ): void {
   if (tier !== "public") return;
+  // Variables and rules carry secrets into the upstream, so a shared key may
+  // never hold them. `hosts` is the opposite: an allowlist *restricts* what the
+  // shared key can reach, and it holds nothing secret. It used to be rejected
+  // here purely because it lives in the same stored blob as the injection —
+  // which left a hosted instance's shared key bounded only by daily caps and the
+  // blocklist (see #124). Enforced by the same `assertHostAllowed` in the
+  // handler as for every other key.
   if (
     injection.vars.length ||
     injection.headers.length ||
     injection.params.length ||
-    injection.responseHeaders.length ||
-    injection.hosts.length
+    injection.responseHeaders.length
   ) {
     throw new ProxyError(400, "Public keys cannot inject upstream variables or rules");
   }

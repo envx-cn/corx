@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "hono/jsx/dom";
-import { checkInjectionForm } from "../proxy/inject.js";
+import { checkInjectionForm, parseHostsInput } from "../proxy/inject.js";
 
 /**
  * One variable row as the page renders it. Values never reach the client: the
@@ -25,6 +25,8 @@ export interface InjectionFormI18n {
   allowedHosts: string;
   allowedHostsPh: string;
   hostsRequired: string;
+  /** Public-tier variant: blank means "any host", so it is optional here. */
+  hostsOptionalHint: string;
   vars: string;
   varsHint: string;
   varName: string;
@@ -52,6 +54,21 @@ export interface InjectionFormI18n {
 }
 
 export type InjectionErrorField = "vars" | "allowedHosts" | "headerRules" | "paramRules" | "responseRules";
+
+/**
+ * Hosts-only validation (public tier): a non-empty list must be parseable, since
+ * an entry the parser rejects would silently match nothing and quietly narrow
+ * the key to "no hosts at all". Blank is allowed — it is "any host".
+ */
+export function validateHostsOnly(allowedHosts: string): string | null {
+  if (allowedHosts.trim() === "") return null;
+  try {
+    parseHostsInput(allowedHosts);
+    return null;
+  } catch (err) {
+    return (err as Error)?.message ?? "Invalid allowed target host";
+  }
+}
 
 /**
  * Which field a save-time injection error belongs to, so the message can sit
@@ -147,6 +164,13 @@ function VarRow(props: { i: number | string; row: InjectionVarRow; labels: Injec
  * variables became rows so name, value, exposure and scope sit together.
  */
 export default function InjectionForm(props: {
+  /**
+   * Public-tier key: render ONLY the target allowlist. A shared key may not
+   * carry variables or rules (#124/#126), so showing those editors would be a
+   * form whose every save is refused; the allowlist is the one part of this
+   * page a public key may use, because it *restricts* rather than injects.
+   */
+  hostsOnly?: boolean;
   /** POST target: /console/keys/:id/injection. */
   action: string;
   values: InjectionFormValues;
@@ -215,16 +239,21 @@ export default function InjectionForm(props: {
     const form = formRef.current;
     if (!form) return;
     const fd = new FormData(form);
-    const message = checkInjectionForm(
-      {
-        vars: readRows(rootRef.current),
-        headerRules: String(fd.get("headerRules") ?? ""),
-        paramRules: String(fd.get("paramRules") ?? ""),
-        responseRules: String(fd.get("responseRules") ?? ""),
-        allowedHosts: String(fd.get("allowedHosts") ?? ""),
-      },
-      props.previousNames,
-    );
+    const allowedHosts = String(fd.get("allowedHosts") ?? "");
+    const message = props.hostsOnly
+      ? // Nothing to cross-check and no "hosts are required" rule: an empty
+        // allowlist is a legitimate "any host", the current default.
+        validateHostsOnly(allowedHosts)
+      : checkInjectionForm(
+          {
+            vars: readRows(rootRef.current),
+            headerRules: String(fd.get("headerRules") ?? ""),
+            paramRules: String(fd.get("paramRules") ?? ""),
+            responseRules: String(fd.get("responseRules") ?? ""),
+            allowedHosts,
+          },
+          props.previousNames,
+        );
     if (message) {
       // Fast path only: the route re-runs everything with the stored secrets.
       e.preventDefault();
@@ -271,11 +300,17 @@ export default function InjectionForm(props: {
               class="input input-bordered w-full font-mono text-xs"
             />
           </label>
-          <p class="mt-1 text-xs text-warning">{labels.hostsRequired}</p>
+          {props.hostsOnly ? (
+            <p class="mt-1 text-xs text-base-content/75">{labels.hostsOptionalHint}</p>
+          ) : (
+            <p class="mt-1 text-xs text-warning">{labels.hostsRequired}</p>
+          )}
           <p data-field-error="allowedHosts" class={`mt-1 text-xs text-error${props.errorField === "allowedHosts" ? "" : " hidden"}`}>
             {props.errorField === "allowedHosts" ? props.error : ""}
           </p>
 
+          {props.hostsOnly ? null : (
+            <>
           <div class="mt-6">
             <h2 class="text-xs font-medium uppercase tracking-wide text-base-content/75">{labels.vars}</h2>
             <p class="mt-1 text-xs text-base-content/75">{labels.varsHint}</p>
@@ -339,6 +374,8 @@ export default function InjectionForm(props: {
               {props.errorField === "responseRules" ? props.error : ""}
             </p>
           </div>
+            </>
+          )}
         </fieldset>
 
         <div class="mt-6 flex items-center justify-end gap-2">
