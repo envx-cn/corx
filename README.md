@@ -1231,6 +1231,16 @@ curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: applicat
 curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"tier":"public","dailyLimitPerOrigin":3000,"dailyLimitPerHost":5000,"dailyLimitTotal":15000}' \
   https://corx.<you>.workers.dev/api/keys/KEY_ID
+# per-key scope: narrow what the key may reach beyond its host allowlist.
+# Blank / false = no restriction, so an existing key is unaffected.
+# Methods (GET implies HEAD), target path prefixes (matched on segment
+# boundaries, after query rules), https-only, caller CIDRs, and an expiry —
+# a violation is a 403 before any upstream call.
+curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"allowedMethods":"GET, POST","allowedPaths":"/v1/, /v2/embed","requireHttps":true,
+       "allowedCidrs":"203.0.113.0/24, 2001:db8::/32","expiresAt":"2026-12-31"}' \
+  https://corx.<you>.workers.dev/api/keys/KEY_ID
+
 # revoke (kill switch; keeps the row; the console has the same button) / block hosts
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" https://corx.<you>.workers.dev/api/keys/KEY_ID/revoke
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \

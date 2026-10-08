@@ -69,6 +69,15 @@ Files: `app/proxy/cors.ts`, `app/lib/auth.ts`, `app/lib/admin.ts`.
   (`corx:v1:` prefix) — raw values are shown once at creation and never again.
 - Credential forms: `X-Api-Key`, `Authorization: Bearer …`, `?corx-key=…`.
 - `REQUIRE_API_KEY=true` rejects anonymous proxy calls with 401.
+- **Per-key scope** (migration `0014`, all opt-in, all fail-closed when set):
+  `allowed_methods` (CSV, `GET` implies `HEAD`), `allowed_paths` (CSV of target
+  path prefixes, matched on segment boundaries *after* query rules so an
+  injected param cannot route around them), `require_https`, `allowed_cidrs`
+  (IPs / CIDR ranges, v4 and v6), `expires_at` (ISO date or timestamp — a past
+  date is accepted, which is how a key expires without being revoked). A
+  violation is a `403` naming the rule, raised before the cache, the guards and
+  any upstream call. Blank/false/null = no restriction, so every existing key
+  behaves exactly as before.
 - Per-key fields: name (required), `rate_limit_per_min`, `allowed_origins`,
   `cache_ttl` (blank = global, `0` = never store), `no_cache`, `ip_check`,
   `dns_check`, `keyless`, `tier` (`standard` | `public`) with the public

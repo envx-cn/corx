@@ -19,6 +19,8 @@ import {
   applyHeaderRules,
   applyParamRules,
   assertHostAllowed,
+  assertKeyScope,
+  assertKeyTargetScope,
   clientVarMap,
   effectiveInjection,
   hostAllowed,
@@ -323,6 +325,12 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     // on a cross-origin hop — a blocked (or private) host is one 302 away.
     assertHostAllowed(host, injection.hosts);
 
+    // Per-key scope (migration 0014): method, path prefix, https-only, caller
+    // CIDRs, expiry. Checked here — after the host allowlist, before the cache,
+    // the guards and any upstream call — so a violation costs nothing and never
+    // reaches the network. Each one is opt-in and fail-closed when set.
+    assertKeyScope(row, c.req.method, ip);
+
     // SSRF: literal checks (above, per-key ip_check) + DNS-resolved IP check
     // (per-key dns_check) + admin blocklist (always on).
     // Blocklist runs even on cache hits — we must not serve cached content of
@@ -385,6 +393,11 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       }
     }
     if (clientResolved) injected = true;
+
+    // Path + scheme, now that the effective URL is final: the scope must cover
+    // the URL corx actually requests, so an injected param cannot route around
+    // a path allowlist.
+    if (row) assertKeyTargetScope(row, fetchUrl);
 
     // R2 cache for GET. Runs BEFORE the rate limit so cheap cache hits don't
     // burn D1 writes/reads (and don't consume the caller's quota). Keys with

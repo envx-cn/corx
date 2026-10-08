@@ -5,6 +5,7 @@ import { decryptRowInjection, decryptVarsForEdit, encryptVars } from "./crypto.j
 import { DEFAULT_LOG_RETENTION_DAYS } from "./db.js";
 import { normalizeOriginsInput, normalizeOriginPattern, parseOrigins } from "../proxy/cors.js";
 import { normalizeCacheTtlInput } from "../proxy/cache.js";
+import { parseCidr } from "../proxy/ip.js";
 import { utcDay } from "../proxy/quota.js";
 import {
   assertInjectionParts,
@@ -515,6 +516,13 @@ export interface KeyRow {
   daily_limit_per_origin: number | null;
   daily_limit_per_host: number | null;
   daily_limit_total: number | null;
+  /** Per-key scope (migration 0014): methods, path prefixes, https-only,
+   * caller CIDRs, expiry. NULL/0 = no restriction. */
+  allowed_methods: string | null;
+  allowed_paths: string | null;
+  require_https: number;
+  allowed_cidrs: string | null;
+  expires_at: string | null;
   created_at: string;
   revoked_at: string | null;
 }
@@ -522,7 +530,7 @@ export interface KeyRow {
 export async function queryKeys(db: D1Database): Promise<KeyRow[]> {
   const rows = await db
     .prepare(
-      "SELECT id, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, response_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, created_at, revoked_at FROM api_keys ORDER BY created_at DESC",
+      "SELECT id, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, response_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, allowed_methods, allowed_paths, require_https, allowed_cidrs, expires_at, created_at, revoked_at FROM api_keys ORDER BY created_at DESC",
     )
     .all<KeyRow>();
   return rows.results;
@@ -532,7 +540,7 @@ export async function queryKeys(db: D1Database): Promise<KeyRow[]> {
 export async function queryKeyById(db: D1Database, id: string, kek?: string): Promise<ApiKeyRow | null> {
   const row = await db
     .prepare(
-      "SELECT id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, response_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, created_at, revoked_at FROM api_keys WHERE id = ?",
+      "SELECT id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, response_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, allowed_methods, allowed_paths, require_https, allowed_cidrs, expires_at, created_at, revoked_at FROM api_keys WHERE id = ?",
     )
     .bind(id)
     .first<ApiKeyRow>();
@@ -571,6 +579,13 @@ export interface KeyInput {
   dnsCheck?: boolean;
   /** Allowed origins may use this key without presenting it (keyless access). */
   keyless?: boolean;
+  /** Per-key scope: CSV of methods / path prefixes / caller CIDRs, https-only,
+   * expiry. "" / false / null = no restriction (see migration 0014). */
+  allowedMethods?: string;
+  allowedPaths?: string;
+  requireHttps?: boolean;
+  allowedCidrs?: string;
+  expiresAt?: string;
   /** "standard" (default) or "public" — the shared, limited tier. */
   tier?: unknown;
   /** Public tier daily caps. "" / null = unlimited (except the total, required). */
@@ -624,6 +639,97 @@ function parseRateLimit(raw: unknown): number | null {
 }
 
 /** Daily quota input: blank/null → null (no cap), a positive integer otherwise. */
+/** HTTP methods a key may name. Anything else is a 400, not a silent no-op. */
+const KNOWN_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
+const MAX_METHODS = 7;
+
+/**
+ * CSV of methods → normalized CSV. "" / null = no restriction.
+ *
+ * HEAD is implied by GET and stored as such: a `GET`-only key must still be
+ * able to answer a HEAD, and treating that as a violation would make the
+ * allowlist unusable for every read-only key.
+ */
+export function normalizeMethodsInput(raw: unknown): string | null {
+  if (raw === null || raw === undefined || String(raw).trim() === "") return null;
+  const parts = String(raw)
+    .split(/[\s,]+/)
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean);
+  if (parts.length === 0) return null;
+  const bad = parts.filter((m) => !KNOWN_METHODS.has(m));
+  if (bad.length > 0) {
+    throw new ProxyError(400, `Unknown HTTP method: ${bad.join(", ")} (allowed: ${[...KNOWN_METHODS].join(", ")})`);
+  }
+  const set = new Set(parts);
+  if (set.has("GET")) set.add("HEAD");
+  if (set.has("HEAD")) set.add("GET");
+  return [...KNOWN_METHODS].filter((m) => set.has(m)).join(", ");
+}
+
+/** CSV of path prefixes → normalized CSV. "" / null = no restriction. */
+export function normalizePathsInput(raw: unknown): string | null {
+  if (raw === null || raw === undefined || String(raw).trim() === "") return null;
+  const parts = String(raw)
+    .split(/[\s,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return null;
+  const out: string[] = [];
+  for (const p of parts) {
+    if (!p.startsWith("/")) {
+      throw new ProxyError(400, `Path prefix must start with "/": "${p}"`);
+    }
+    if (p.includes("?") || p.includes("#")) {
+      throw new ProxyError(400, `Path prefix must not carry a query or fragment: "${p}"`);
+    }
+    // `/api` and `/api/` are the same prefix; store one form.
+    const norm = p.length > 1 && p.endsWith("/") ? p.slice(0, -1) : p;
+    if (!out.includes(norm)) out.push(norm);
+  }
+  return out.join(", ");
+}
+
+/** CSV of IPs / CIDR ranges → normalized CSV. "" / null = no restriction. */
+export function normalizeCidrsInput(raw: unknown): string | null {
+  if (raw === null || raw === undefined || String(raw).trim() === "") return null;
+  const parts = String(raw)
+    .split(/[\s,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return null;
+  const out: string[] = [];
+  const bad: string[] = [];
+  for (const cidr of parts) {
+    if (parseCidr(cidr) === null) {
+      bad.push(cidr);
+      continue;
+    }
+    const norm = cidr.toLowerCase();
+    if (!out.includes(norm)) out.push(norm);
+  }
+  if (bad.length > 0) {
+    throw new ProxyError(400, `Invalid IP or CIDR: ${bad.join(", ")} (e.g. 203.0.113.0/24, 2001:db8::/32)`);
+  }
+  return out.join(", ");
+}
+
+/**
+ * Expiry: blank = never. Accepts an ISO date-time (with or without seconds) or
+ * `YYYY-MM-DD`, normalized to the ISO form the proxy compares against. A date
+ * in the past is accepted on purpose — that is how an operator revokes without
+ * revoking (the row, its logs and its id all survive).
+ */
+export function normalizeExpiresInput(raw: unknown): string | null {
+  if (raw === null || raw === undefined || String(raw).trim() === "") return null;
+  const text = String(raw).trim();
+  const ms = /^\d{4}-\d{2}-\d{2}$/.test(text) ? Date.parse(`${text}T23:59:59.000Z`) : Date.parse(text);
+  if (!Number.isFinite(ms)) {
+    throw new ProxyError(400, `Invalid expiry: "${text}" (use YYYY-MM-DD or an ISO timestamp)`);
+  }
+  return new Date(ms).toISOString();
+}
+
 function parseDailyLimit(raw: unknown, label: string): number | null {
   if (raw === null || raw === undefined) return null;
   const text = String(raw).trim();
@@ -781,7 +887,7 @@ export async function createApiKey(db: D1Database, input: KeyInput, kek?: string
 
   await db
     .prepare(
-      "INSERT INTO api_keys (id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, response_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO api_keys (id, key_hash, name, rate_limit_per_min, allowed_origins, cache_ttl, no_cache, ip_check, dns_check, vars, header_rules, param_rules, response_rules, allowed_hosts, keyless, tier, daily_limit_per_origin, daily_limit_per_host, daily_limit_total, allowed_methods, allowed_paths, require_https, allowed_cidrs, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(
       id,
@@ -803,6 +909,11 @@ export async function createApiKey(db: D1Database, input: KeyInput, kek?: string
       dailyLimitPerOrigin,
       dailyLimitPerHost,
       dailyLimitTotal,
+      normalizeMethodsInput(input.allowedMethods),
+      normalizePathsInput(input.allowedPaths),
+      input.requireHttps ? 1 : 0,
+      normalizeCidrsInput(input.allowedCidrs),
+      normalizeExpiresInput(input.expiresAt),
     )
     .run();
   if (grants.length) await writeOriginGrants(db, id, grants);
@@ -820,6 +931,12 @@ export interface KeyUpdate {
   ipCheck?: boolean;
   dnsCheck?: boolean;
   keyless?: boolean;
+  /** Per-key scope — see KeyInput ("" / false / null clears to "no restriction"). */
+  allowedMethods?: string;
+  allowedPaths?: string;
+  requireHttps?: boolean;
+  allowedCidrs?: string;
+  expiresAt?: string;
   /** "standard" | "public". */
   tier?: unknown;
   /** Public tier daily caps (undefined = leave unchanged). */
@@ -946,6 +1063,26 @@ export async function updateApiKey(db: D1Database, id: string, update: KeyUpdate
   if (update.dailyLimitTotal !== undefined) {
     sets.push("daily_limit_total = ?");
     values.push(parseDailyLimit(update.dailyLimitTotal, "total"));
+  }
+  if (update.allowedMethods !== undefined) {
+    sets.push("allowed_methods = ?");
+    values.push(normalizeMethodsInput(update.allowedMethods));
+  }
+  if (update.allowedPaths !== undefined) {
+    sets.push("allowed_paths = ?");
+    values.push(normalizePathsInput(update.allowedPaths));
+  }
+  if (update.requireHttps !== undefined) {
+    sets.push("require_https = ?");
+    values.push(update.requireHttps ? 1 : 0);
+  }
+  if (update.allowedCidrs !== undefined) {
+    sets.push("allowed_cidrs = ?");
+    values.push(normalizeCidrsInput(update.allowedCidrs));
+  }
+  if (update.expiresAt !== undefined) {
+    sets.push("expires_at = ?");
+    values.push(normalizeExpiresInput(update.expiresAt));
   }
 
   // Validate the keyless policy against the *effective* values (a guard toggle

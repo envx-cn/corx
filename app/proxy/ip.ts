@@ -124,3 +124,76 @@ export function isPublicIp(ip: string): boolean {
   if (v6 === null) return false;
   return !inV6Ranges(v6);
 }
+
+/**
+ * CIDR matching for a key's `allowed_cidrs`.
+ *
+ * Same "unparseable means no match" posture as `isPublicIp`: an allowlist that
+ * silently widened on a typo would be the opposite of what it promises.
+ */
+export interface ParsedCidr {
+  /** The address, as an integer (v4) or BigInt (v6). */
+  base: number | bigint;
+  bits: number;
+  v6: boolean;
+}
+
+/** Parse `10.0.0.0/8`, `2001:db8::/32`, a bare IP (→ /32 or /128), or null. */
+export function parseCidr(input: string): ParsedCidr | null {
+  const raw = input.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  if (!raw) return null;
+  const [addr, lenRaw, ...rest] = raw.split("/");
+  if (rest.length > 0 || !addr) return null;
+  if (lenRaw === undefined) {
+    const v4 = ipv4ToInt(addr);
+    if (v4 !== null) return { base: v4, bits: 32, v6: false };
+    const v6 = ipv6ToBigInt(addr);
+    return v6 === null ? null : { base: v6, bits: 128, v6: true };
+  }
+  if (!/^\d{1,3}$/.test(lenRaw)) return null;
+  const bits = Number(lenRaw);
+  const v4 = ipv4ToInt(addr);
+  if (v4 !== null) {
+    if (bits > 32) return null;
+    return { base: v4, bits, v6: false };
+  }
+  const v6 = ipv6ToBigInt(addr);
+  if (v6 === null || bits > 128) return null;
+  return { base: v6, bits, v6: true };
+}
+
+/** Does `ip` fall inside `cidr`? */
+export function ipInCidr(ip: string, cidr: ParsedCidr): boolean {
+  if (cidr.v6) {
+    const value = ipv6ToBigInt(ip);
+    if (value === null) return false;
+    if (cidr.bits === 0) return true;
+    const shift = BigInt(128 - cidr.bits);
+    const base = typeof cidr.base === "bigint" ? cidr.base : BigInt(cidr.base);
+    return value >> shift === base >> shift;
+  }
+  const value = ipv4ToInt(ip);
+  if (value === null) return false;
+  if (cidr.bits === 0) return true;
+  const shift = 32 - cidr.bits;
+  // `>>>` so the comparison stays unsigned.
+  const base = typeof cidr.base === "bigint" ? Number(cidr.base) : cidr.base;
+  return (value >>> shift) === (base >>> shift);
+}
+
+/**
+ * Does `ip` match any entry of a per-key allowlist? An empty list means
+ * "no restriction" (null, the default) — call sites check for that first.
+ */
+export function ipAllowed(ip: string, list: string | null | undefined): boolean {
+  const entries = (list ?? "")
+    .split(/[,\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (entries.length === 0) return true;
+  if (!ip) return false; // no client IP to judge → an allowlist cannot be satisfied
+  return entries.some((entry) => {
+    const cidr = parseCidr(entry);
+    return cidr !== null && ipInCidr(ip, cidr);
+  });
+}

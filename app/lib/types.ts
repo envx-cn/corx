@@ -89,6 +89,16 @@ export interface ApiKeyRow {
   allowed_hosts: string | null;
   /** 1 = allowed origins can use this key without presenting it (keyless access). */
   keyless: number;
+  /** CSV of HTTP methods this key may use. NULL/'' = no restriction. */
+  allowed_methods: string | null;
+  /** CSV of target path prefixes this key may reach. NULL/'' = no restriction. */
+  allowed_paths: string | null;
+  /** 1 = refuse http:// targets for this key. */
+  require_https: number;
+  /** CSV of caller IPs / CIDR ranges. NULL/'' = no restriction. */
+  allowed_cidrs: string | null;
+  /** ISO timestamp after which the key is refused. NULL = never. */
+  expires_at: string | null;
   /** 'standard' (default) or 'public' — the shared, limited tier of the hosted instance. */
   tier: string;
   /** Public tier: daily request cap per caller Origin. NULL = unlimited. */

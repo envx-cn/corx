@@ -21,6 +21,12 @@ export interface KeyFormValues {
   ipCheck: boolean;
   dnsCheck: boolean;
   keyless: boolean;
+  /** Per-key scope (migration 0014): blank = no restriction. */
+  allowedMethods: string;
+  allowedPaths: string;
+  requireHttps: boolean;
+  allowedCidrs: string;
+  expiresAt: string;
   /** Public tier: the shared, limited key for the hosted instance. */
   tier: boolean;
   dailyLimitPerOrigin: string;
@@ -39,6 +45,11 @@ export function blankKeyForm(): KeyFormValues {
     ipCheck: true,
     dnsCheck: true,
     keyless: false,
+    allowedMethods: "",
+    allowedPaths: "",
+    requireHttps: false,
+    allowedCidrs: "",
+    expiresAt: "",
     tier: false,
     dailyLimitPerOrigin: "",
     dailyLimitPerHost: "",
@@ -85,6 +96,13 @@ export function readKeyForm(form: Record<string, unknown>): KeyFormValues {
     ipCheck: panel ? on("ipCheck") : true,
     dnsCheck: panel ? on("dnsCheck") : true,
     keyless: on("keyless"),
+    // `checks` gates the switches that must default to ON; the scope fields are
+    // plain text, so a post without them (scripts) simply sets no restriction.
+    requireHttps: on("requireHttps"),
+    allowedMethods: String(form["allowedMethods"] ?? ""),
+    allowedPaths: String(form["allowedPaths"] ?? ""),
+    allowedCidrs: String(form["allowedCidrs"] ?? ""),
+    expiresAt: String(form["expiresAt"] ?? ""),
     tier: on("tier"),
     dailyLimitPerOrigin: String(form["dailyLimitPerOrigin"] ?? ""),
     dailyLimitPerHost: String(form["dailyLimitPerHost"] ?? ""),
@@ -115,6 +133,11 @@ export function valuesFromKeyRow(k: KeyRow): KeyFormValues {
     ipCheck: !!k.ip_check,
     dnsCheck: !!k.dns_check,
     keyless: !!k.keyless,
+    allowedMethods: k.allowed_methods ?? "",
+    allowedPaths: k.allowed_paths ?? "",
+    requireHttps: !!k.require_https,
+    allowedCidrs: k.allowed_cidrs ?? "",
+    expiresAt: k.expires_at ?? "",
     tier: k.tier === "public",
     dailyLimitPerOrigin: k.daily_limit_per_origin != null ? String(k.daily_limit_per_origin) : "",
     dailyLimitPerHost: k.daily_limit_per_host != null ? String(k.daily_limit_per_host) : "",
@@ -133,6 +156,11 @@ export function policyUpdate(values: KeyFormValues): KeyUpdate {
     ipCheck: values.ipCheck,
     dnsCheck: values.dnsCheck,
     keyless: values.keyless,
+    allowedMethods: values.allowedMethods,
+    allowedPaths: values.allowedPaths,
+    requireHttps: values.requireHttps,
+    allowedCidrs: values.allowedCidrs,
+    expiresAt: values.expiresAt,
     tier: values.tier ? "public" : "standard",
     dailyLimitPerOrigin: values.dailyLimitPerOrigin,
     dailyLimitPerHost: values.dailyLimitPerHost,
@@ -186,6 +214,21 @@ export interface PolicyI18n {
   dailyLimitPerHost: string;
   dailyLimitTotal: string;
   dailyLimitPh: string;
+  scope: string;
+  allowedMethods: string;
+  allowedMethodsPh: string;
+  allowedMethodsHint: string;
+  allowedPaths: string;
+  allowedPathsPh: string;
+  allowedPathsHint: string;
+  requireHttps: string;
+  requireHttpsHint: string;
+  allowedCidrs: string;
+  allowedCidrsPh: string;
+  allowedCidrsHint: string;
+  expiresAt: string;
+  expiresAtPh: string;
+  expiresAtHint: string;
 }
 
 export function policyLabels(
@@ -223,6 +266,21 @@ export function policyLabels(
     dailyLimitPerHost: t("console.keys.dailyLimitPerHost"),
     dailyLimitTotal: t("console.keys.dailyLimitTotal"),
     dailyLimitPh: t("console.keys.dailyLimitPh"),
+    scope: t("console.keys.scope"),
+    allowedMethods: t("console.keys.allowedMethods"),
+    allowedMethodsPh: t("console.keys.allowedMethodsPh"),
+    allowedMethodsHint: t("console.keys.allowedMethodsHint"),
+    allowedPaths: t("console.keys.allowedPaths"),
+    allowedPathsPh: t("console.keys.allowedPathsPh"),
+    allowedPathsHint: t("console.keys.allowedPathsHint"),
+    requireHttps: t("console.keys.requireHttps"),
+    requireHttpsHint: t("console.keys.requireHttpsHint"),
+    allowedCidrs: t("console.keys.allowedCidrs"),
+    allowedCidrsPh: t("console.keys.allowedCidrsPh"),
+    allowedCidrsHint: t("console.keys.allowedCidrsHint"),
+    expiresAt: t("console.keys.expiresAt"),
+    expiresAtPh: t("console.keys.expiresAtPh"),
+    expiresAtHint: t("console.keys.expiresAtHint"),
   };
 }
 
@@ -348,6 +406,51 @@ export function PolicyAdvanced(props: { values: KeyFormValues; labels: PolicyI18
             </Field>
           </div>
           <p class="mt-2 text-xs text-base-content/75">{labels.dailyLimits}</p>
+        </div>
+      </div>
+      {/* Per-key scope: what this key may reach beyond its host allowlist. */}
+      <div class="mt-3 rounded-box border border-base-300 p-3">
+        <div class="mb-2 text-xs font-medium uppercase tracking-wide text-base-content/75">{labels.scope}</div>
+        <div class="grid gap-x-4 gap-y-3 sm:grid-cols-2">
+          <Field label={labels.allowedMethods}>
+            <input
+              name="allowedMethods"
+              value={v.allowedMethods}
+              placeholder={labels.allowedMethodsPh}
+              class="input input-bordered w-full"
+            />
+            <p class="mt-1 text-xs text-base-content/75">{labels.allowedMethodsHint}</p>
+          </Field>
+          <Field label={labels.allowedPaths}>
+            <input
+              name="allowedPaths"
+              value={v.allowedPaths}
+              placeholder={labels.allowedPathsPh}
+              class="input input-bordered w-full"
+            />
+            <p class="mt-1 text-xs text-base-content/75">{labels.allowedPathsHint}</p>
+          </Field>
+          <Field label={labels.allowedCidrs}>
+            <input
+              name="allowedCidrs"
+              value={v.allowedCidrs}
+              placeholder={labels.allowedCidrsPh}
+              class="input input-bordered w-full"
+            />
+            <p class="mt-1 text-xs text-base-content/75">{labels.allowedCidrsHint}</p>
+          </Field>
+          <Field label={labels.expiresAt}>
+            <input
+              name="expiresAt"
+              value={v.expiresAt}
+              placeholder={labels.expiresAtPh}
+              class="input input-bordered w-full"
+            />
+            <p class="mt-1 text-xs text-base-content/75">{labels.expiresAtHint}</p>
+          </Field>
+        </div>
+        <div class="mt-3">
+          <Check name="requireHttps" label={labels.requireHttps} hint={labels.requireHttpsHint} checked={v.requireHttps} />
         </div>
       </div>
       <div class="mt-3 rounded-box border border-base-300 p-3">
