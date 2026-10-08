@@ -338,6 +338,7 @@ All `/api/*` accept a Cloudflare Access JWT, the console session cookie, or
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /health` | Liveness probe (public): `{ ok, service, time }`. |
+| `GET /health?deep=1` | Admin-gated dependency check: per-binding D1/R2 status, `503` when one is down. Costs a D1 query + an R2 `LIST`, so it carries the `/api/*` credential requirement. |
 | `GET /api/stats` | 24 h totals, status/method/country breakdowns, hourly series, top hosts/keys, recent errors. |
 | `GET /api/stats?days=` | Current vs previous N complete UTC days (1–365): requests, distinct origins, distinct keys and errors per period, their deltas, a daily series, and whether it was read from raw logs or the daily rollup. |
 | `GET /api/logs?limit=&hours=` | Request log (limit ≤ 200, window 1–168 h). |
@@ -629,7 +630,11 @@ Files: `app/lib/access.ts`, `app/lib/session.ts`, `app/lib/csrf.ts`,
   the same 24 h window the dashboard reads.
 - `GET /health` — liveness by default; `?deep=1` exercises D1 and R2 and
   answers `503` with a per-binding status, so a monitor can tell "the Worker is
-  up" apart from "the Worker cannot reach its bindings".
+  up" apart from "the Worker cannot reach its bindings". **`?deep=1` is
+  admin-gated** (same guard as `/api/*`, `401` without a credential): it costs a
+  D1 query and an R2 `LIST` per call and its error text names the database and
+  the bucket, neither of which an open route should hand out. The shallow form
+  stays public — that is what a platform probe hits.
 - `stats_daily` carries the cache dimensions (`cache_hits`, `cached_bytes`,
   migration `0013`) that `request_logs` always had, so the 7/28/90-day trend can
   answer whether the R2 cache is paying for itself after the raw rows are
@@ -745,7 +750,9 @@ flagged has been fixed below.
    per isolate for 30 s (v0.2.0), so a row written *straight into D1* — not
    through the console or the API, which invalidate immediately — can take up
    to that long to take effect on a warm isolate. Blocking and unblocking
-   through the app are instant.
+   through the app are instant. Both this memo and the DoH resolve cache are
+   capped at 4096 entries per isolate (a whole-map clear when full), because the
+   key is a hostname the caller chooses and an isolate never shrinks on its own.
 6. **A key purge is scoped to the entries that key stored**, not to every entry
    it ever read: with cross-key sharing, a body another key populated stays
    (correctly) after this key is gone, while a body *this* key stored is dropped

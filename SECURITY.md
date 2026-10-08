@@ -38,6 +38,7 @@ on the way out. The interesting properties, and where each is enforced:
 | --- | --- |
 | A caller cannot reach private, reserved or internal addresses (IPv4 and IPv6, including CGNAT), by literal or by DNS | `app/proxy/guard.ts`, `app/proxy/ip.ts`, `app/proxy/dns-check.ts` (DoH resolve-and-classify) |
 | A key that injects secrets can only reach hosts it declares (the confused-deputy guard) | `app/proxy/inject.ts` → `allowedHosts`, mandatory once anything is injected |
+| A key reaches no further than its own scope allows | Per-key scope (migration `0014`), all opt-in and fail-closed when set: `allowed_methods` (GET implies HEAD), `allowed_paths` (segment-boundary prefixes, matched against the **post-injection** URL so a query rule cannot route around them), `require_https`, `allowed_cidrs` (an unparseable entry matches nothing; no client IP fails the check), `expires_at` (an unparseable expiry refuses). Checked before any cache lookup or upstream call — `assertKeyScope` / `assertKeyTargetScope` |
 | Injected credentials are not readable in D1, and are never logged | AES-256-GCM with an HKDF-derived key (`app/lib/crypto.ts`); `request_logs.target_url` is the pre-injection URL |
 | A variable scoped to hosts only ever resolves toward those hosts | `assertVarHostScopes` rejects at save time any rule that could resolve it elsewhere; client references are filtered per hop by `clientVarMap` |
 | A caller can reference only the variables the operator exposed | `client: true` marks them per variable; any other `${…}` is left literal, so unresolved and nonexistent names are indistinguishable (no probing oracle) |
@@ -46,9 +47,11 @@ on the way out. The interesting properties, and where each is enforced:
 | Proxied HTML does not run with the proxy origin's powers | Every proxied `text/html` response carries `Content-Security-Policy: sandbox` (no `allow-same-origin`), so a top-level visit to a proxied attacker page renders and runs but is an opaque origin — no cookies, no `/console` or `/api` access; a key's response rules can replace the stamp (the operator's opt-out) |
 | CORX's own credentials never reach a target, in any state | `X-Admin-Token` always stripped; a **corx-shaped** `X-Api-Key` or `Authorization: Bearer corx_…` is stripped by shape (`isCorxKeyShape`, `app/lib/auth.ts` + the key-source/shape checks in `app/proxy/handler.ts`) — even when the key is unknown or a D1 hiccup drops the lookup, so no failure mode can forward one. Non-corx `X-Api-Key` values are the caller's own upstream credential (BYOK) and ride through, scoped by the same cross-origin redirect drop as `Authorization` |
 | Cached responses never leak across callers | Requests carrying `Authorization`/`Cookie` never read or write the R2 cache; `no-store`/`private`/`Vary` responses are not stored; a key's resolved **response header rules** are part of the cache key |
+| Serving a cached body past its TTL is an explicit policy choice | stale-if-error (`CACHE_STALE_SECONDS`, default `0` = off) serves an expired entry **only** when the upstream answers 5xx or fails, stamps it `X-Corx-Cache: STALE`, and records the reason in the request log next to the 200 the caller got. It never fires for a caller's own error (400/403) or for a caller who never entered the cache path, and it cannot invent a body for a `null body status` |
 | A key cannot forge the proxy's own response headers (or re-attach upstream cookies) | `RESPONSE_HEADER_BLOCKLIST` in `app/proxy/inject.ts` rejects `Content-Length`, `Set-Cookie`, `Access-Control-*`, `X-Robots-Tag`, `X-Corx-*` and the rate-limit headers at save time; corx writes its markers after the rules run |
 | A public-tier caller cannot authenticate upstream as themselves | `Cookie`/`Authorization` stripped from public-key requests |
 | Admin surfaces are authenticated | Cloudflare Access JWT verified in-process (RS256, issuer, audience, expiry) with the `ADMIN_EMAILS` allowlist re-checked per request; `ADMIN_TOKEN` bearer for the JSON API |
+| An unauthenticated route cannot be used to survey the deployment | `/health` is a shallow liveness probe; `?deep=1` (which costs a D1 query + an R2 `LIST` and reports the raw driver error, naming the database and the bucket) is behind the same guard as `/api/*`. `robots.txt`/`sitemap.xml`/`llms.txt` describe only what the operator chose to publish; the blocklist page publishes hostnames and dates only — never `blocked_hosts.reason`, which can carry a complainant or a legal reference |
 | A cross-site page cannot ride the admin session into a mutation | Signed, session-bound CSRF token on every console POST (`app/lib/csrf.ts`, verified in `app/routes/console/_middleware.ts`); needs `SESSION_SECRET` or `ADMIN_TOKEN` to sign — without one the check logs a warning and `SameSite=Lax` is the only guard |
 | API keys are not recoverable from the database | SHA-256 hashed at rest; the raw value is shown once |
 
@@ -85,7 +88,13 @@ interesting if it shows one of them being worse than described.
    should not arise from proxied traffic, but it is not a hard guarantee. Abuse
    is bounded by `daily_limit_total`, not by a hard edge limit.
 3. **Rate limiting is fixed-window** (D1-backed, fail-open). A burst can
-   straddle a window boundary.
+   straddle a window boundary. A key may opt into the `RATE_LIMITER` edge
+   binding instead, which trades the global counter for a cheaper one: the limit
+   comes from the binding rather than the key's `rate_limit_per_min`, counters
+   are per isolate (so the real ceiling is `N × limit` for the `N` isolates
+   serving that key), and the binding reports only success so no
+   `X-RateLimit-*` header is sent. A missing or broken binding degrades to the
+   D1 limiter rather than failing closed.
 4. **The SSRF guards can be switched off per key** (`ipCheck`/`dnsCheck`) — by
    design, for trusted internal keys, and never in combination with keyless
    access or the public tier.
@@ -99,3 +108,12 @@ interesting if it shows one of them being worse than described.
    and the caller owns the sandbox. Only a self-hosted deployment can configure
    this (public-tier keys reject injection entirely), and the docs say to
    sandbox the iframe.
+7. **A blocklist edit can take up to 30 s to reach a warm isolate.** Blocklist
+   answers are memoized per isolate for 30 s, so a row written *straight into
+   D1* is not enforced on isolates that already cached the answer. Blocking or
+   unblocking through the console or the API invalidates the memo immediately,
+   and blocking fails closed inside it — so this only ever concerns a
+   hand-edited row, and a hand-**un**blocked host, on an isolate that already
+   had it memoized. The memo is capped (4096 entries per isolate) so a caller
+   cycling hostnames cannot grow it without bound; a full clear costs one extra
+   D1 read, never a bypassed block.

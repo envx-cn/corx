@@ -15,6 +15,12 @@ app.post("/", async (c) => {
   // A revoke is a kill switch: the cached bodies this key populated go with it,
   // rather than lingering for another key to be served (or for the operator to
   // pay for) until their TTL. Non-fatal — the revoke itself already succeeded.
+  //
+  // Awaited rather than handed to `waitUntil` on purpose: the count comes back
+  // in the response and the console shows it as a confirmation, and the walk is
+  // already bounded by the purge page budget, so this cannot run away. The
+  // trade is that a bucket far larger than one budget makes the wait longer —
+  // acceptable for a rare operator action, unlike the hot proxy path.
   const purged = await purgeCache(c.env.CACHE_BUCKET, { keyId: id }).then(
     (r) => r.deleted,
     () => 0,

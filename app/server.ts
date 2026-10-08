@@ -9,6 +9,7 @@ import type { ProxyVariables } from "./lib/auth.js";
 import { apiKeyMiddleware } from "./lib/auth.js";
 import { rollupDailyStats } from "./lib/admin.js";
 import { logRetentionDays } from "./lib/db.js";
+import { getAdminUser } from "./lib/access.js";
 import { cors, withProxyCors } from "./proxy/cors.js";
 import { proxyHandler } from "./proxy/handler.js";
 import { pruneExpiredCache } from "./proxy/cache.js";
@@ -38,10 +39,22 @@ base.use(cors());
  * which means a green `/health` says nothing about D1 or R2. `?deep=1` actually
  * exercises both and reports per-binding status, so a monitoring check can tell
  * "the Worker is up" apart from "the Worker cannot reach its database".
+ *
+ * **`?deep=1` is admin-gated** (same guard as `/api/*`): it costs a D1 query and
+ * an R2 `LIST` per call and answers with the raw driver error, which names the
+ * database and the bucket. On an open route that is a free amplification path
+ * and a free map of the deployment's internals for anyone who can reach the
+ * Worker — and neither fact is needed by a liveness probe, which uses the
+ * shallow form. Scrape it with the same credential as `/api/stats`:
+ *
+ *   curl -H "Authorization: Bearer $ADMIN_TOKEN" https://host/health?deep=1
  */
 base.get("/health", async (c) => {
   if (c.req.query("deep") !== "1") {
     return c.json({ ok: true, service: "corx", time: new Date().toISOString() });
+  }
+  if (!(await getAdminUser(c as unknown as Context<{ Bindings: Env }>))) {
+    return c.json({ error: "Unauthorized" }, 401);
   }
   const [d1, r2] = await Promise.all([
     c.env.DB.prepare("SELECT 1 AS ok").first<{ ok: number }>().then(

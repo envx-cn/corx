@@ -1318,6 +1318,15 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" 'https://corx.<you>.workers.dev/api
 # breakdowns capped at 20 series each.
 curl -H "Authorization: Bearer $ADMIN_TOKEN" https://corx.<you>.workers.dev/api/metrics
 
+# Liveness is public and cheap: { ok, service, time }. ?deep=1 additionally
+# exercises D1 and R2 and answers 503 with a per-binding status, so a monitor
+# can tell "the Worker is up" from "the Worker cannot reach its bindings" —
+# but it costs a D1 query and an R2 LIST per call and its error text names the
+# database and the bucket, so it is admin-gated like every /api/* route (401
+# without a credential). Point the uptime probe at the shallow form.
+curl https://corx.<you>.workers.dev/health
+curl -H "Authorization: Bearer $ADMIN_TOKEN" 'https://corx.<you>.workers.dev/health?deep=1'
+
 # create a key (raw key shown once!; "name" is required)
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"name":"my-app","rateLimitPerMin":120,"allowedOrigins":"https://app.example"}' \
@@ -1370,7 +1379,7 @@ curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: applicati
   -d '{"hostname":"evil.example","reason":"abuse"}' \
   https://corx.<you>.workers.dev/api/block-host
 
-# cache purge: drop cached responses before their TTL does. One of url / host / all:
+# cache purge: drop cached responses before their TTL does. One of url / host / keyId / all:
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"url":"https://api.vendor.com/data"}' \
   https://corx.<you>.workers.dev/api/cache/purge

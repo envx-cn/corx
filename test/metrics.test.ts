@@ -79,8 +79,20 @@ describe("GET /health", () => {
     expect(await res.json()).toMatchObject({ ok: true, service: "corx" });
   });
 
-  it("deep exercises D1 and R2", async () => {
+  it("deep is admin-gated: it costs a D1 query + an R2 LIST and names the bindings", async () => {
     const res = await worker.fetch(new Request("https://corx.test/health?deep=1"), dbWithStats(), ctx);
+    expect(res.status).toBe(401);
+    // The shallow form stays open — that is the liveness probe.
+    const shallow = await worker.fetch(new Request("https://corx.test/health"), dbWithStats(), ctx);
+    expect(shallow.status).toBe(200);
+  });
+
+  it("deep exercises D1 and R2", async () => {
+    const res = await worker.fetch(
+      new Request("https://corx.test/health?deep=1", { headers: { authorization: "Bearer test-token" } }),
+      dbWithStats(),
+      ctx,
+    );
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, checks: { d1: { ok: true }, r2: { ok: true } } });
   });
@@ -102,7 +114,11 @@ describe("GET /health", () => {
         }),
       },
     } as unknown as Env;
-    const res = await worker.fetch(new Request("https://corx.test/health?deep=1"), broken, ctx);
+    const res = await worker.fetch(
+      new Request("https://corx.test/health?deep=1", { headers: { authorization: "Bearer test-token" } }),
+      broken,
+      ctx,
+    );
     expect(res.status).toBe(503);
     const body = (await res.json()) as { ok: boolean; checks: { d1: { ok: boolean; error?: string } } };
     expect(body.ok).toBe(false);
