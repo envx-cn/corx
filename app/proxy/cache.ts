@@ -207,6 +207,8 @@ export async function getCached(bucket: R2Bucket, key: string): Promise<CachedEn
   if (!obj) return null;
   const expiresAt = Number(obj.customMetadata?.["expiresAt"] ?? 0);
   if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) {
+    // Read-time expiry only reclaims a URL somebody asks for again; the cron
+    // sweep below is what actually bounds the bucket (see `pruneExpiredCache`).
     await bucket.delete(key).catch(() => undefined);
     return null;
   }
@@ -247,4 +249,65 @@ export function cachedResponse(entry: CachedEntry): Response {
   const headers = new Headers(entry.headers);
   headers.set("X-Corx-Cache", "HIT");
   return new Response(entry.body, { status: entry.status, headers });
+}
+
+/** Objects inspected per `list` call during a prune sweep. */
+export const PRUNE_PAGE_SIZE = 1000;
+
+/** Pages one cron run may walk (10 × 1000 = 10k keys). `list` is an R2 Class A
+ * op, so the budget is what keeps the nightly sweep inside the free tier
+ * (1M Class A/month) while still clearing a bucket an order of magnitude
+ * larger than the page size in a couple of nights. */
+export const PRUNE_PAGE_BUDGET = 10;
+
+/**
+ * Delete expired cache objects, walking the prefix page by page.
+ *
+ * R2 `list` returns keys in lexicographic order behind a cursor, and cache keys
+ * are `corx/v1/<sha256>` — i.e. random order. A single `list({ limit })` call
+ * therefore only ever sees the first page, so an expired object further down
+ * would not become visible until everything before it had been deleted; with a
+ * long tail of one-shot URLs the bucket grew without bound and only read-time
+ * expiry (`getCached`) reclaimed anything, i.e. only URLs requested again.
+ *
+ * The sweep always starts at the beginning of the prefix, which is unbiased:
+ * expiry is uncorrelated with key order, and every deleted key shifts the next
+ * page forward, so consecutive runs make progress. `pageBudget` caps the work
+ * (and the Class A spend) of a single run; whatever is left is picked up the
+ * next night. Non-fatal by contract — a failed list or delete is skipped, never
+ * thrown, because cache housekeeping must not fail the cron.
+ */
+export async function pruneExpiredCache(
+  bucket: R2Bucket,
+  opts: { pageSize?: number; pageBudget?: number; now?: number } = {},
+): Promise<{ scanned: number; deleted: number; pages: number }> {
+  const pageSize = opts.pageSize ?? PRUNE_PAGE_SIZE;
+  const pageBudget = opts.pageBudget ?? PRUNE_PAGE_BUDGET;
+  const now = opts.now ?? Date.now();
+  let cursor: string | undefined;
+  let scanned = 0;
+  let deleted = 0;
+  let pages = 0;
+  for (let page = 0; page < pageBudget; page++) {
+    let listed: R2Objects;
+    try {
+      listed = await bucket.list({ prefix: PREFIX, limit: pageSize, cursor });
+    } catch {
+      break; // bucket-level trouble (permissions, outage): stop the sweep
+    }
+    pages++;
+    scanned += listed.objects.length;
+    const expired = listed.objects.filter((obj) => {
+      const expiresAt = Number(obj.customMetadata?.["expiresAt"] ?? 0);
+      return Number.isFinite(expiresAt) && expiresAt > 0 && expiresAt < now;
+    });
+    // A delete that fails is skipped, never thrown: housekeeping must not
+    // abort the rest of the sweep (the entry is simply reclaimed next run).
+    await Promise.all(expired.map((obj) => bucket.delete(obj.key).catch(() => undefined)));
+    deleted += expired.length;
+    // No cursor means we saw the end of the prefix.
+    if (!listed.truncated || !listed.cursor) break;
+    cursor = listed.cursor;
+  }
+  return { scanned, deleted, pages };
 }

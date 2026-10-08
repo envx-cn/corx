@@ -150,8 +150,14 @@ Files: `app/proxy/ip.ts`, `app/proxy/guard.ts`, `app/proxy/dns-check.ts`,
   credentials never stored. `Vary: Origin` is intentionally cacheable — the
   proxy strips the caller's `Origin` before forwarding, so upstream can never
   vary on it (covered by a test).
-- Expiry is lazy on read plus a small list-prune batch from the cron; cache
-  read/write errors are non-fatal.
+- Expiry is lazy on read (a URL is only reclaimed when it is requested again)
+  plus a nightly sweep that walks the whole prefix page by page — `R2.list` is
+  cursor-paged behind an opaque key and cache keys are random-order hashes, so
+  a single-page prune could only ever reach the first few hundred keys and the
+  bucket grew without bound. The sweep is bounded per run (10 pages × 1000
+  keys, `PRUNE_PAGE_BUDGET`) so its Class A ops stay inside the free tier;
+  whatever is left is picked up the next night. Cache read/write/prune errors
+  are non-fatal.
 - Injected **param-only** keys share the cache under the effective URL, so
   different injected values never collide; injected-header keys bypass.
 
@@ -504,8 +510,9 @@ Files: `app/lib/access.ts`, `app/lib/session.ts`, `app/lib/csrf.ts`,
   prune `request_logs` past the deployment's `LOG_RETENTION_DAYS` (default 30;
   the rollup window and the stats read path follow the same value),
   `rate_windows` > 2 h,
-  `quota_counters` older than yesterday, and a 100-object batch of expired R2
-  entries.
+  `quota_counters` older than yesterday, and expired R2 cache entries — a
+  cursor-paged sweep of the cache prefix, capped per run (10 pages × 1000
+  keys) so one bad night cannot turn into an unbounded bill.
 - Observability enabled in `wrangler.jsonc`; `npm run tail` for live logs.
 - CI: `verify.yml` on every push to `main` and every pull request (typecheck →
   tests → contrast → production build, read-only, no secrets); `deploy.yml` is

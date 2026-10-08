@@ -212,4 +212,44 @@ describe("scheduled cron", () => {
     await runScheduled(env);
     expect(calls.some((s) => s.includes("DELETE FROM request_logs"))).toBe(false);
   });
+
+  it("reclaims expired cache entries past the first page (#107)", async () => {
+    // The old cron listed `limit: 100` and never followed the cursor, so an
+    // entry at position 1200 was unreachable. R2 pages behind a cursor holding
+    // the previous page's last key, which is what this mock reproduces.
+    const remaining = new Map<string, number>();
+    const now = Date.now();
+    for (let i = 0; i < 1200; i++) {
+      const key = `corx/v1/${String(i).padStart(4, "0")}`;
+      // Only the tail is expired — every one of those keys sits past page 1.
+      remaining.set(key, i >= 1100 ? now - 60_000 : now + 60_000);
+    }
+    const deleted: string[] = [];
+    const { env } = scheduledEnv();
+    const withBucket = {
+      ...env,
+      CACHE_BUCKET: {
+        list: async ({ limit = 1000, cursor }: { limit?: number; cursor?: string } = {}) => {
+          const all = [...remaining.keys()].sort();
+          const after = cursor === undefined ? all : all.filter((k) => k > cursor);
+          const page = after.slice(0, limit);
+          const truncated = after.length > page.length;
+          return {
+            objects: page.map((key) => ({ key, customMetadata: { expiresAt: String(remaining.get(key)) } })),
+            truncated,
+            cursor: truncated ? page[page.length - 1] : undefined,
+          };
+        },
+        delete: async (key: string) => {
+          deleted.push(key);
+          remaining.delete(key);
+        },
+      },
+    } as unknown as Env;
+
+    await runScheduled(withBucket);
+    expect(deleted.length).toBe(100);
+    expect(deleted[0]).toBe("corx/v1/1100");
+    expect(remaining.size).toBe(1100);
+  });
 });

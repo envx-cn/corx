@@ -11,6 +11,7 @@ import { rollupDailyStats } from "./lib/admin.js";
 import { logRetentionDays } from "./lib/db.js";
 import { cors, withProxyCors } from "./proxy/cors.js";
 import { proxyHandler } from "./proxy/handler.js";
+import { pruneExpiredCache } from "./proxy/cache.js";
 import { utcDay } from "./proxy/quota.js";
 import { resolveRawTarget } from "./proxy/subdomain.js";
 import { notFoundResponse } from "./routes/_not-found.js";
@@ -242,15 +243,10 @@ export default {
           .bind(utcDay(Date.now() - 86_400_000))
           .run()
           .catch(() => undefined);
-        // R2 TTL is lazy (checked on read); list-prune a small batch each run.
+        // R2 TTL is lazy (checked on read); the prune sweeps the prefix page
+        // by page so entries past the first page are reclaimed too (#107).
         try {
-          const listed = await env.CACHE_BUCKET.list({ prefix: "corx/v1/", limit: 100 });
-          const expired: string[] = [];
-          for (const obj of listed.objects) {
-            const exp = Number(obj.customMetadata?.["expiresAt"] ?? 0);
-            if (exp && Date.now() > exp) expired.push(obj.key);
-          }
-          await Promise.all(expired.map((k) => env.CACHE_BUCKET.delete(k).catch(() => undefined)));
+          await pruneExpiredCache(env.CACHE_BUCKET);
         } catch {
           /* non-fatal */
         }
