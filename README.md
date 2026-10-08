@@ -87,6 +87,9 @@ fetch("https://corx.<you>.workers.dev/fetch?url=" + encodeURIComponent("https://
 //   GET /https://api.example.com/data
 // Subdomain mode (needs wildcard domain *.your-zone):
 //   GET https://api-example-com.your-zone/data
+//   The first label is the target host, except the labels CORX serves itself
+//   (api, console, docs, en, zh, snippets, tools, compare, demo, fetch,
+//   proxy, terms, www, …) — those never decode to a hostname.
 ```
 
 Options:

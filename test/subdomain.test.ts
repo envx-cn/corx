@@ -4,6 +4,7 @@ import {
   decodeHostname,
   subdomainTarget,
   resolveRawTarget,
+  reservedLabels,
 } from "../app/proxy/subdomain.js";
 import type { Env } from "../app/lib/types.js";
 
@@ -58,6 +59,56 @@ describe("subdomainTarget", () => {
   });
   it("bad port throws", () => {
     expect(() => subdomainTarget(new URL("https://example.corx.com/?corx-port=abc"), env)).toThrow();
+  });
+});
+
+/**
+ * Subdomain mode decodes any first label it is given, so a label that names
+ * one of corx's own routes must be served locally instead of being fetched as
+ * a hostname (`en.<zone>` → https://en.com/ is the classic typo). The list is
+ * derived from the route table so a new top-level route cannot be forgotten.
+ */
+describe("reserved labels cover the app's own routes", () => {
+  // Same glob the file router is built from (see the ROUTES option in
+  // app/server.ts): the keys are the paths, nothing is loaded.
+  const routeFiles = import.meta.glob("../app/routes/**/*.{ts,tsx,md,mdx}");
+  const topLevelSegments = [
+    ...new Set(
+      Object.keys(routeFiles)
+        .map((path) => path.replace("../app/routes/", "").split("/")[0] ?? "")
+        // `_`-prefixed files are colocated modules, `-`/`$` are excluded from
+        // routing, a dotfile is not a route.
+        .filter((segment) => segment !== "" && !/^[._$-]/.test(segment))
+        .map((segment) => segment.replace(/\.(ts|tsx|md|mdx)$/, ""))
+        .filter((segment) => segment !== "index"), // the apex landing page
+    ),
+  ];
+
+  it("covers every top-level route segment", () => {
+    // Canary: an empty derivation would make the assertion below vacuous.
+    for (const segment of ["api", "compare", "console", "demo", "docs", "en", "snippets", "terms", "tools", "zh"]) {
+      expect(topLevelSegments, segment).toContain(segment);
+    }
+    const reserved = new Set(reservedLabels());
+    const missing = topLevelSegments.filter((segment) => !reserved.has(segment));
+    expect(missing).toEqual([]);
+  });
+
+  it("covers the routes mounted outside the file router", () => {
+    const reserved = new Set(reservedLabels());
+    // app/server.ts mounts /fetch and /proxy/* by hand.
+    for (const label of ["fetch", "proxy"]) expect(reserved.has(label), label).toBe(true);
+  });
+
+  it("serves them locally instead of proxying to that domain", () => {
+    for (const label of ["en", "zh", "snippets", "compare", "tools", "demo", "fetch", "proxy", "terms", "docs", "api", "console"]) {
+      expect(subdomainTarget(new URL(`https://${label}.corx.com/x`), zoneEnv), label).toBeNull();
+    }
+  });
+
+  it("still proxies an ordinary subdomain", () => {
+    expect(subdomainTarget(new URL("https://example.corx.com/x"), zoneEnv)).toBe("https://example.com/x");
+    expect(subdomainTarget(new URL("https://my--site-co-uk.corx.com/x"), zoneEnv)).toBe("https://my-site.co.uk/x");
   });
 });
 
