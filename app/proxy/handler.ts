@@ -510,24 +510,98 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       };
 
       let body: BodyInit | undefined;
-      if (c.req.method !== "GET" && c.req.method !== "HEAD") {
-        // Reject declared-oversized uploads before buffering anything.
+      // Uploads are forwarded as a stream whenever they are big enough to
+      // matter, and read into memory only when the whole body has already
+      // arrived — which is the case for the small JSON/form posts most APIs
+      // take, and the case that has to keep working exactly as it did (size
+      // checked before anything is forwarded, a failed read is a loud 400, and
+      // a body small enough to re-send on a 307/308 redirect).
+      //
+      // Before this, every non-GET body was `arrayBuffer()`ed whole: a 10 MiB
+      // upload sat in Worker memory for the life of the request (concurrent
+      // uploads multiplied that), and a chunked caller had to finish sending
+      // before corx even opened the upstream connection.
+      let bodyStreamed = false;
+      let capExceeded = false;
+      if (c.req.method !== "GET" && c.req.method !== "HEAD" && c.req.raw.body) {
+        // Reject a declared-oversized upload before reading a single byte.
         const declared = Number(c.req.header("content-length") ?? NaN);
         if (Number.isFinite(declared) && declared > maxBody) {
           throw new ProxyError(413, `Request body too large (>${maxBody} bytes)`);
         }
-        let buf: ArrayBuffer;
+        const reader = c.req.raw.body.getReader();
+        let head: Uint8Array;
         try {
-          buf = await c.req.raw.arrayBuffer();
+          head = (await reader.read()).value ?? new Uint8Array(0);
         } catch {
           // A failed read must never become a silently-empty forwarded body.
           throw new ProxyError(400, "Failed to read request body");
         }
-        if (buf.byteLength > maxBody) {
-          throw new ProxyError(413, `Request body too large (>${maxBody} bytes)`);
+        // Is anything left? A body that arrived in one piece is already
+        // exhausted here, so this resolves immediately; a real upload blocks on
+        // I/O and the race is over before the next byte lands. The pending read
+        // is KEPT rather than abandoned — a reader has one read in flight at a
+        // time, and dropping the probe's result would swallow a chunk.
+        let pending: Promise<ReadableStreamReadResult<Uint8Array>> | null = reader
+          .read()
+          .catch(() => ({ done: true, value: undefined }));
+        const nextRead = async (): Promise<ReadableStreamReadResult<Uint8Array>> => {
+          const result = pending ?? (await reader.read());
+          pending = null;
+          return result;
+        };
+        const more = await Promise.race([
+          pending,
+          new Promise<{ done: false; value: undefined }>((resolve) =>
+            setTimeout(() => resolve({ done: false, value: undefined }), 0),
+          ),
+        ]);
+        if (more.done) {
+          // Whole body in hand — the historical path, unchanged.
+          const buf = new Uint8Array(head.byteLength);
+          buf.set(head);
+          if (buf.byteLength > maxBody) {
+            throw new ProxyError(413, `Request body too large (>${maxBody} bytes)`);
+          }
+          reqBytes = buf.byteLength;
+          body = buf;
+          void reader.cancel().catch(() => undefined);
+        } else {
+          // Still arriving: forward the head we have plus the rest, counting as
+          // it goes. `MAX_BODY_BYTES` is a hard cap even for a caller that
+          // declared nothing — erroring the stream aborts the upstream fetch
+          // with this reason instead of the body growing past the limit.
+          let sent = head.byteLength;
+          body = new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(head);
+            },
+            async pull(controller) {
+              const { done, value } = await nextRead().catch((err) => {
+                controller.error(err);
+                return { done: true, value: undefined };
+              });
+              if (done) {
+                reqBytes = sent; // the log reads this once the upload finished
+                controller.close();
+                return;
+              }
+              sent += value?.byteLength ?? 0;
+              if (sent > maxBody) {
+                capExceeded = true;
+                reader.cancel().catch(() => undefined);
+                controller.error(new ProxyError(413, `Request body too large (>${maxBody} bytes)`));
+                return;
+              }
+              controller.enqueue(value!);
+            },
+            cancel() {
+              void reader.cancel().catch(() => undefined);
+            },
+          });
+          bodyStreamed = true;
+          reqBytes = Number.isFinite(declared) ? declared : 0;
         }
-        reqBytes = buf.byteLength;
-        body = buf;
       }
 
       let upstream: Response | null = null;
@@ -568,7 +642,13 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
             upstream = await attempt();
           }
         } catch (err) {
+          if (capExceeded) throw new ProxyError(413, `Request body too large (>${maxBody} bytes)`);
           if ((err as Error)?.name === "AbortError") throw new ProxyError(504, "Upstream timed out");
+          // A body-carrying request that never produced a response usually
+          // failed while reading the upload (the client hung up), and the old
+          // buffered path answered exactly that with a 400 — keep saying so
+          // rather than blaming the upstream for a client-side abort.
+          if (hopBody && bodyStreamed) throw new ProxyError(400, "Failed to read request body");
           throw new ProxyError(502, `Upstream fetch failed: ${(err as Error)?.message ?? "unknown"}`);
         }
 
@@ -602,6 +682,15 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         if (row?.dns_check !== 0) await assertPublicHost(next.hostname);
 
         if (next.origin !== currentUrl.origin) dropClientAuth = true;
+        // 307/308 preserve the method AND the body, and a streamed upload has
+        // already been consumed by the hop that answered with the redirect. The
+        // caller's client can follow it itself (with its own CORS semantics);
+        // re-sending is impossible, and silently dropping the body would be a
+        // second POST that looks like the first.
+        if ((upstream.status === 307 || upstream.status === 308) && hopBody && bodyStreamed) {
+          stoppedRedirect = next.toString();
+          break;
+        }
         // fetch spec: 301/302 rewrite only POST to GET; 303 rewrites every
         // method except GET/HEAD. Both drop the body — re-sending it would
         // double-apply a side effect the upstream already handled.

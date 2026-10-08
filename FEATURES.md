@@ -137,8 +137,18 @@ Files: `app/lib/auth.ts`, `app/lib/admin.ts`, `app/routes/api/keys*`,
   `X-Api-Key` / `?corx-key=` — the OAuth pattern (a corx-shaped `X-Api-Key`
   outranks the bearer header).
 - Body cap: `MAX_BODY_BYTES` (default 10 MiB) — enforced from `Content-Length`
-  before buffering and again on the buffered bytes; an unreadable body is a 400
-  rather than a silently-empty forward.
+  before a single byte is read, and again on the bytes themselves; an unreadable
+  body is a 400 rather than a silently-empty forward.
+- Request bodies are **streamed** while they are still arriving: the proxy reads
+  the first chunk, probes whether the rest has already landed (a body that
+  arrived in one piece is exhausted by then), and forwards the rest as a stream
+  with the cap enforced as it flows. So `MAX_BODY_BYTES` bounds memory without
+  making corx wait for the whole upload before opening the upstream connection,
+  and the small JSON/form post that is most of real API traffic still takes the
+  buffered path — same bytes, same `413`-before-forwarding, still re-sendable on
+  a `307`/`308`. A `307`/`308` for a *streamed* body is handed to the caller
+  instead: the body has been consumed by the hop that redirected, and a browser
+  following it itself has the right CORS semantics anyway.
 
 Files: `app/proxy/ip.ts`, `app/proxy/guard.ts`, `app/proxy/dns-check.ts`,
 `app/proxy/ratelimit.ts`, `app/proxy/quota.ts`.
