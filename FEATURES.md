@@ -429,9 +429,11 @@ Files: `app/routes/console/**`, `app/islands/**`, `app/components/**`.
 
 - **`/blocked` (public, SSR, noindex)** — the instance's blocklist as a read-only
   page: hostname + date only, never the operator's `reason` note. Linked from
-  the **footer of every public page** and from the **security section of
-  `/docs`** (where a reader who just hit a `403` is looking); deliberately not
-  from the landing nav, which is anchors-plus-`/docs` by design. One URL with a
+  the **footer of every public page**, from the **security section of `/docs`**
+  (where a reader who just hit a `403` is looking), and from the landing's
+  **public-key card**, directly under the terms reminder beside the copy button —
+  the same "remind where the decision is made" placement `/terms` already uses.
+  Deliberately not from the landing nav, which is anchors-plus-`/docs` by design. One URL with a
   cookie-driven language (like `/terms`), no islands, no public JSON endpoint,
   capped at 200 rows with a count of the rest, and a D1 error renders an empty
   list rather than a 500. **Deliberately no intake form**: the blocklist is the

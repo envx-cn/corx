@@ -178,10 +178,11 @@ operator's own `reason` note stays in the console. The page is `noindex` and
 absent from the sitemap (it is thin content, and for a proxy it would otherwise
 double as a "is X still reachable?" probe); it renders server-side with no
 islands and no public JSON endpoint, and never 500s — a database hiccup renders
-an empty list. It is linked from the footer of every public page and from the
-security section of `/docs`, which is where a reader who just hit a `403` is
-actually looking — the landing page's own nav stays anchors-plus-`/docs` on
-purpose, because a moderation list is not a product destination.
+an empty list. It is linked from the footer of every public page, from the
+security section of `/docs`, and from the landing's public-key card right under
+the terms reminder — the two places a reader who just hit a `403` is actually
+looking. The landing page's own nav stays anchors-plus-`/docs` on purpose,
+because a moderation list is not a product destination.
 
 **JSONP (`?corx-callback=fn`)**
 

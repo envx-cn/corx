@@ -567,6 +567,17 @@ function PublicKeyCard(props: {
           </a>{" "}
           {t("landing.publicKey.copyNoteB")}
         </p>
+        {/* Directly under that line, for the same reason: this is where someone
+            decides to start using the shared key, so it is also where they
+            should learn that some hosts are refused outright — and that the list
+            is public rather than a mystery 403. */}
+        <p class="mt-2 text-xs leading-relaxed text-base-content/75">
+          {t("landing.publicKey.blockNoteA")}{" "}
+          <a href="/blocked" class="link link-primary">
+            {t("landing.publicKey.blockLink")}
+          </a>
+          {t("landing.publicKey.blockNoteB")}
+        </p>
 
         <div class="mt-6 text-xs font-medium uppercase tracking-wide text-base-content/75">
           {t("landing.publicKey.usageLabel")}

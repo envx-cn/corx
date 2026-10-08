@@ -47,6 +47,55 @@ function envWith(rows: Array<{ hostname: string; reason: string; created_at: str
   } as unknown as Env;
 }
 
+/** Env whose landing page renders the public-key card (PUBLIC_KEY + a public row). */
+function envWithPublicKey(): Env {
+  const base = envWith(ROWS);
+  const row = {
+    id: "key-public",
+    key_hash: "h",
+    name: "public",
+    rate_limit_per_min: null,
+    allowed_origins: null,
+    cache_ttl: null,
+    no_cache: 0,
+    ip_check: 1,
+    dns_check: 1,
+    rate_limit_mode: "d1",
+    vars: "[]",
+    header_rules: "[]",
+    param_rules: "[]",
+    response_rules: "[]",
+    allowed_hosts: null,
+    keyless: 0,
+    tier: "public",
+    daily_limit_per_origin: 3000,
+    daily_limit_per_host: 5000,
+    daily_limit_total: 15000,
+    allowed_methods: null,
+    allowed_paths: null,
+    require_https: 0,
+    allowed_cidrs: null,
+    expires_at: null,
+    created_at: "2026-01-01T00:00:00.000Z",
+    revoked_at: null,
+  };
+  return {
+    ...base,
+    PUBLIC_KEY: "corx_public_demo_key",
+    DB: {
+      prepare: (sql: string) => {
+        const s = {
+          bind: () => s,
+          run: async () => ({ meta: { changes: 0 } }),
+          first: async () => (sql.includes("FROM api_keys") ? row : null),
+          all: async () => ({ results: sql.includes("blocked_hosts") ? [] : [] }),
+        };
+        return s;
+      },
+    },
+  } as unknown as Env;
+}
+
 const ctx = { waitUntil: (p: Promise<unknown>) => p.catch(() => undefined) } as unknown as ExecutionContext;
 
 const ROWS = [
@@ -139,6 +188,21 @@ describe("discoverability", () => {
     expect(html).toContain("Blocked hosts");
     const terms = await (await get("/terms")).text();
     expect(terms).toContain('href="/blocked"');
+  });
+
+  it("is linked from the public-key card, under the terms reminder", async () => {
+    // Same reasoning as the /terms link beside the copy button: that is where
+    // someone decides to start using the shared key, so it is where they should
+    // learn that some hosts are refused outright and the list is public. The card
+    // only renders with PUBLIC_KEY *and* a matching public-tier row.
+    const res = await get("/", {}, envWithPublicKey());
+    const html = await res.text();
+    expect(res.status).toBe(200);
+    // Sanity: the card itself rendered (otherwise this test proves nothing).
+    expect(html).toContain("corx_public_demo_key");
+    // …and it sits after the terms line, not somewhere else on the page.
+    expect(html.indexOf("blocks outright answers 403")).toBeGreaterThan(html.indexOf("terms of use"));
+    expect(html).toContain('href="/blocked"');
   });
 
   it("is one sentence away from the docs security section, where a 403 hurts", async () => {
