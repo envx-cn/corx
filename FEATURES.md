@@ -150,6 +150,19 @@ Files: `app/proxy/ip.ts`, `app/proxy/guard.ts`, `app/proxy/dns-check.ts`,
   credentials never stored. `Vary: Origin` is intentionally cacheable — the
   proxy strips the caller's `Origin` before forwarding, so upstream can never
   vary on it (covered by a test).
+- Cache keys are `corx/v1/<sha256(GET:url)>` plus a fingerprint of the key's
+  response rules and body transforms. The mode (subdomain vs path) is *not* in
+  the key, which is only safe because redirects stay uncached: in subdomain
+  mode a `Location` is rewritten to a relative path before it is stored, so
+  allowing 3xx to be cached would have to add the mode first.
+- A HIT answers with corx's own `Age` (residency since `storedAt`, capped at the
+  TTL) and a fresh `Date` — the upstream's `Age`/`Date` are excluded at store
+  time, so nothing downstream computes freshness from the origin's clock.
+- Conditional requests: a HIT whose stored `ETag`/`Last-Modified` satisfies the
+  caller's `If-None-Match` (weak comparison, lists, `*`; it wins over
+  `If-Modified-Since`, RFC 9110 §13.1.3) or `If-Modified-Since` answers `304`
+  with the validators and no body. `HEAD` reads the cache (never writes it) and
+  returns the `GET`'s headers without a body.
 - Expiry is lazy on read (a URL is only reclaimed when it is requested again)
   plus a nightly sweep that walks the whole prefix page by page — `R2.list` is
   cursor-paged behind an opaque key and cache keys are random-order hashes, so

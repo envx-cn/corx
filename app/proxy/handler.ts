@@ -33,6 +33,8 @@ import {
   ttlSeconds,
   shouldBypassCache,
   cachedResponse,
+  entryNotModified,
+  notModifiedResponse,
   readBounded,
   responseCacheable,
   CACHE_MAX_BYTES,
@@ -373,9 +375,14 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         const hit = await getCached(c.env.CACHE_BUCKET, cacheKey);
         if (hit) {
           cached = true;
-          resBytes = hit.body.byteLength;
-          finish(hit.status);
-          const res = cachedResponse(hit);
+          // A caller's validators that match the entry we are holding cost no
+          // bytes: answer 304 (a HEAD answers it too — the GET's headers are
+          // what HEAD must return, with no body).
+          const revalidated = entryNotModified(c.req.raw, hit);
+          const headLike = c.req.method === "HEAD" || revalidated;
+          resBytes = headLike ? 0 : hit.body.byteLength;
+          finish(revalidated ? 304 : hit.status);
+          const res = revalidated ? notModifiedResponse(hit) : cachedResponse(hit, { body: !headLike });
           res.headers.set("X-Corx-Target", host);
           res.headers.set("X-Corx-Latency-Ms", String(Date.now() - started));
           return withPending(res);

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { shouldBypassCache, responseCacheable, pruneExpiredCache } from "../app/proxy/cache.js";
+import {
+  shouldBypassCache,
+  responseCacheable,
+  pruneExpiredCache,
+  etagMatches,
+  entryNotModified,
+} from "../app/proxy/cache.js";
+import type { CachedEntry } from "../app/lib/types.js";
 
 const url = (qs = "") => new URL(`https://corx.test/https://example.com/a${qs}`);
 
@@ -14,6 +21,63 @@ describe("shouldBypassCache — authenticated requests", () => {
   });
   it("still caches plain anonymous GETs", () => {
     expect(shouldBypassCache(new Request("https://corx.test/https://example.com/a"), url())).toBe(false);
+  });
+  it("reads the cache for HEAD (never writes it), and bypasses every other method", () => {
+    const head = new Request("https://corx.test/https://example.com/a", { method: "HEAD" });
+    expect(shouldBypassCache(head, url())).toBe(false);
+    for (const method of ["POST", "PUT", "PATCH", "DELETE", "OPTIONS"]) {
+      expect(shouldBypassCache(new Request("https://corx.test/https://example.com/a", { method }), url()), method).toBe(
+        true,
+      );
+    }
+  });
+  it("a Range HEAD still bypasses", () => {
+    const head = new Request("https://corx.test/https://example.com/a", { method: "HEAD", headers: { range: "bytes=0-3" } });
+    expect(shouldBypassCache(head, url())).toBe(true);
+  });
+});
+
+describe("entryNotModified — RFC 9110 §13.1.3", () => {
+  const entry = (headers: Record<string, string>): CachedEntry => ({
+    status: 200,
+    headers,
+    body: new ArrayBuffer(0),
+    storedAt: Date.now(),
+    expiresAt: Date.now() + 1000,
+  });
+  const req = (headers: Record<string, string | undefined>) =>
+    new Request("https://corx.test/x", { headers: Object.fromEntries(Object.entries(headers).filter(([, v]) => v !== undefined)) as Record<string, string> });
+
+  it("matches an ETag weakly, in a list, and *", () => {
+    expect(etagMatches('"a"', '"a"')).toBe(true);
+    expect(etagMatches('W/"a"', '"a"')).toBe(true);
+    expect(etagMatches('"a"', 'W/"a"')).toBe(true);
+    expect(etagMatches('"x", "a"', '"a"')).toBe(true);
+    expect(etagMatches("*", '"a"')).toBe(true);
+    expect(etagMatches('"b"', '"a"')).toBe(false);
+    expect(etagMatches(null, '"a"')).toBe(false);
+    expect(etagMatches('"a"', null)).toBe(false);
+  });
+
+  it("requires the validator to exist on the entry", () => {
+    expect(entryNotModified(req({ "if-none-match": '"a"' }), entry({}))).toBe(false);
+    expect(entryNotModified(req({ "if-modified-since": new Date().toUTCString() }), entry({}))).toBe(false);
+  });
+
+  it("prefers If-None-Match over If-Modified-Since", () => {
+    const e = entry({ etag: '"a"', "last-modified": "Wed, 21 Oct 2020 07:28:00 GMT" });
+    expect(entryNotModified(req({ "if-none-match": '"b"', "if-modified-since": "Wed, 21 Oct 2020 07:28:00 GMT" }), e)).toBe(
+      false,
+    );
+    expect(entryNotModified(req({ "if-none-match": '"a"' }), e)).toBe(true);
+  });
+
+  it("compares HTTP dates at second resolution", () => {
+    const e = entry({ "last-modified": "Wed, 21 Oct 2020 07:28:00 GMT" });
+    expect(entryNotModified(req({ "if-modified-since": "Wed, 21 Oct 2020 07:28:00 GMT" }), e)).toBe(true);
+    expect(entryNotModified(req({ "if-modified-since": "Wed, 21 Oct 2020 07:28:01 GMT" }), e)).toBe(true);
+    expect(entryNotModified(req({ "if-modified-since": "Wed, 21 Oct 2020 07:27:59 GMT" }), e)).toBe(false);
+    expect(entryNotModified(req({ "if-modified-since": "not a date" }), e)).toBe(false);
   });
 });
 

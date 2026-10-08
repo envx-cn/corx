@@ -354,6 +354,15 @@ the caller's `Origin` before forwarding, so upstream can never vary on it.
 Responses carry `X-Corx-Cache: HIT/MISS`, `X-Corx-Target`, `X-Corx-Latency-Ms`.
 Preflight `OPTIONS` is answered on every route. Upstream `set-cookie` is stripped.
 
+**A HIT is a proper cache response.** It carries corx's own `Age` (seconds since
+the entry was stored, capped at its TTL) and a fresh `Date` — the upstream's
+`Age`/`Date` are never stored or replayed, so a browser or CDN downstream
+computes freshness from the copy it actually received. A caller whose
+`If-None-Match` (weak comparison, lists and `*` included) or
+`If-Modified-Since` matches the stored validator gets a `304` with no body
+instead of the whole payload, and a `HEAD` reads the cache too — same headers
+as the `GET`, no body, no upstream fetch.
+
 **Encoding:** upstreams are asked for identity (uncompressed) bodies
 (`accept-encoding: identity`), and any `Content-Encoding` header is stripped on
 streamed responses too — the Workers runtime already decompresses `fetch()`

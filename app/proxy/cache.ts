@@ -14,6 +14,12 @@ const EXCLUDED = new Set([
   "content-length",
   "transfer-encoding",
   "connection",
+  // `Age` and `Date` describe the *origin's* response, not corx's copy of it.
+  // Replaying them on a HIT made a downstream cache compute freshness from a
+  // timestamp that was already stale on the first read; corx generates its own
+  // from the entry's residency instead (see `cachedResponse`).
+  "age",
+  "date",
 ]);
 
 function pickCacheable(headers: Headers): Record<string, string> {
@@ -71,7 +77,11 @@ export type KeyCachePolicy = Pick<
 >;
 
 export function shouldBypassCache(req: Request, reqUrl: URL, keyRow?: KeyCachePolicy | null): boolean {
-  if (req.method !== "GET") return true;
+  // POST/PUT/… never read or write the cache (only GETs are stored). HEAD may
+  // *read* it: a revalidation or a link probe against a hot URL should not cost
+  // an upstream fetch, and the GET's headers are exactly what HEAD must
+  // return — with no body.
+  if (req.method !== "GET" && req.method !== "HEAD") return true;
   if (keyRow?.no_cache) return true;
   // Injected headers make the upstream response caller/key-specific (and may
   // carry credentials), so that key never reads or writes the shared cache.
@@ -245,10 +255,72 @@ export async function putCached(
   });
 }
 
-export function cachedResponse(entry: CachedEntry): Response {
+export function cachedResponse(entry: CachedEntry, opts: { body?: boolean } = {}): Response {
   const headers = new Headers(entry.headers);
   headers.set("X-Corx-Cache", "HIT");
-  return new Response(entry.body, { status: entry.status, headers });
+  // RFC 9111 §5.1: a cache reports the entry's current age. Ours is the time
+  // since we stored it (never past its TTL), and `Date` is stamped fresh —
+  // the origin's own `Age`/`Date` are never stored (see EXCLUDED).
+  const ttl = Math.max(0, entry.expiresAt - entry.storedAt);
+  headers.set("age", String(Math.min(Math.floor((Date.now() - entry.storedAt) / 1000), Math.floor(ttl / 1000))));
+  headers.set("date", new Date().toUTCString());
+  // A HEAD served from the cache carries the GET's headers with no body.
+  if (opts.body === false) headers.delete("content-length");
+  return new Response(opts.body === false ? null : entry.body, { status: entry.status, headers });
+}
+
+/** `W/"x"` → `"x"` — weak comparison (RFC 9110 §8.8.3.2). */
+function bareTag(tag: string): string {
+  return tag.trim().replace(/^W\//i, "");
+}
+
+/**
+ * Does the caller's `If-None-Match` select this entry's entity tag?
+ *
+ * Weak comparison, comma-separated list, and `*` matching any existing
+ * representation — the same rules a browser uses when it revalidates a cached
+ * response, which is exactly the request that used to cost a full body.
+ */
+export function etagMatches(ifNoneMatch: string | null, etag: string | null | undefined): boolean {
+  if (!ifNoneMatch) return false;
+  if (!etag) return false;
+  const header = ifNoneMatch.trim();
+  if (header === "*") return true;
+  const target = bareTag(etag);
+  return header.split(",").some((candidate) => bareTag(candidate) === target);
+}
+
+/**
+ * True when the caller's validators say the cached entry is still good
+ * (RFC 9110 §13.1.3: `If-None-Match` wins; `If-Modified-Since` is only
+ * consulted when there is no `If-None-Match`). The entry must be a cache HIT
+ * that already carries its own stored validators.
+ */
+export function entryNotModified(req: Request, entry: CachedEntry): boolean {
+  const inm = req.headers.get("if-none-match");
+  if (inm !== null) return etagMatches(inm, entry.headers["etag"]);
+  const ims = req.headers.get("if-modified-since");
+  if (!ims) return false;
+  const lastModified = entry.headers["last-modified"];
+  if (!lastModified) return false;
+  const since = Date.parse(ims);
+  const modified = Date.parse(lastModified);
+  if (!Number.isFinite(since) || !Number.isFinite(modified)) return false;
+  // HTTP dates have second resolution: compare truncated to seconds.
+  return Math.floor(modified / 1000) <= Math.floor(since / 1000);
+}
+
+/** A `304` for a cache HIT: the stored validators, no body, no length. */
+export function notModifiedResponse(entry: CachedEntry): Response {
+  const headers = new Headers(entry.headers);
+  headers.set("X-Corx-Cache", "HIT");
+  headers.set("age", String(Math.min(Math.floor((Date.now() - entry.storedAt) / 1000), Math.floor(Math.max(0, entry.expiresAt - entry.storedAt) / 1000))));
+  headers.set("date", new Date().toUTCString());
+  // A 304 has no body, so it must not advertise one (RFC 9110 §15.4.5 lists
+  // the headers a 304 may carry; content-length is not among them).
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+  return new Response(null, { status: 304, headers });
 }
 
 /** Objects inspected per `list` call during a prune sweep. */
