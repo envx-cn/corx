@@ -335,7 +335,7 @@ const en = {
       charset:
         "Re-decode a text, JSON or XML response with this label and re-emit it as UTF-8 — the fix when an upstream mislabels its charset. An unknown label is a 400.",
       wrap:
-        "Wrap a text body as `{\"contents\":\"…\"}` with `application/json`, so `r.json()` works for HTML too. Binary responses are refused with a 400; the wrapper is part of the cache key.",
+        "Wrap a text body as `{\"contents\":\"…\"}` with `application/json`, so `r.json()` works for HTML too. Binary responses are refused with a 400; the wrapper is part of the cache key. Both transforms are a no-op on a bodyless status (`204`, `304`, …): the status and its validators pass through unchanged.",
       scheme: "Subdomain mode: the target scheme. Defaults to `https`; `http` is the only other accepted value.",
       port: "Subdomain mode: the target port (1–65535), appended unless it is the scheme's default (80 for http, 443 for https).",
     },
@@ -1544,7 +1544,7 @@ const zh: Messages = {
       charset:
         "用指定编码重新解码文本、JSON 或 XML 响应，并以 UTF-8 重新输出——上游把编码标错时的救命参数。未知编码名返回 400。",
       wrap:
-        "把文本响应包成 `{\"contents\":\"…\"}`（`application/json`），让 HTML 也能用 `r.json()`。二进制响应会直接 400；包装方式属于缓存键的一部分。",
+        "把文本响应包成 `{\"contents\":\"…\"}`（`application/json`），让 HTML 也能用 `r.json()`。二进制响应会直接 400；包装方式属于缓存键的一部分。对无正文状态（`204`、`304` 等）两个转换参数都不生效：状态码与校验头原样透传。",
       scheme: "子域名模式：目标协议。默认 `https`，另一个可选值是 `http`。",
       port: "子域名模式：目标端口（1–65535），若不是该协议的默认端口（http 为 80、https 为 443）则拼接在主机名之后。",
     },

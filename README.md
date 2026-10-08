@@ -99,6 +99,10 @@ Options:
 | `?corx-charset=utf-8` | Re-decode a text/JSON/XML response with this label and re-emit it as UTF-8 — the fix for a mislabelled upstream charset (unknown labels are a 400) |
 | `?corx-wrap=json` | Wrap the text body as `{"contents":"…"}` with `application/json`, so `r.json()` works for HTML too (binary responses are a 400) |
 
+Both transforms are a no-op on a bodyless status (`204`, `304`, …): there is
+nothing to re-encode or wrap, so the upstream's status and validators are
+passed through unchanged.
+
 Pass an API key with `X-Api-Key`, `Authorization: Bearer …`, or `?corx-key=…`
 (required when `REQUIRE_API_KEY=true`). What CORX authenticated with never
 reaches the target: a corx-shaped `X-Api-Key` (values starting with `corx_` —

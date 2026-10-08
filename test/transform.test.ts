@@ -287,3 +287,58 @@ describe("cache key separation", () => {
     expect(size()).toBe(3);
   });
 });
+
+/**
+ * #104 — an upstream `304` (or `204`) is a "null body status": `new
+ * Response(bytes, { status })` throws for one, so the buffered/JSONP paths used
+ * to answer a browser revalidation with a `500` that also leaked the runtime's
+ * internal message. corx forwards the caller's validators upstream, so this is
+ * a routine path, not a corner case.
+ */
+describe("null-body upstream statuses", () => {
+  const TARGET = "/fetch?url=https://api.example.com/x";
+
+  const bodyless = (status: number, headers: Record<string, string> = {}) =>
+    new Response(null, { status, headers });
+
+  it("passes a 304 through with its validators instead of throwing", async () => {
+    stubUpstream(() => bodyless(304, { etag: 'W/"abc"', "cache-control": "max-age=60" }));
+    const res = await call(TARGET, { headers: { "if-none-match": 'W/"abc"' } });
+    expect(res.status).toBe(304);
+    expect(await res.text()).toBe("");
+    expect(res.headers.get("etag")).toBe('W/"abc"');
+    expect(res.headers.get("content-length")).toBeNull();
+  });
+
+  it("transforms nothing on a 304 — no 500, no invented body", async () => {
+    stubUpstream(() => bodyless(304, { etag: 'W/"abc"', "content-type": "application/json" }));
+    for (const qs of ["&corx-wrap=json", "&corx-charset=utf-8", "&corx-wrap=json&corx-charset=latin1"]) {
+      const res = await call(`${TARGET}${qs}`, { headers: { "if-none-match": 'W/"abc"' } });
+      expect(res.status, qs).toBe(304);
+      expect(await res.text(), qs).toBe("");
+      expect(res.headers.get("etag"), qs).toBe('W/"abc"');
+    }
+  });
+
+  it("does not fail a 204 that has no content-type at all", async () => {
+    stubUpstream(() => bodyless(204));
+    const res = await call(`${TARGET}&corx-wrap=json`);
+    expect(res.status).toBe(204);
+    expect(await res.text()).toBe("");
+  });
+
+  it("wraps nothing for a JSONP caller either", async () => {
+    stubUpstream(() => bodyless(304, { "content-type": "application/json" }));
+    const res = await call(`${TARGET}&corx-callback=cb`);
+    expect(res.status).toBe(304);
+    expect(await res.text()).toBe("");
+  });
+
+  it("caches nothing: a 304 is not an entry", async () => {
+    stubUpstream(() => bodyless(304, { etag: 'W/"abc"' }));
+    const { bucket, size } = memoryBucket();
+    const e = { ...env, CACHE_BUCKET: bucket } as unknown as Env;
+    expect((await call(TARGET, {}, e)).status).toBe(304);
+    expect(size()).toBe(0);
+  });
+});

@@ -98,6 +98,26 @@ const STREAM_STRIP_RESPONSE = new Set([
 const MAX_REDIRECTS = 20;
 
 /**
+ * Statuses the fetch spec forbids a body on ("null body statuses").
+ * `new Response(bytes, { status })` THROWS for them, so an upstream `304`
+ * that reached a buffered path turned into a `500` that also served the
+ * runtime's internal message ("Response constructor: Invalid response status
+ * code 304") to the caller. That is not a corner case: corx forwards the
+ * caller's `If-None-Match` / `If-Modified-Since` upstream, so a browser
+ * revalidating a response reaches it routinely.
+ *
+ * Anything in here is passed through bodyless. A text transform and JSONP both
+ * have nothing to work on, and running them anyway would fabricate a body
+ * (`{"contents":""}`) or fail with a misleading JSON error.
+ */
+const NULL_BODY_STATUS = new Set([101, 103, 204, 205, 304]);
+
+/** True when a response with this status must not carry a body. */
+export function isNullBodyStatus(status: number): boolean {
+  return NULL_BODY_STATUS.has(status);
+}
+
+/**
  * Wrap a stream and count the bytes actually delivered, then call onDone.
  * Used for streamed (uncached) responses so the request log reflects real
  * bytes + real end-to-end latency (client disconnects included), instead of
@@ -550,10 +570,14 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       }
       if (!upstream) throw new ProxyError(502, "Upstream fetch failed");
 
+      // A bodyless upstream response (204/304, …) has nothing to transform or
+      // wrap: it is passed through with its validators, never fabricated.
+      const bodyless = isNullBodyStatus(upstream.status);
+
       // Transforms only apply to text, JSON and XML — check the upstream's
       // content type before touching the body, so a binary response is a 400
       // instead of a corrupted one.
-      if (transforming && !isTextualContentType(upstream.headers.get("content-type"))) {
+      if (transforming && !bodyless && !isTextualContentType(upstream.headers.get("content-type"))) {
         throw new ProxyError(
           400,
           `corx-charset/corx-wrap need a text, JSON or XML response (got ${
@@ -626,8 +650,16 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         streamHeaders.set("X-Corx-Cache", "MISS");
         streamHeaders.set("X-Corx-Target", host);
         streamHeaders.set("X-Corx-Latency-Ms", String(Date.now() - started));
-        if (!body) {
-          resBytes = null;
+        // No body, or one the status forbids: attach nothing. The runtime
+        // gives a 304 a null body today, but never hand `countStream` a stream
+        // for a status the constructor would reject.
+        if (!body || bodyless) {
+          if (bodyless) {
+            streamHeaders.delete("content-length");
+            resBytes = 0;
+          } else {
+            resBytes = null;
+          }
           finish(upstream.status);
           return withPending(new Response(null, { status: upstream.status, headers: streamHeaders }));
         }
@@ -644,7 +676,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       if (jsonpName) {
         // `corx-wrap=json` turns any textual body into JSON, so it satisfies
         // JSONP's requirement; otherwise the upstream itself must be JSON.
-        if (!transform.wrap && !isJsonContentType(upstream.headers.get("content-type"))) {
+        if (!transform.wrap && !bodyless && !isJsonContentType(upstream.headers.get("content-type"))) {
           throw new ProxyError(
             400,
             `JSONP needs a JSON response (got ${upstream.headers.get("content-type") ?? "no content-type"})`,
@@ -654,6 +686,16 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         jsonpResHeaders.set("X-Corx-Cache", "MISS");
         jsonpResHeaders.set("X-Corx-Target", host);
         jsonpResHeaders.set("X-Corx-Latency-Ms", String(Date.now() - started));
+        // Nothing to wrap: a 304 (the script tag revalidating) or a 204 is
+        // answered with its status and no body, never `cb({contents:""})` and
+        // never a "Upstream returned invalid JSON" that hides the real status.
+        if (bodyless) {
+          jsonpResHeaders.delete("content-length");
+          jsonpResHeaders.delete("content-type");
+          resBytes = 0;
+          finish(upstream.status);
+          return withPending(new Response(null, { status: upstream.status, headers: jsonpResHeaders }));
+        }
         if (c.req.method === "HEAD") {
           finish(upstream.status);
           return withPending(new Response(null, { status: upstream.status, headers: jsonpResHeaders }));
@@ -687,7 +729,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       // A transform needs the whole body, so it buffers a response that would
       // otherwise stream (an uncacheable one included). Too large is a 413 —
       // never a silently untransformed body.
-      if (transforming) {
+      if (transforming && !bodyless) {
         if (tooLarge) throw new ProxyError(413, `Response too large to transform (>${CACHE_MAX_BYTES} bytes)`);
       } else if (!cacheable || tooLarge) {
         // Known-huge bodies stream without ever buffering.
@@ -714,10 +756,13 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       sandboxDocument(resHeaders);
       applyResponseRules(resHeaders);
       // Transform after the response rules, so an explicit charset/wrap request
-      // always wins over a key's header rules on content-type.
-      if (transforming) resBody = applyTextTransforms(resBody, resHeaders, transform);
+      // always wins over a key's header rules on content-type. A bodyless
+      // status is skipped: there is nothing to decode or wrap, and wrapping
+      // zero bytes would invent `{"contents":""}`.
+      if (transforming && !bodyless) resBody = applyTextTransforms(resBody, resHeaders, transform);
+      if (bodyless) resHeaders.delete("content-length");
       // A HEAD response has no body, even though the transform above ran on one.
-      resBytes = c.req.method === "HEAD" ? 0 : resBody.byteLength;
+      resBytes = c.req.method === "HEAD" || bodyless ? 0 : resBody.byteLength;
       resHeaders.set("X-Corx-Cache", "MISS");
       resHeaders.set("X-Corx-Target", host);
       resHeaders.set("X-Corx-Latency-Ms", String(Date.now() - started));
@@ -733,10 +778,15 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
       }
 
       finish(upstream.status);
-      // HEAD reaches this path only when a transform was requested; it has no
-      // body, and the transform already corrected the headers above.
+      // HEAD reaches this path only when a transform was requested, and a
+      // bodyless status reaches it for the same reason (a transform or a
+      // JSONP wrap was requested); neither may carry a body — the constructor
+      // throws on one.
       return withPending(
-        new Response(c.req.method === "HEAD" ? null : resBody, { status: upstream.status, headers: resHeaders }),
+        new Response(
+          c.req.method === "HEAD" || bodyless ? null : resBody,
+          { status: upstream.status, headers: resHeaders },
+        ),
       );
     } finally {
       clearTimeout(timer);
