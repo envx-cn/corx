@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import type { Env } from "../lib/types.js";
+import type { CachedEntry, Env } from "../lib/types.js";
 import { ProxyError } from "../lib/types.js";
 import { isCorxKeyShape, type ProxyVariables } from "../lib/auth.js";
 import { normalizeOrigin } from "./cors.js";
@@ -33,8 +33,9 @@ import {
   ttlSeconds,
   shouldBypassCache,
   cachedResponse,
-  cacheHost,
   cacheUrlHash,
+  staleGraceSecs,
+  staleResponse,
   entryNotModified,
   notModifiedResponse,
   readBounded,
@@ -190,6 +191,10 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
   // Set once `?corx-callback=` parses. Declared outside the try so even an error
   // response can be wrapped for a <script> caller (see the catch below).
   let jsonpName: string | null = null;
+  // stale-if-error: an entry past its TTL but inside the CACHE_STALE_SECONDS
+  // grace window. Declared out here for the same reason — the catch block needs
+  // it. Never served on a plain miss, only when the upstream fails.
+  let staleEntry: CachedEntry | null = null;
 
   /**
    * The row for one proxied request. Split out of `finish` so a streamed
@@ -216,6 +221,29 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
 
   const finish = (status: number | null, error = "") => {
     c.executionCtx.waitUntil(logRequest(c.env, logRow(status, error)));
+  };
+
+  /**
+   * Serve the held stale entry because the upstream did not (5xx response, or a
+   * failed/timed-out fetch). The log names what it is standing in for, so the
+   * vendor's failure stays visible next to the 200 the caller received.
+   *
+   * Null when there is nothing held — i.e. stale-if-error is off, the entry is
+   * past its grace window, or this caller never entered the cache path at all
+   * (authenticated, Range, JSONP, header-rule key), in which case stale-if-error
+   * does not exist for them.
+   */
+  const serveStale = (upstreamStatus: number | string): Response | null => {
+    if (!staleEntry) return null;
+    const entry = staleEntry;
+    staleEntry = null;
+    cached = true;
+    resBytes = entry.body.byteLength;
+    finish(entry.status, `stale-if-error after upstream ${upstreamStatus}`);
+    const res = staleResponse(entry);
+    res.headers.set("X-Corx-Target", host);
+    res.headers.set("X-Corx-Latency-Ms", String(Date.now() - started));
+    return withPending(res);
   };
 
   // Headers that must ride on the *response object*: c.header() before a
@@ -379,8 +407,13 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
     if (!bypass) {
       try {
         cacheKey = await cacheKeyForUrl(fetchUrl.toString(), responseFingerprint);
-        const hit = await getCached(c.env.CACHE_BUCKET, cacheKey);
-        if (hit) {
+        const lookup = await getCached(c.env.CACHE_BUCKET, cacheKey, {
+          staleGraceSecs: staleGraceSecs(c.env),
+        });
+        if (lookup.state === "stale") {
+          staleEntry = lookup.entry;
+        } else if (lookup.state === "fresh") {
+          const hit = lookup.entry;
           cached = true;
           // A caller's validators that match the entry we are holding cost no
           // bytes: answer 304 (a HEAD answers it too — the GET's headers are
@@ -398,6 +431,7 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         // cache errors are non-fatal
       }
     }
+
 
     // Rate limit per key (or per IP for anonymous) — cache misses only.
     // Keyless traffic is metered per origin+IP so one site's visitors can't
@@ -598,6 +632,14 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
             upstream.headers.get("content-type") ?? "no content-type"
           })`,
         );
+      }
+
+      // An upstream 5xx while a stale-if-error entry is held: the cached body
+      // is what the caller gets, not the vendor's error page. The upstream body
+      // is cancelled so the connection is not left hanging.
+      if (upstream.status >= 500 && staleEntry) {
+        void upstream.body?.cancel().catch(() => undefined);
+        return serveStale(upstream.status)!;
       }
 
       // Response rules are scoped by the host that actually answered (the last
@@ -811,7 +853,9 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
         // the key is built from the post-injection URL.
         const index = { urlHash: await cacheUrlHash(fetchUrl.toString()), host };
         c.executionCtx.waitUntil(
-          putCached(c.env.CACHE_BUCKET, cacheKey, index, stored, resBody, ttl).catch(() => undefined),
+          putCached(c.env.CACHE_BUCKET, cacheKey, index, stored, resBody, ttl, staleGraceSecs(c.env)).catch(
+            () => undefined,
+          ),
         );
       }
 
@@ -832,6 +876,14 @@ export async function proxyHandler(c: Context<{ Bindings: Env; Variables: ProxyV
   } catch (err) {
     const status = err instanceof ProxyError ? err.status : 500;
     const message = err instanceof Error ? err.message : "Internal error";
+    // stale-if-error for the paths that never produced a response at all: the
+    // fetch failed (502) or the upstream timed out (504). Only those — a 400 or
+    // a proxy-level failure is the caller's problem, not the vendor's, and
+    // handing back a stale body for it would hide a real error.
+    if ((status === 502 || status === 504) && staleEntry) {
+      const stale = serveStale(message);
+      if (stale) return stale;
+    }
     finish(status, message);
     const data = err instanceof ProxyError ? err.data : undefined;
     if (typeof data?.["retryAfter"] === "number") pending.set("Retry-After", String(data["retryAfter"]));

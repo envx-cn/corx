@@ -190,6 +190,14 @@ Files: `app/proxy/ip.ts`, `app/proxy/guard.ts`, `app/proxy/dns-check.ts`,
   the cache key is built from the *post-injection* URL, which can carry an
   injected secret, and R2 custom metadata is readable by anyone with bucket
   access.
+- **stale-if-error** (`CACHE_STALE_SECONDS`, `0` = off): an expired entry is
+  kept for that many extra seconds and served **only** when the upstream
+  answers `5xx`, fails or times out — `X-Corx-Cache: STALE` + `Warning: 110`,
+  the real (past-TTL) `Age`, and a log row naming the upstream failure it is
+  standing in for. Never on a plain miss; never for a caller that skipped the
+  cache path (authenticated, `Range`, JSONP, header-rule key); the blocklist is
+  still checked first, so a host blocked after the fact wins. Off by default —
+  serving a body past its TTL is a policy decision.
 - **`POST /api/cache/purge`** (`{url}` | `{host}` | `{all}`) and
   `/console/cache` (bounded sample of the bucket + the 24 h hit ratio + purge
   buttons, en/zh). Every scope walks the prefix — the key mixes the URL with the

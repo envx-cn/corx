@@ -371,6 +371,15 @@ proxied hostname. `POST /api/cache/purge` takes one of `{url}`, `{host}`,
 budget, and reports `truncated` when the bucket is larger than that.
 `/console/cache` shows the same state with buttons.
 
+**stale-if-error (`CACHE_STALE_SECONDS`, off by default).** When set, an
+expired entry is kept for that many extra seconds and used only when the
+upstream answers `5xx`, fails, or times out — the caller gets the cached body
+with `X-Corx-Cache: STALE` and `Warning: 110` instead of the vendor's error
+page, and the log records what it is standing in for. It never applies to a
+plain miss, to authenticated callers, `Range`, JSONP, or a key with header
+rules — those never enter the cache path at all — and a host blocked after the
+fact still wins, because the blocklist is checked before the cache.
+
 **A HIT is a proper cache response.** It carries corx's own `Age` (seconds since
 the entry was stored, capped at its TTL) and a fresh `Date` — the upstream's
 `Age`/`Date` are never stored or replayed, so a browser or CDN downstream
@@ -974,6 +983,7 @@ vars are rewritten from the config file each time.
 | `ALLOWED_ORIGINS` | `*` | `*` or comma/whitespace-separated origins allowed to use the **proxy routes only** (console/API never get CORS headers); a loopback port wildcard (`http://localhost:*`) is allowed |
 | `REQUIRE_API_KEY` | `true` | `"true"` to require an API key |
 | `CACHE_TTL_SECONDS` | `3600` | Default R2 TTL for GET 200s; also caps per-request `?corx-ttl=` |
+| `CACHE_STALE_SECONDS` | `0` | stale-if-error grace window (1–86400, `0` = off). When set, an entry lives `TTL + this` and is served **only** if the upstream fails — with `X-Corx-Cache: STALE` and `Warning: 110`. Off by default: serving a body past its TTL is a policy decision |
 | `TIMEOUT_MS` | `30000` | Upstream timeout |
 | `RATE_LIMIT_PER_MIN` | `60` | Per key (or per IP) per minute — cache hits are free |
 | `MAX_BODY_BYTES` | `10485760` | Max forwarded request body (early Content-Length check, then a buffered cap; an unreadable body is rejected, never forwarded empty) |

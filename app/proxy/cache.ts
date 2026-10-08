@@ -212,23 +212,65 @@ export async function readBounded(body: ReadableStream<Uint8Array> | null, cap: 
   }
 }
 
-export async function getCached(bucket: R2Bucket, key: string): Promise<CachedEntry | null> {
+/**
+ * Stale-if-error grace window, in seconds, from `CACHE_STALE_SECONDS`.
+ *
+ * `0` (the default) disables it: serving a body past its TTL is a policy
+ * decision, not a technical one, so a deployment opts in explicitly. Entries
+ * only carry a `staleUntil` when the window is on, and the nightly sweep
+ * deletes whatever is past it.
+ */
+export function staleGraceSecs(env: Pick<Env, "CACHE_STALE_SECONDS">): number {
+  const n = Number(env.CACHE_STALE_SECONDS ?? 0);
+  return Number.isInteger(n) && n > 0 && n <= 86_400 ? n : 0;
+}
+
+/** What a cache lookup found. */
+export type CacheLookup =
+  | { state: "miss" }
+  /** Within its TTL: serve it. */
+  | { state: "fresh"; entry: CachedEntry }
+  /**
+   * Past its TTL but inside the stale-if-error grace window: NOT served on a
+   * plain miss — held back for the caller to use only when the upstream fails.
+   */
+  | { state: "stale"; entry: CachedEntry };
+
+export async function getCached(
+  bucket: R2Bucket,
+  key: string,
+  opts: { staleGraceSecs?: number } = {},
+): Promise<CacheLookup> {
   const obj = await bucket.get(key);
-  if (!obj) return null;
+  if (!obj) return { state: "miss" };
   const expiresAt = Number(obj.customMetadata?.["expiresAt"] ?? 0);
-  if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) {
-    // Read-time expiry only reclaims a URL somebody asks for again; the cron
-    // sweep below is what actually bounds the bucket (see `pruneExpiredCache`).
-    await bucket.delete(key).catch(() => undefined);
-    return null;
+  const staleUntil = Number(obj.customMetadata?.["staleUntil"] ?? 0);
+  const now = Date.now();
+  if (!Number.isFinite(expiresAt) || now > expiresAt) {
+    // Past its TTL: keep it only while a stale-if-error grace window is open,
+    // otherwise drop it here (this read-time expiry is what reclaims a URL
+    // somebody requests again; the cron sweep bounds the rest).
+    const keepable = opts.staleGraceSecs ? staleUntil > now : false;
+    if (!keepable) {
+      await bucket.delete(key).catch(() => undefined);
+      return { state: "miss" };
+    }
+    return {
+      state: "stale",
+      entry: await readEntry(obj),
+    };
   }
+  return { state: "fresh", entry: await readEntry(obj) };
+}
+
+async function readEntry(obj: R2ObjectBody): Promise<CachedEntry> {
   const body = await obj.arrayBuffer();
   return {
     status: Number(obj.customMetadata?.["status"] ?? 200),
     headers: JSON.parse(obj.customMetadata?.["headers"] ?? "{}") as Record<string, string>,
     body,
     storedAt: Number(obj.customMetadata?.["storedAt"] ?? 0),
-    expiresAt,
+    expiresAt: Number(obj.customMetadata?.["expiresAt"] ?? 0),
   };
 }
 
@@ -273,6 +315,7 @@ export async function putCached(
   res: Response,
   body: ArrayBuffer | Uint8Array,
   ttlSecs: number,
+  staleGraceSecs = 0,
 ): Promise<void> {
   if (ttlSecs <= 0) return;
   // Only cache small successful GETs.
@@ -286,6 +329,9 @@ export async function putCached(
       headers: JSON.stringify(pickCacheable(res.headers)),
       storedAt: String(now),
       expiresAt: String(now + ttlSecs * 1000),
+      // Only meaningful when the deployment enabled stale-if-error; absent
+      // otherwise, so a disabled deployment reclaims on the next read.
+      staleUntil: staleGraceSecs > 0 ? String(now + (ttlSecs + staleGraceSecs) * 1000) : "0",
       urlHash: index.urlHash,
       host: index.host,
     },
@@ -345,6 +391,27 @@ export function entryNotModified(req: Request, entry: CachedEntry): boolean {
   if (!Number.isFinite(since) || !Number.isFinite(modified)) return false;
   // HTTP dates have second resolution: compare truncated to seconds.
   return Math.floor(modified / 1000) <= Math.floor(since / 1000);
+}
+
+/**
+ * A stale-if-error response: the stored body with its own status, its real
+ * `Age` (past the TTL, honestly reported), and the RFC 9111 `Warning` that
+ * tells any downstream cache this is not fresh.
+ *
+ * `X-Corx-Cache: STALE` is the marker the console/playground read; it is only
+ * ever produced from an entry the caller was already entitled to (the cache
+ * path is skipped entirely for authenticated callers, Range, JSONP and keys
+ * with header rules or client-referencable variables).
+ */
+export function staleResponse(entry: CachedEntry): Response {
+  const headers = new Headers(entry.headers);
+  headers.set("X-Corx-Cache", "STALE");
+  headers.set("Age", String(Math.max(0, Math.floor((Date.now() - entry.storedAt) / 1000))));
+  headers.set("Date", new Date().toUTCString());
+  headers.set("Warning", '110 - "Response is stale"');
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+  return new Response(entry.body, { status: entry.status, headers });
 }
 
 /** A `304` for a cache HIT: the stored validators, no body, no length. */

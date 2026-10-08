@@ -14,6 +14,13 @@ export interface Env {
   REQUIRE_API_KEY?: string;
   /** Default R2 cache TTL for GET responses, in seconds. */
   CACHE_TTL_SECONDS?: string;
+  /**
+   * stale-if-error grace window in seconds (1–86400). `0`/absent = off: an
+   * entry is deleted as soon as it is read past its TTL. When set, an expired
+   * entry is kept until `expiresAt + CACHE_STALE_SECONDS` and served **only**
+   * when the upstream fails, with `X-Corx-Cache: STALE`.
+   */
+  CACHE_STALE_SECONDS?: string;
   /** "false"/"0"/"off"/"no" = write nothing to request_logs (default: log). */
   LOG_REQUESTS?: string;
   /** Days of raw request_logs kept before the cron prunes them (1–365, default 30). */
