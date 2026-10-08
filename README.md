@@ -820,8 +820,14 @@ their new value out of the same `INSERT … ON CONFLICT … RETURNING count` tha
 writes them, so a dimension costs one round trip instead of an upsert plus a
 re-read. **Rows written did not change** (D1 bills rows, not statements) — what
 shrank is the read/latency side, from eight statements to six. The remaining
-write reduction is moving the per-minute limiter off D1 entirely (a Workers
-Rate Limiting binding), which would be per-isolate rather than global.
+write reduction is the per-minute limiter, the last row write on the miss path.
+It stays on D1 on purpose: a Workers Rate Limiting binding would remove the
+write but count per isolate, so a key's limit would become *N × limit* for N
+isolates. On the public tier that trade is harmless — its real bound is the
+global daily total — but for a standard key the per-minute limit is the only
+global control it has, so the guarantee is worth more than the row. Raise the
+quotas before optimising this; see FEATURES §4 for the conditions that would
+reopen the question.
 
 **Logging is configurable, and the trade is real.** `LOG_REQUESTS=false` stops
 the `request_logs` insert at the source (`app/lib/db.ts`), so the proxy keeps
@@ -994,7 +1000,7 @@ vars are rewritten from the config file each time.
 | `CACHE_TTL_SECONDS` | `3600` | Default R2 TTL for GET 200s; also caps per-request `?corx-ttl=` |
 | `CACHE_STALE_SECONDS` | `0` | stale-if-error grace window (1–86400, `0` = off). When set, an entry lives `TTL + this` and is served **only** if the upstream fails — with `X-Corx-Cache: STALE` and `Warning: 110`. Off by default: serving a body past its TTL is a policy decision |
 | `TIMEOUT_MS` | `30000` | Upstream timeout |
-| `RATE_LIMIT_PER_MIN` | `60` | Per key (or per IP) per minute — cache hits are free |
+| `RATE_LIMIT_PER_MIN` | `60` | Per key (or per IP) per minute — cache hits are free. Fixed 1-minute window in D1, deliberately global: the counter is a row write per cache miss, and trading it for an edge limiter would make a key's limit per-isolate (see FEATURES §4) |
 | `MAX_BODY_BYTES` | `10485760` | Max forwarded request body. A declared oversized upload is refused before anything is read; an upload that is still arriving is **streamed** (with the cap enforced as it flows, so the upstream connection opens before the caller finishes sending), and only a body that has already been read in full is held in memory — small JSON/form posts, which keep the `413`-before-forwarding and re-sendable-on-`307` behaviour. An unreadable body is rejected, never forwarded empty. A `307`/`308` for a *streamed* body is handed back to the caller rather than re-sent, since re-sending a consumed body is impossible |
 | `LOG_REQUESTS` | `true` | `false`/`0`/`off`/`no` writes **nothing** to `request_logs`: no per-request rows, no per-day trend. Rate limiting, quota headers and `X-Corx-*` markers are unaffected. The hosted instance logs (it says so in /terms); a self-hosted deployment may not want to |
 | `LOG_RETENTION_DAYS` | `30` | Days of raw `request_logs` kept before the cron prune (1–365; junk falls back to 30). The daily rollup (`stats_daily`) follows the same window, and the console's stats read raw rows only while they exist — a shorter value means the trend comes from the rollup sooner |

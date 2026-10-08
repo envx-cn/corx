@@ -124,6 +124,27 @@ Files: `app/lib/auth.ts`, `app/lib/admin.ts`, `app/routes/api/keys*`,
   free; `X-RateLimit-Limit` + `X-RateLimit-Remaining` on miss responses;
   fail-open. The counter is one statement — `INSERT … ON CONFLICT … RETURNING
   count` — not an upsert plus a re-read.
+- **The limiter stays on D1, deliberately (#118).** It is the last row write on
+  the miss path, and a Workers Rate Limiting binding would remove it — but that
+  binding counts per isolate, so the effective limit becomes *N × limit* for N
+  isolates serving the key, while today it is one global number. The split that
+  matters:
+  - **standard keys** — the per-minute limit is the only *global* control a key
+    has, so moving it to the edge would silently weaken the guarantee. Keep D1.
+  - **public tier** — the real bound is the daily total in `quota_counters`
+    (global, cross-isolate), and the per-minute layer only stops one caller from
+    flooding; an edge limiter there is safe *if a deployment asks for it*. Not
+    the default, because "opt into something approximate" has to be a decision
+    someone makes on purpose.
+  - **a binding in front of the D1 counter** (edge pre-filter, D1 as the global
+    backstop) was considered and rejected as a *cost* measure: it does not
+    change steady-state writes at all. Its real value is incident control —
+    under an abuse flood the edge absorbs it and D1 writes fall to ~zero — so it
+    is the lever to pull *during* an incident, not one to add by default.
+
+  Revisit when: a deployment is actually D1-write-bound on this path (raise the
+  quotas first — they are sized for it), or an incident makes the incident
+  valve worth having.
 - Public-tier daily quotas (UTC days) per calling `Origin`, per target host
   and per key, checked *before* the cache so hits consume budget too; over cap
   → `429` + `Retry-After` + `{ scope, limit, resetAt }`; announced via
@@ -683,7 +704,10 @@ flagged has been fixed below.
    statement per miss (v0.2.0), yet it is still a D1 row write per request, and
    the only way to remove that is to move the limiter off D1 to a Workers Rate
    Limiting binding — which is per-isolate rather than global, so it is an
-   opt-in product decision, not a drop-in change.
+   opt-in product decision, not a drop-in change. **Decided (#118): D1 stays for
+   every tier by default**, and the write is accepted rather than traded for a
+   weaker guarantee; see §4 for the per-tier reasoning and the conditions that
+   would reopen it.
 3. **Public-tier quotas fail open too.** A D1 write error means the request is
    allowed; the total cap is sized under the write budget so that state should
    not arise from proxied traffic, but it is not a hard guarantee. A public key
