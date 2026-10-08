@@ -262,10 +262,11 @@ export function cors() {
 
     if (acao) {
       c.header("Access-Control-Allow-Origin", acao);
-      if (acao !== "*") {
-        const vary = c.res.headers.get("Vary");
-        c.header("Vary", vary ? `${vary}, Origin` : "Origin");
-      }
+      // One place decides how `Origin` joins an existing `Vary`: the proxied
+      // response may already carry the upstream's own `Vary` (replayed from
+      // the cache or the upstream), and concatenating blindly produced
+      // `Vary: Origin, Accept-Encoding, Origin`.
+      if (acao !== "*") varyWithOrigin(c.res.headers);
       c.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS");
       c.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-Api-Key");
       c.header("Access-Control-Expose-Headers", EXPOSED_HEADERS);
@@ -290,10 +291,7 @@ export function withProxyCors(c: Ctx, res: Response): Response {
     allow === "*" ? "*" : origin && normalized && allowMatches(allow, normalized) ? origin : null;
   if (acao) {
     res.headers.set("Access-Control-Allow-Origin", acao);
-    if (acao !== "*") {
-      const vary = res.headers.get("Vary");
-      res.headers.set("Vary", vary ? `${vary}, Origin` : "Origin");
-    }
+    if (acao !== "*") varyWithOrigin(res.headers);
   }
   return res;
 }

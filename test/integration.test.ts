@@ -1060,6 +1060,25 @@ describe("proxy wiring (integration)", () => {
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
   });
 
+  it("adds its own Vary: Origin once, whatever the upstream sent", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL) => {
+        const u = new URL(String(url));
+        if (u.hostname === "cloudflare-dns.com") return new Response(JSON.stringify({ Answer: [] }), { status: 200 });
+        // The upstream already varies on Origin: concatenating blindly gave
+        // `Vary: Origin, Accept-Encoding, Origin`.
+        return new Response("{}", { status: 200, headers: { "content-type": "application/json", vary: "Origin, Accept-Encoding" } });
+      }),
+    );
+    const e = { ...env, ALLOWED_ORIGINS: "https://app.example" } as Env;
+    const res = await call("/fetch?url=https://example.com/data", { headers: { origin: "https://app.example" } }, e);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("access-control-allow-origin")).toBe("https://app.example");
+    const tokens = (res.headers.get("vary") ?? "").split(",").map((t) => t.trim().toLowerCase());
+    expect(tokens).toEqual(["origin", "accept-encoding"]);
+  });
+
   it("rejects an oversized upload before forwarding anything", async () => {
     const seen: string[] = [];
     vi.stubGlobal(
