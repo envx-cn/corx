@@ -1141,7 +1141,9 @@ host, CORS preflight, Range and POST echo, and recent runs stay in
 localStorage) ·
 Logs (per-request size, plus the **Via** — presented key / keyless / anon — and
 **Caller** origin that authorized it, with a 1h–7d lookback **Window** slider
-that re-filters on release) · Host
+that re-filters on release; a rejected request — a cap, a scope or blocklist
+refusal — is logged against the key that made it, so a key whose traffic was only
+429s still reads as *used*) · Host
 blocklist (add inline — blocking a domain also covers its subdomains — remove behind a confirm dialog; logout confirms too) ·
 Response cache (what the R2 cache holds right now — entries, bytes, the 24 h
 hit ratio and the busiest hosts, all from a bounded sample that says so — plus
