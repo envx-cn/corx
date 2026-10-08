@@ -83,8 +83,13 @@ Files: `app/proxy/cors.ts`, `app/lib/auth.ts`, `app/lib/admin.ts`.
   `dns_check`, `keyless`, `tier` (`standard` | `public`) with the public
   daily caps `daily_limit_per_origin` / `daily_limit_per_host` /
   `daily_limit_total`, and the injection set (below).
-- Public tier is validated at save time: no injection, both SSRF guards must
-  stay on, and a daily total cap is required (see §12).
+- Public tier is validated at save time: no variables or rules, both SSRF guards
+  must stay on, and a daily total cap is required (see §12). An **allowed target
+  host list is allowed** on a public key — it restricts rather than injects, so
+  the reason it used to be rejected (it lives in the same stored blob as the
+  injection) no longer applies, and without it a published key could only be
+  bounded by caps and the blocklist. Blank stays valid = any host, so existing
+  deployments are unchanged (#124/#126).
 - Lifecycle: create, partial update (`PATCH` merges with the stored row;
   blank variable values keep the secret), revoke (kill switch) and hard delete,
   both from the console behind a type-the-name confirmation.
@@ -648,6 +653,13 @@ Files: `app/lib/access.ts`, `app/lib/session.ts`, `app/lib/csrf.ts`,
 ---
 
 ## 12. Public tier & terms of use
+
+- The three daily dimensions are **not equally strong**: per-key and
+  per-target-host are real global limits; per-caller-`Origin` is attribution,
+  because a non-browser caller sends no `Origin` (the dimension becomes per-IP)
+  and `Origin` is caller-supplied. A distributed caller is bounded by
+  `dailyLimitPerHost` / `dailyLimitTotal`, not by the origin number — which is
+  what the docs and the console copy now say (#127).
 
 A hosted instance can publish one **public key** (`vars.PUBLIC_KEY`) so visitors
 fetch URLs cross-origin from their own sites without deploying anything. It is
