@@ -1,5 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { blocklistCandidates, checkDbBlocklist, extractTargetUrl, validateTargetUrl } from "../app/proxy/guard.js";
+import { beforeEach, describe, it, expect, vi, afterEach } from "vitest";
+import {
+  blocklistCandidates,
+  checkDbBlocklist,
+  extractTargetUrl,
+  invalidateBlocklistMemo,
+  validateTargetUrl,
+} from "../app/proxy/guard.js";
 import { ProxyError } from "../app/lib/types.js";
 
 describe("extractTargetUrl", () => {
@@ -61,6 +67,14 @@ describe("blocklistCandidates", () => {
 });
 
 describe("checkDbBlocklist", () => {
+  // The memo is module-level (one per isolate, like the real thing), so each
+  // case starts from a clean slate.
+  beforeEach(() => invalidateBlocklistMemo());
+  afterEach(() => {
+    vi.useRealTimers();
+    invalidateBlocklistMemo();
+  });
+
   /** Fake D1 whose blocked_hosts row is the given hostname. */
   const dbWith = (blocked: string) =>
     ({
@@ -70,6 +84,22 @@ describe("checkDbBlocklist", () => {
         }),
       }),
     }) as unknown as D1Database;
+
+  /** Same, but counts the round trips (one `first()` per lookup). */
+  const countingDb = (blocked: string) => {
+    let queries = 0;
+    const db = {
+      prepare: () => ({
+        bind: (...args: string[]) => ({
+          first: async () => {
+            queries++;
+            return args.includes(blocked) ? { hostname: blocked } : null;
+          },
+        }),
+      }),
+    } as unknown as D1Database;
+    return { db, queries: () => queries };
+  };
 
   it("blocks the exact host", async () => {
     await expect(checkDbBlocklist(dbWith("evil.example"), "evil.example")).rejects.toThrowError(ProxyError);
@@ -91,5 +121,50 @@ describe("checkDbBlocklist", () => {
   it("fails open when D1 errors", async () => {
     const db = { prepare: () => ({ bind: () => ({ first: async () => { throw new Error("down"); } }) }) } as unknown as D1Database;
     await expect(checkDbBlocklist(db, "evil.example")).resolves.toBeUndefined();
+  });
+
+  describe("per-isolate memo (30s)", () => {
+    it("asks D1 once per host inside the window", async () => {
+      const { db, queries } = countingDb("evil.example");
+      for (let i = 0; i < 5; i++) {
+        await checkDbBlocklist(db, "api.vendor.com");
+      }
+      expect(queries()).toBe(1);
+      // A different host is its own question.
+      await checkDbBlocklist(db, "other.example");
+      expect(queries()).toBe(2);
+    });
+
+    it("keeps a blocked verdict without asking D1 again", async () => {
+      const { db, queries } = countingDb("evil.example");
+      await expect(checkDbBlocklist(db, "evil.example")).rejects.toThrowError(ProxyError);
+      await expect(checkDbBlocklist(db, "evil.example")).rejects.toThrowError(ProxyError);
+      expect(queries()).toBe(1);
+    });
+
+    it("re-reads after the window expires", async () => {
+      vi.useFakeTimers();
+      const { db, queries } = countingDb("evil.example");
+      await checkDbBlocklist(db, "api.vendor.com");
+      vi.advanceTimersByTime(30_001);
+      await checkDbBlocklist(db, "api.vendor.com");
+      expect(queries()).toBe(2);
+    });
+
+    it("an operator's write takes effect immediately (invalidation)", async () => {
+      const { db, queries } = countingDb("evil.example");
+      await checkDbBlocklist(db, "api.vendor.com"); // memoized as allowed
+      expect(queries()).toBe(1);
+      invalidateBlocklistMemo(); // what the console/API routes call after a write
+      await expect(checkDbBlocklist(db, "evil.example")).rejects.toThrowError(ProxyError);
+      expect(queries()).toBe(2);
+    });
+
+    it("normalizes the memo key (case + trailing dot)", async () => {
+      const { db, queries } = countingDb("evil.example");
+      await checkDbBlocklist(db, "API.Vendor.com");
+      await checkDbBlocklist(db, "api.vendor.com.");
+      expect(queries()).toBe(1);
+    });
   });
 });

@@ -17,6 +17,13 @@ function quotaDb(opts: { fail?: boolean; used?: number } = {}) {
   const counts = new Map<string, number>();
   const calls: Call[] = [];
   const key = (call: Call) => `${String(call.values[0])}|${String(call.values[1])}`;
+  /** Charge one bucket and return its new count (the RETURNING value). */
+  const bumpCounter = (call: Call) => {
+    const k = key(call);
+    const next = (counts.get(k) ?? 0) + 1;
+    counts.set(k, next);
+    return next;
+  };
   const db = {
     prepare(sql: string) {
       const call: Call = { sql, values: [] };
@@ -28,15 +35,17 @@ function quotaDb(opts: { fail?: boolean; used?: number } = {}) {
         run: async () => {
           if (opts.fail) throw new Error("d1 down");
           calls.push(call);
-          if (sql.includes("INSERT INTO quota_counters")) {
-            const k = key(call);
-            counts.set(k, (counts.get(k) ?? 0) + 1);
-          }
+          if (sql.includes("INSERT INTO quota_counters")) bumpCounter(call);
           return { meta: { changes: 1 } };
         },
+        // The counter is charged and read back by ONE statement
+        // (`INSERT … ON CONFLICT … RETURNING count`), so the write lands here.
         first: async () => {
           if (opts.fail) throw new Error("d1 down");
           calls.push(call);
+          if (sql.includes("INSERT INTO quota_counters")) {
+            return { count: opts.used ?? bumpCounter(call) };
+          }
           if (sql.includes("FROM quota_counters")) return { count: opts.used ?? counts.get(key(call)) ?? 1 };
           return null;
         },
@@ -78,14 +87,11 @@ describe("checkPublicQuota", () => {
     expect(quota.origin).toEqual({ limit: 100, used: 1, remaining: 99 });
     expect(quota.host).toEqual({ limit: 200, used: 1, remaining: 199 });
     expect(quota.total).toEqual({ limit: 300, used: 1, remaining: 299 });
-    // One upsert + one read per dimension.
-    expect(calls).toHaveLength(6);
+    // One statement per dimension (the upsert returns the new count).
+    expect(calls).toHaveLength(3);
     expect(calls.map((c) => c.values[0])).toEqual([
       "q:o:https://app.example",
-      "q:o:https://app.example",
       "q:h:api.vendor.com",
-      "q:h:api.vendor.com",
-      "q:k:key-1",
       "q:k:key-1",
     ]);
   });
@@ -93,7 +99,7 @@ describe("checkPublicQuota", () => {
   it("charges only the dimensions that have a cap", async () => {
     const { db, calls } = quotaDb();
     await checkPublicQuota(db, input({ row: row({ daily_limit_total: 500 }) }));
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(1);
     expect(calls.every((c) => c.values[0] === "q:k:key-1")).toBe(true);
   });
 

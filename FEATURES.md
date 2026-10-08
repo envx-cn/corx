@@ -102,16 +102,27 @@ Files: `app/lib/auth.ts`, `app/lib/admin.ts`, `app/routes/api/keys*`,
 - D1 blocklist (`blocked_hosts`, admin-managed): a blocked parent domain also
   covers its subdomains (`evil.example` blocks `api.evil.example`; a bare TLD
   entry never matches); checked on every request, including cache hits, and on
-  every manual redirect hop; fail-open on DB errors.
+  every manual redirect hop; fail-open on DB errors. Answers are memoized per
+  isolate for 30 s (the DoH guard's trade): it is the one per-request read that
+  cannot predict its answer, so the memo removes a D1 round trip per request.
+  `invalidateBlocklistMemo()` is called by every write path (console add/remove,
+  `POST /api/block-host`, `DELETE /api/block-host/:host`), so an operator's own
+  block or unblock is immediate; the window only covers a row hand-written
+  into D1. Blocking stays fail-closed inside the window.
 - Rate limit: fixed 1-minute window in D1, per key / per IP / per
   `origin + IP` for keyless, and per IP for public keys (every caller shares
   one public key, so a per-key bucket would glob them together); cache hits are
   free; `X-RateLimit-Limit` + `X-RateLimit-Remaining` on miss responses;
-  fail-open.
+  fail-open. The counter is one statement — `INSERT … ON CONFLICT … RETURNING
+  count` — not an upsert plus a re-read.
 - Public-tier daily quotas (UTC days) per calling `Origin`, per target host
   and per key, checked *before* the cache so hits consume budget too; over cap
   → `429` + `Retry-After` + `{ scope, limit, resetAt }`; announced via
-  `X-Corx-Quota-*` (see §12).
+  `X-Corx-Quota-*` (see §12). Each capped dimension costs one statement
+  (`RETURNING count`), and the dimensions are charged in order origin → host →
+  total, so a caller rejected on its origin cap does not drain the instance-wide
+  pool — a deliberate trade the test suite pins. Hot-path cost is pinned as a
+  number: 6 statements per public request (7 on a cold isolate).
 - CORX's own credentials never reach upstream, and BYOK rides through:
   `X-Admin-Token` is always stripped; a **corx-shaped** `X-Api-Key` or
   `Authorization: Bearer corx_…` is consumed and stripped even when the key is

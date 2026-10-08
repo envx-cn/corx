@@ -160,6 +160,13 @@ round-trip is what trusted internal keys may want to drop). The D1 blocklist
 rules for Workers are never bypassed. Skipping
 a guard widens what that key can reach, so both default to on.
 
+The blocklist is answered from a per-isolate memo for 30 s, the same trade the
+DoH resolver makes — it runs on *every* request (cache hits included, so a host
+blocked after the fact stops being served), which made it the one per-request
+read that carried no new information. Blocking or unblocking through the console
+or the API clears the memo immediately; the window only applies to a row
+written straight into D1.
+
 **JSONP (`?corx-callback=fn`)**
 
 When a strict CSP blocks `fetch`/XHR, or the page runs in a sandboxed
@@ -776,6 +783,17 @@ origin, 5 000 per host, 60/min per IP) sit inside that budget. Raise them with
 Workers Paid ($5/mo lifts D1 to 50M writes and Workers to 10M requests per
 month), or by trimming writes (log sampling, edge rate limiting) — not by
 simply raising the number.
+
+**What one request actually costs in D1.** A public-tier request with all three
+caps configured runs six statements: the key lookup, one upsert per capped
+dimension, one upsert for the rate-limit window, and the log row — plus a
+seventh on a cold isolate, the blocklist read (see below). The counters read
+their new value out of the same `INSERT … ON CONFLICT … RETURNING count` that
+writes them, so a dimension costs one round trip instead of an upsert plus a
+re-read. **Rows written did not change** (D1 bills rows, not statements) — what
+shrank is the read/latency side, from eight statements to six. The remaining
+write reduction is moving the per-minute limiter off D1 entirely (a Workers
+Rate Limiting binding), which would be per-isolate rather than global.
 
 **Logging is configurable, and the trade is real.** `LOG_REQUESTS=false` stops
 the `request_logs` insert at the source (`app/lib/db.ts`), so the proxy keeps

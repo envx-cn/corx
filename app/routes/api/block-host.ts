@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../../lib/types.js";
 import { ProxyError } from "../../lib/types.js";
-import { normalizeBlockedHostname } from "../../proxy/guard.js";
+import { invalidateBlocklistMemo, normalizeBlockedHostname } from "../../proxy/guard.js";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -15,6 +15,9 @@ app.post("/", async (c) => {
     await c.env.DB.prepare("INSERT OR IGNORE INTO blocked_hosts (hostname, reason) VALUES (?, ?)")
       .bind(hostname, (body.reason ?? "").slice(0, 500))
       .run();
+    // The proxy memoizes blocklist answers per isolate for 30 s; an operator's
+    // own block must not wait out that window.
+    invalidateBlocklistMemo();
     return c.json({ ok: true });
   } catch (err) {
     if (err instanceof ProxyError) return c.json({ error: err.message }, err.status as 400);
