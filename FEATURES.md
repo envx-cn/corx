@@ -560,6 +560,22 @@ Files: `app/lib/access.ts`, `app/lib/session.ts`, `app/lib/csrf.ts`,
 
 ## 11. Operations & tooling
 
+- `GET /api/metrics` — Prometheus text (admin-gated by the shared `/api/*`
+  guard, so no per-deployment configuration can leave it open): requests, cache
+  hits + hit ratio, cached (upstream) bytes, request/response bytes, errors,
+  average/max latency over 24 h, active keys, the effective cache config
+  (`CACHE_TTL_SECONDS`, `CACHE_STALE_SECONDS`, `LOG_RETENTION_DAYS`), plus
+  per-host / per-status / per-country series capped at 20 each. Values come from
+  the same 24 h window the dashboard reads.
+- `GET /health` — liveness by default; `?deep=1` exercises D1 and R2 and
+  answers `503` with a per-binding status, so a monitor can tell "the Worker is
+  up" apart from "the Worker cannot reach its bindings".
+- `stats_daily` carries the cache dimensions (`cache_hits`, `cached_bytes`,
+  migration `0013`) that `request_logs` always had, so the 7/28/90-day trend can
+  answer whether the R2 cache is paying for itself after the raw rows are
+  pruned. Days rolled up before the migration read 0/0 — honest ("not
+  measured") rather than silently wrong.
+
 - Cron `0 3 * * *`: aggregate `request_logs` into `stats_daily` **before** the
   prune (the rollup is the trend's long memory; the raw rows are not), then
   prune `request_logs` past the deployment's `LOG_RETENTION_DAYS` (default 30;

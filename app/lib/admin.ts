@@ -182,6 +182,10 @@ export interface DailyPoint {
   errors: number;
   req_bytes: number;
   res_bytes: number;
+  /** Requests served from the R2 cache (see migration 0013). */
+  cache_hits: number;
+  /** Response bytes served from cache = upstream bandwidth saved. */
+  cached_bytes: number;
 }
 
 /**
@@ -199,7 +203,9 @@ const DAILY_COLUMNS = `substr(created_at, 1, 10) AS day,
        COUNT(DISTINCT api_key_id) AS keys,
        SUM(CASE WHEN status >= 500 OR error != '' THEN 1 ELSE 0 END) AS errors,
        COALESCE(SUM(req_bytes), 0) AS req_bytes,
-       COALESCE(SUM(res_bytes), 0) AS res_bytes`;
+       COALESCE(SUM(res_bytes), 0) AS res_bytes,
+       SUM(CASE WHEN cached = 1 THEN 1 ELSE 0 END) AS cache_hits,
+       COALESCE(SUM(CASE WHEN cached = 1 THEN res_bytes ELSE 0 END), 0) AS cached_bytes`;
 
 async function allOrEmptyBound<T>(db: D1Database, sql: string, ...values: unknown[]): Promise<T[]> {
   return db
@@ -229,7 +235,7 @@ export async function rollupDailyStats(
   await db
     .prepare(
       `INSERT OR REPLACE INTO stats_daily
-         (day, requests, origins, keys, errors, req_bytes, res_bytes, updated_at)
+         (day, requests, origins, keys, errors, req_bytes, res_bytes, cache_hits, cached_bytes, updated_at)
        SELECT ${DAILY_COLUMNS},
               strftime('%Y-%m-%dT%H:%M:%fZ', 'now') AS updated_at
        FROM request_logs
@@ -272,7 +278,7 @@ export async function queryDailyStats(
     startDay <= rollupEnd
       ? allOrEmptyBound<DailyPoint>(
           db,
-          `SELECT day, requests, origins, keys, errors, req_bytes, res_bytes
+          `SELECT day, requests, origins, keys, errors, req_bytes, res_bytes, cache_hits, cached_bytes
            FROM stats_daily WHERE day BETWEEN ? AND ? ORDER BY day`,
           startDay,
           rollupEnd,
@@ -285,7 +291,19 @@ export async function queryDailyStats(
   for (const r of rawRows) byDay.set(r.day, r);
   const out: DailyPoint[] = [];
   for (let day = startDay; day <= endDay; day = shiftDay(day, 1)) {
-    out.push(byDay.get(day) ?? { day, requests: 0, origins: 0, keys: 0, errors: 0, req_bytes: 0, res_bytes: 0 });
+    out.push(
+      byDay.get(day) ?? {
+        day,
+        requests: 0,
+        origins: 0,
+        keys: 0,
+        errors: 0,
+        req_bytes: 0,
+        res_bytes: 0,
+        cache_hits: 0,
+        cached_bytes: 0,
+      },
+    );
   }
   return out;
 }
@@ -309,6 +327,10 @@ export interface PeriodMetrics {
   errors: number;
   req_bytes: number;
   res_bytes: number;
+  /** Served from the R2 cache — comparable period over period, and the one
+   * number that says whether the cache is paying for itself. */
+  cache_hits: number;
+  cached_bytes: number;
 }
 
 export interface StatsComparison {
@@ -337,7 +359,18 @@ function metricDelta(current: number, previous: number): MetricDelta {
 }
 
 function sumPeriod(daily: Map<string, DailyPoint>, from: string, to: string): PeriodMetrics {
-  const m: PeriodMetrics = { from, to, requests: 0, origins: 0, keys: 0, errors: 0, req_bytes: 0, res_bytes: 0 };
+  const m: PeriodMetrics = {
+    from,
+    to,
+    requests: 0,
+    origins: 0,
+    keys: 0,
+    errors: 0,
+    req_bytes: 0,
+    res_bytes: 0,
+    cache_hits: 0,
+    cached_bytes: 0,
+  };
   for (let day = from; day <= to; day = shiftDay(day, 1)) {
     const p = daily.get(day);
     if (!p) continue;
@@ -347,6 +380,8 @@ function sumPeriod(daily: Map<string, DailyPoint>, from: string, to: string): Pe
     m.errors += p.errors;
     m.req_bytes += p.req_bytes;
     m.res_bytes += p.res_bytes;
+    m.cache_hits += p.cache_hits ?? 0;
+    m.cached_bytes += p.cached_bytes ?? 0;
   }
   return m;
 }

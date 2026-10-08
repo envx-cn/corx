@@ -18,7 +18,18 @@ import type { DailyPoint } from "../app/lib/admin.js";
  */
 
 function point(day: string, over: Partial<DailyPoint> = {}): DailyPoint {
-  return { day, requests: 0, origins: 0, keys: 0, errors: 0, req_bytes: 0, res_bytes: 0, ...over };
+  return {
+    day,
+    requests: 0,
+    origins: 0,
+    keys: 0,
+    errors: 0,
+    req_bytes: 0,
+    res_bytes: 0,
+    cache_hits: 0,
+    cached_bytes: 0,
+    ...over,
+  };
 }
 
 interface Call {

@@ -1183,10 +1183,17 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" 'https://corx.<you>.workers.dev/api
 
 # period over period (1–365 complete UTC days): current vs previous, with
 # requests / distinct origins / distinct keys / errors and their deltas, a
-# daily series, and whether it came from raw logs or the daily rollup. Read
-# origins and keys first — request counts are noise. The window ends
-# yesterday, so both periods are complete and directly comparable.
+# daily series (including cache hits and cached bytes), and whether it came from
+# raw logs or the daily rollup. Read origins and keys first — request counts
+# are noise. The window ends yesterday, so both periods are complete and
+# directly comparable.
 curl -H "Authorization: Bearer $ADMIN_TOKEN" 'https://corx.<you>.workers.dev/api/stats?days=28'
+
+# Prometheus text for your own monitoring (admin-gated, like every /api/*):
+# requests, cache hits + hit ratio, cached (upstream) bytes, latency, active
+# keys, the effective cache config, plus per-host / per-status / per-country
+# breakdowns capped at 20 series each.
+curl -H "Authorization: Bearer $ADMIN_TOKEN" https://corx.<you>.workers.dev/api/metrics
 
 # create a key (raw key shown once!; "name" is required)
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
